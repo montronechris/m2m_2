@@ -2,7 +2,8 @@
 "use client";
 
 import Link from "next/link";
-import { useState } from "react";
+import { Navbar } from "@/components/layout/Navbar";
+import { ContactSection } from "@/components/sections/ContactSection";
 import {
   ShieldCheck, Lock, Server, Clock, QrCode,
   Mail, Phone, MapPin, Send, CheckCircle, ArrowRight,
@@ -10,81 +11,10 @@ import {
 } from "lucide-react";
 
 export default function WhyChooseUsPage() {
-  const [formStatus, setFormStatus] = useState<"idle" | "submitting" | "success">("idle");
-
-  const handleSubmit = (e: React.FormEvent) => {
-    e.preventDefault();
-    setFormStatus("submitting");
-    setTimeout(() => {
-      console.log("Form inviato!");
-      setFormStatus("success");
-    }, 1500);
-  };
-
-  const scrollToTop = () => {
-    document.documentElement.scrollTo({
-      top: 0,
-      behavior: "smooth",
-    });
-  };
-
   return (
     <div className="min-h-screen bg-white font-sans text-gray-900 flex flex-col">
       
-{/* ✅ HEADER MODERNO & GLASSMORPHISM */}
-<header className="fixed top-0 left-0 right-0 z-50 transition-all duration-300 bg-white/80 backdrop-blur-md border-b border-gray-100/50">
-  <div className="max-w-7xl mx-auto px-6 h-20 flex justify-between items-center">
-    
-    {/* LOGO & BRAND - Ora è un Link che porta alla Home */}
-    <Link 
-      href="/" 
-      onClick={scrollToTop} // Opzionale: forza lo scroll su se sei già in home
-      className="group flex items-center gap-3 p-2 -ml-2 rounded-xl hover:bg-gray-50 transition-colors"
-    >
-      <div className="relative w-10 h-10 flex items-center justify-center bg-gradient-to-br from-green-600 to-emerald-600 rounded-xl shadow-lg shadow-green-500/20 group-hover:shadow-green-500/40 group-hover:scale-105 transition-all duration-300">
-        <QrCode className="w-6 h-6 text-white" />
-      </div>
-      <div className="flex flex-col items-start">
-        <span className="font-bold text-xl text-gray-900 tracking-tight leading-none group-hover:text-green-700 transition-colors">
-          TavolaRapida
-        </span>
-        <span className="text-[10px] font-semibold text-gray-400 uppercase tracking-wider">
-          Digital Menu
-        </span>
-      </div>
-    </Link>
-
-    {/* DESKTOP NAVIGATION */}
-    <nav className="hidden md:flex items-center gap-1 bg-gray-50/50 p-1 rounded-full border border-gray-100">
-      <a href="#features" className="px-5 py-2 text-sm font-medium text-gray-600 rounded-full hover:text-green-700 hover:bg-white hover:shadow-sm transition-all">
-        Funzionalità
-      </a>
-      <a href="#contact" className="px-5 py-2 text-sm font-medium text-gray-600 rounded-full hover:text-green-700 hover:bg-white hover:shadow-sm transition-all">
-        Contatti
-      </a>
-      <a href="/login" className="px-5 py-2 text-sm font-medium text-gray-600 rounded-full hover:text-green-700 hover:bg-white hover:shadow-sm transition-all">
-        Area Cucina
-      </a>
-    </nav>
-
-    {/* CTA BUTTON */}
-    <div className="flex items-center gap-4">
-      <Link 
-        href="/scan/TAV1-X9Z2" 
-        className="hidden sm:flex items-center gap-2 px-5 py-2.5 bg-gray-900 text-white text-sm font-bold rounded-full hover:bg-green-600 hover:shadow-lg hover:shadow-green-500/25 hover:-translate-y-0.5 transition-all duration-300"
-      >
-        <span>Demo Live</span>
-        <ArrowRight className="w-4 h-4" />
-      </Link>
-      
-      {/* Mobile Menu Button */}
-      <button className="md:hidden p-2 text-gray-500 hover:text-gray-900">
-        <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" /></svg>
-      </button>
-    </div>
-
-  </div>
-</header>
+      <Navbar />
 
       {/* Spacer per header fisso */}
       <div className="h-20"></div>
@@ -212,97 +142,8 @@ export default function WhyChooseUsPage() {
         </div>
       </section>
 
-      {/* SEZIONE CONTATTI */}
-      <section id="contact" className="py-24 px-4 bg-white relative z-20 -mt-10 rounded-t-[3rem] shadow-[0_-10px_40px_rgba(0,0,0,0.1)]">
-        <div className="max-w-5xl mx-auto bg-white rounded-[2.5rem] shadow-xl overflow-hidden border border-gray-100 flex flex-col md:flex-row mt-10">
-          
-          {/* Lato Sinistro */}
-          <div className="md:w-2/5 bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900 text-white p-12 flex flex-col justify-between relative overflow-hidden">
-            <div className="absolute top-[-50%] right-[-50%] w-[400px] h-[400px] bg-green-500/20 rounded-full blur-[100px]"></div>
-            
-            <div className="relative z-10 space-y-8">
-              <div>
-                <h3 className="text-3xl font-black mb-4 leading-tight">Hai dubbi sulla  <br/> <span className="text-green-400">sicurezza?</span></h3>
-                <p className="text-gray-300 text-sm leading-relaxed mt-4">
-                  O sei semplicemente interessato a scoprire come funziona? Il nostro team tecnico è disponibile per spiegarti nel dettaglio l'architettura del sistema e rispondere alle tue domande.
-                </p>
-              </div>
-              
-              <div className="space-y-6">
-                <div className="flex items-center gap-4 group">
-                  <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center"> <Mail className="w-5 h-5 text-white" /> </div>
-                  <div> <p className="text-xs text-gray-400 uppercase font-bold">Email</p> <p className="font-medium">security@tavolarapida.it</p> </div>
-                </div>
-                <div className="flex items-center gap-4 group">
-                  <div className="w-10 h-10 rounded-lg bg-white/10 flex items-center justify-center"> <Phone className="w-5 h-5 text-white" /> </div>
-                  <div> <p className="text-xs text-gray-400 uppercase font-bold">Telefono</p> <p className="font-medium">+39 02 1234567</p> </div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          {/* Lato Destro: Form */}
-          <div className="md:w-3/5 p-12 bg-white">
-            {formStatus === "success" ? (
-              <div className="h-full flex flex-col items-center justify-center text-center space-y-6 animate-fade-in py-12">
-                <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4 shadow-inner shadow-green-200">
-                  <CheckCircle className="w-12 h-12" />
-                </div>
-                <h3 className="text-3xl font-black text-gray-900">Messaggio Inviato!</h3>
-                <p className="text-gray-600 max-w-xs text-lg">Grazie per averci contattato.</p>
-                <button onClick={() => setFormStatus("idle")} className="text-green-600 font-bold hover:text-green-700 hover:underline mt-4 text-lg">Invia un altro messaggio</button>
-              </div>
-            ) : (
-              <form onSubmit={handleSubmit} className="space-y-6">
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Ruolo*</label>
-                    <select required className="w-full px-4 py-3.5 rounded-xl border-2 border-gray-100 focus:border-green-500 outline-none transition bg-gray-50">
-                      <option value="">Seleziona...</option>
-                      <option value="ristoratore">Titolare Ristorante</option>
-                      <option value="manager">Manager</option>
-                    </select>
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Nome Completo*</label>
-                    <input type="text" required placeholder="Mario Rossi" className="w-full px-4 py-3.5 rounded-xl border-2 border-gray-100 focus:border-green-500 outline-none transition bg-gray-50" />
-                  </div>
-                </div>
-
-                <div className="grid grid-cols-2 gap-6">
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Email*</label>
-                    <input type="email" required placeholder="mario@ristorante.it" className="w-full px-4 py-3.5 rounded-xl border-2 border-gray-100 focus:border-green-500 outline-none transition bg-gray-50" />
-                  </div>
-                  <div className="space-y-2">
-                    <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Telefono*</label>
-                    <input type="tel" required placeholder="+39 333..." className="w-full px-4 py-3.5 rounded-xl border-2 border-gray-100 focus:border-green-500 outline-none transition bg-gray-50" />
-                  </div>
-                </div>
-
-                <div className="space-y-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Messaggio*</label>
-                  <textarea required rows={4} placeholder="Descrivi le tue esigenze o dubbi tecnici..." className="w-full px-4 py-3.5 rounded-xl border-2 border-gray-100 focus:border-green-500 outline-none transition bg-gray-50 resize-none"></textarea>
-                </div>
-
-                <div className="flex items-start gap-3 pt-2">
-                  <input type="checkbox" required id="privacy" className="mt-1.5 w-5 h-5 text-green-600 border-gray-300 rounded focus:ring-green-500 cursor-pointer" />
-                  <label htmlFor="privacy" className="text-xs text-gray-500 leading-tight cursor-pointer">
-                    Acconsento al trattamento dei Dati Personali. <Link href="#" className="underline hover:text-gray-900 font-medium">Leggi Privacy Policy</Link>.
-                  </label>
-                </div>
-
-                <button 
-                  type="submit" 
-                  disabled={formStatus === "submitting"}
-                  className="w-full bg-gray-900 hover:bg-green-600 text-white font-bold py-4 rounded-xl transition-all shadow-lg flex items-center justify-center gap-2 disabled:opacity-70"
-                >
-                {formStatus === "submitting" ? "Elaborazione..." : <>Invia Richiesta <Send className="w-5 h-5" /></>}                </button>
-              </form>
-            )}
-          </div>
-        </div>
-      </section>
+      {/* SEZIONE CONTATTI — usa lo stesso componente della home */}
+      <ContactSection />
 
       {/* FOOTER CON SFONDO SCURO */}
       <footer className="bg-gray-900 text-white py-20 px-4 relative overflow-hidden">

@@ -49,7 +49,7 @@ export function ContactSection() {
         </div>
 
         {/* Lato Destro: Form */}
-        <div className="md:w-3/5 p-12 bg-white">
+        <div className="md:w-3/5 p-6 sm:p-12 bg-white">
           {formStatus === "success" ? (
             <div className="h-full flex flex-col items-center justify-center text-center space-y-6 animate-fade-in py-12">
               <div className="w-24 h-24 bg-green-100 text-green-600 rounded-full flex items-center justify-center mb-4 shadow-inner shadow-green-200">
@@ -63,7 +63,7 @@ export function ContactSection() {
             </div>
           ) : (
             <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Ruolo*</label>
                   <select required className="w-full px-4 py-3.5 rounded-xl border-2 border-gray-100 focus:border-green-500 outline-none transition bg-gray-50">
@@ -78,7 +78,7 @@ export function ContactSection() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-6">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
                 <div className="space-y-2">
                   <label className="text-xs font-bold text-gray-500 uppercase tracking-wider">Email*</label>
                   <input type="email" required placeholder="mario@ristorante.it" className="w-full px-4 py-3.5 rounded-xl border-2 border-gray-100 focus:border-green-500 outline-none transition bg-gray-50" />

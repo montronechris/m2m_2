@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { QrCode, ArrowRight, Star, Zap } from "lucide-react";
 
-export function HeroSection() {
+export function HeroSection({ onScrollToFeatures }: { onScrollToFeatures?: () => void }) {
   return (
     <section className="relative bg-gray-900 text-white py-32 px-4 overflow-hidden">
       {/* Gradient Background */}
@@ -39,7 +39,7 @@ export function HeroSection() {
         {/* CTA Buttons */}
         <div className="flex flex-col sm:flex-row gap-6 justify-center pt-10">
           <Link 
-            href="/scan/TAV1-X9Z2" 
+            href="/scan/TERR-HRVU" 
             className="group relative px-8 py-5 bg-green-600 rounded-2xl font-bold text-xl text-white shadow-xl shadow-green-600/40 hover:shadow-green-600/60 transition-all transform hover:-translate-y-2 overflow-hidden"
           >
             <div className="absolute inset-0 bg-gradient-to-r from-green-600 to-emerald-600 opacity-0 group-hover:opacity-100 transition-opacity duration-300"></div>
@@ -50,9 +50,9 @@ export function HeroSection() {
             </span>
           </Link>
           
-          <a href="#features" className="px-8 py-5 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/30 text-white rounded-2xl font-bold text-xl transition-all hover:scale-105 flex items-center justify-center gap-2">
+          <button onClick={onScrollToFeatures} className="px-8 py-5 bg-white/10 hover:bg-white/20 backdrop-blur-md border border-white/30 text-white rounded-2xl font-bold text-xl transition-all hover:scale-105 flex items-center justify-center gap-2">
             <Zap className="w-6 h-6 text-yellow-400" /> Scopri i Vantaggi
-          </a>
+          </button>
         </div>
       </div>
     </section>

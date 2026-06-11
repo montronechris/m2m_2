@@ -216,7 +216,7 @@ export function MenuItemCard({ item, onAdd, isLoadingOptions = false, palette: T
             style={{
               position: "fixed",
               top: 0, bottom: 0, left: 0,
-              width: "min(48vw, 600px)",
+              width: "min(85vw, 520px)",
               zIndex: 101,
               background: "#fff",
               display: "flex",

@@ -88,9 +88,29 @@ export function useOrderSession(
         setTableId(actualTableId);
         setRestaurantId(actualRestaurantId);
 
-        // 2. Carica ristorante
+        // 2. Carica ristorante — priorità all'id dalla sessione,
+        //    fallback allo slug solo se presente nell'URL
         const { getRestaurantBySlug } = await import("@/lib/api-service");
-        const rest = await getRestaurantBySlug(initialSlug);
+        let rest: Restaurant;
+        if (actualRestaurantId) {
+          // Usiamo Supabase direttamente per evitare dipendenza da getRestaurantById
+          const { createBrowserClient } = await import("@supabase/ssr");
+          const supabase = createBrowserClient(
+            process.env.NEXT_PUBLIC_SUPABASE_URL!,
+            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+          );
+          const { data: r, error: rErr } = await supabase
+            .from("restaurants")
+            .select("id, name, slug, brand_color")
+            .eq("id", actualRestaurantId)
+            .single();
+          if (rErr || !r) throw new Error("Ristorante non trovato");
+          rest = r as Restaurant;
+        } else if (initialSlug) {
+          rest = await getRestaurantBySlug(initialSlug);
+        } else {
+          throw new Error("Impossibile identificare il ristorante");
+        }
         setRestaurant(rest);
 
         // 3. Carica categorie e piatti (escludi "Non associato" — visibile solo in /admin)

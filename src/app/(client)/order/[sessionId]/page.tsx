@@ -87,19 +87,50 @@ export default function OrderPage() {
   const params       = useParams();
   const searchParams = useSearchParams();
   const sessionId    = params.sessionId as string;
-  const initialSlug  = searchParams.get("slug") || "cucinadalaghetti";
+  // Lo slug dall'URL è opzionale: se non c'è, lo risolviamo da Supabase
+  // tramite sessionId → qr_sessions → restaurants.slug.
+  // NON usare mai un fallback hardcodato a un ristorante specifico.
+  const slugFromUrl  = searchParams.get("slug");
+  const [resolvedSlug, setResolvedSlug] = useState<string | null>(slugFromUrl);
+
+  // Se lo slug non è nell'URL, lo leggiamo da Supabase una sola volta
+  useEffect(() => {
+    if (slugFromUrl || !sessionId || resolvedSlug) return;
+    import("@supabase/ssr").then(({ createBrowserClient }) => {
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      supabase
+        .from("qr_sessions")
+        .select("restaurant_id")
+        .eq("id", sessionId)
+        .maybeSingle()
+        .then(({ data: qr }) => {
+          if (!qr?.restaurant_id) return;
+          supabase
+            .from("restaurants")
+            .select("slug")
+            .eq("id", qr.restaurant_id)
+            .single()
+            .then(({ data: r }) => {
+              if (r?.slug) setResolvedSlug(r.slug);
+            });
+        });
+    });
+  }, [sessionId, slugFromUrl, resolvedSlug]);
 
   const initFromDB = useCartStore((s) => s.initFromDB);
   const addItem    = useCartStore((s) => s.addItem);
   const cartCount  = useCartStore((s) => s.items.reduce((a, i) => a + i.quantity, 0));
 
   const { restaurant, tableNumber, categories, items, loading, error, tableId, restaurantId } =
-    useOrderSession(sessionId, initialSlug);
+    useOrderSession(sessionId, resolvedSlug ?? "");
 
   useEffect(() => {
-    if (!tableId || !restaurantId) return;
-    initFromDB(tableId, restaurantId, initialSlug, sessionId);
-  }, [tableId, restaurantId, initialSlug, sessionId, initFromDB]);
+    if (!tableId || !restaurantId || !resolvedSlug) return;
+    initFromDB(tableId, restaurantId, resolvedSlug, sessionId);
+  }, [tableId, restaurantId, resolvedSlug, sessionId, initFromDB]);
 
   const router = useRouter();
 
@@ -237,12 +268,11 @@ const closeSearch = (keepQuery = false) => {
       <div style={{ minHeight: "100vh", background: T.bg, display: "flex", alignItems: "center", justifyContent: "center", padding: 16 }}>
         <div style={{ background: T.bgCard, border: `1px solid ${T.border}`, borderRadius: 24, padding: 32, maxWidth: 400, width: "100%", textAlign: "center", backdropFilter: "blur(12px)" }}>
           <AlertCircle style={{ width: 48, height: 48, color: "#ef4444", margin: "0 auto 16px" }} />
-          <h2 style={{ fontSize: 22, fontWeight: 700, color: T.text, marginBottom: 8 }}>Accesso Non Consentito</h2>
-          <p style={{ color: T.textMuted, marginBottom: 8 }}>{error}</p>
-          <p style={{ color: T.textMuted, fontSize: 13, marginBottom: 20 }}>Per ordinare, devi scansionare il QR Code presente sul tuo tavolo.</p>
-          <Link href="/scan/TAV1-X9Z2">
-            <Button style={{ width: "100%", background: T.text, color: "#fff" }}>Simula Scansione Tavolo 1</Button>
-          </Link>
+          <h2 style={{ fontSize: 22, fontWeight: 700, color: T.text, marginBottom: 8 }}>Ops, qualcosa è andato storto</h2>
+          <p style={{ color: T.textMuted, fontSize: 14, lineHeight: 1.6, marginBottom: 0 }}>
+            C&apos;è stato un problema nel caricamento del menu.<br />
+            Riprova scansionando il QR Code sul tuo tavolo.
+          </p>
         </div>
       </div>
     );
