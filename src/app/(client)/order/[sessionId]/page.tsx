@@ -5,10 +5,7 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useCartStore } from "@/stores/useCartStore";
 import { useOrderSession } from "@/hooks/useOrderSession";
-<<<<<<< HEAD
-=======
 import { OrderHeader } from "@/components/client/order/OrderHeader";
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
 import { CategoryFilter } from "@/components/client/order/CategoryFilter";
 import { MenuItemCard } from "@/components/client/order/MenuItemCard";
 import { Footer } from "@/components/layout/Footer";
@@ -19,11 +16,6 @@ import Link from "next/link";
 import { getMenuItemOptions, type ModalOption, type CartCustomization } from "@/lib/api-service";
 import { useCartExpiry } from "@/hooks/useCartExpiry";
 import CustomizationModal from "@/components/client/cart/CustomizationModal";
-<<<<<<< HEAD
-import { RestaurantInfo } from "@/components/client/order/RestaurantInfo";
-=======
-
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
 
 // ─── Palette dinamica dal brand_color ─────────────────────────────────────────
 
@@ -496,14 +488,11 @@ const closeSearch = (keepQuery = false) => {
 
       {/* ── CONTENUTO ── */}
       <div style={{ position: "relative", zIndex: 10, paddingTop: 80 }}>
-<<<<<<< HEAD
-=======
 <OrderHeader
   cartCount={cartCount}
   cartHref={cartHref}
   palette={T}
 />
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
         {/* ── Restaurant Header (inline, senza box tavolo) ── */}
         <div style={{ textAlign: "center", padding: "48px 16px 32px", position: "relative", zIndex: 10 }}>
           {/* Badge Ristorante Partner – più grande */}
@@ -706,24 +695,7 @@ const closeSearch = (keepQuery = false) => {
               </div>
             )}
           </div>
-<<<<<<< HEAD
-</main>
-
-        {/* ── Info ristorante (dopo il menu) ── */}
-<RestaurantInfo
-  name={restaurant?.name ?? ""}
-  restaurantId={restaurant?.id ?? null}    
-  address={restaurant?.address ?? null}
-  phone={restaurant?.phone ?? null}
-  instagram={restaurant?.instagram ?? null}
-  facebook={restaurant?.facebook ?? null}
-  tripadvisor={restaurant?.tripadvisor ?? null}
-  website={restaurant?.website ?? null}
-  palette={T}
-/>
-=======
         </main>
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
 
         <Footer palette={T} />
       </div>

@@ -85,10 +85,6 @@ type ImportRow = {
   prezzo:      number;
   disponibile: boolean;
   keywords:    string[];
-<<<<<<< HEAD
-  image_url:   string;
-=======
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
 };
 
 type ImportResult = {
@@ -143,10 +139,6 @@ export function MenuSection({ ctx, theme }: Props) {
   const [importResult,  setImportResult]  = useState<ImportResult | null>(null);
   const [importError,   setImportError]   = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-<<<<<<< HEAD
-  const formRef      = useRef<HTMLDivElement>(null);
-=======
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
 
   // ── Token tema ───────────────────────────────────────────────────────────────
   const dark         = theme === "dark";
@@ -222,10 +214,6 @@ export function MenuSection({ ctx, theme }: Props) {
         is_available:    !!currentItem.is_available,
         image_url:       currentItem.image_url || null,
         search_keywords: keywords.length > 0 ? keywords : null,
-<<<<<<< HEAD
-        restaurant_id:   ctx.restaurantId,   // ← FIX: necessario per la RLS policy DELETE
-=======
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
       };
 
       let error: any = null;
@@ -253,34 +241,7 @@ export function MenuSection({ ctx, theme }: Props) {
   // ── Elimina piatto ────────────────────────────────────────────────────────────
   const handleDeleteMenuItem = async (id: string) => {
     if (!confirm("Eliminare questo piatto?")) return;
-<<<<<<< HEAD
-
-    // Sgancia prima il riferimento da order_items per evitare la FK constraint
-    const { error: unlinkErr } = await supabase
-      .from("order_items")
-      .update({ menu_item_id: null })
-      .eq("menu_item_id", id);
-    if (unlinkErr) {
-      alert(`Errore scollegamento ordini: ${unlinkErr.message}`);
-      return;
-    }
-
-    const { error, count } = await supabase
-      .from("menu_items")
-      .delete({ count: "exact" })
-      .eq("id", id)
-      .eq("restaurant_id", ctx.restaurantId);   // ← FIX: garantisce che la RLS trovi il record
-    if (error) {
-      alert(`Errore eliminazione: ${error.message}`);
-      return;
-    }
-    if (count === 0) {
-      alert("Eliminazione non riuscita: il piatto non appartiene a questo ristorante o è già stato eliminato.");
-      return;
-    }
-=======
     await supabase.from("menu_items").delete().eq("id", id);
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
     await fetchMenuData();
   };
 
@@ -319,61 +280,6 @@ export function MenuSection({ ctx, theme }: Props) {
     await fetchMenuData();
   };
 
-<<<<<<< HEAD
-  // ── Elimina tutto il menu ─────────────────────────────────────────────────────
-  const handleDeleteAllMenu = async () => {
-    const totalItems = menuItems.length;
-    const totalCats  = categories.length;
-    if (totalItems === 0 && totalCats === 0) {
-      alert("Il menu è già vuoto."); return;
-    }
-    const conferma = prompt(
-      `⚠️ ATTENZIONE: stai per eliminare TUTTO il menu!\n\n` +
-      `• ${totalItems} piatti\n` +
-      `• ${totalCats} categorie\n\n` +
-      `Questa azione è IRREVERSIBILE.\n\nScrivi "ELIMINA" per confermare:`
-    );
-    if (conferma?.trim() !== "ELIMINA") {
-      if (conferma !== null) alert("Operazione annullata: testo di conferma errato.");
-      return;
-    }
-
-    setMenuLoading(true);
-    try {
-      // 1. Sgancia order_items → menu_item_id per evitare FK violations
-      if (menuItems.length > 0) {
-        const ids = menuItems.map(i => i.id);
-        const { error: unlinkErr } = await supabase
-          .from("order_items")
-          .update({ menu_item_id: null })
-          .in("menu_item_id", ids);
-        if (unlinkErr) throw new Error(`Scollegamento ordini: ${unlinkErr.message}`);
-      }
-
-      // 2. Elimina tutti i piatti del ristorante
-      const { error: itemsErr } = await supabase
-        .from("menu_items")
-        .delete()
-        .eq("restaurant_id", ctx.restaurantId);
-      if (itemsErr) throw new Error(`Eliminazione piatti: ${itemsErr.message}`);
-
-      // 3. Elimina tutte le categorie del ristorante
-      const { error: catsErr } = await supabase
-        .from("menu_categories")
-        .delete()
-        .eq("restaurant_id", ctx.restaurantId);
-      if (catsErr) throw new Error(`Eliminazione categorie: ${catsErr.message}`);
-
-      await fetchMenuData();
-    } catch (err: any) {
-      alert(`Errore: ${err.message}`);
-    } finally {
-      setMenuLoading(false);
-    }
-  };
-
-=======
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
   // ── IMPORT: parse file ────────────────────────────────────────────────────────
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
@@ -398,10 +304,6 @@ export function MenuSection({ ctx, theme }: Props) {
             prezzo:      parseFloat(r.prezzo ?? r.price ?? 0),
             disponibile: r.disponibile !== undefined ? Boolean(r.disponibile) : r.available !== undefined ? Boolean(r.available) : true,
             keywords:    Array.isArray(r.keywords) ? r.keywords.map(String) : [],
-<<<<<<< HEAD
-            image_url:   String(r.image_url || r.immagine || ""),
-=======
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
           }));
         } else if (file.name.endsWith(".csv")) {
           const lines = text.split(/\r?\n/).filter(l => l.trim());
@@ -425,10 +327,6 @@ export function MenuSection({ ctx, theme }: Props) {
               prezzo:      parseFloat(get("prezzo") || get("price") || "0"),
               disponibile: (get("disponibile") || get("available") || "true").toLowerCase() !== "false",
               keywords:    (get("keywords") || "").split(";").map(k => k.trim()).filter(Boolean),
-<<<<<<< HEAD
-              image_url:   get("image_url") || get("immagine") || "",
-=======
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
             };
           });
         } else {
@@ -489,11 +387,6 @@ export function MenuSection({ ctx, theme }: Props) {
             category_id:     catMap[catKey],
             is_available:    row.disponibile,
             search_keywords: keywords.length > 0 ? keywords : null,
-<<<<<<< HEAD
-            image_url:       row.image_url.trim() || null,
-            restaurant_id:   ctx.restaurantId,   // ← FIX: necessario per la RLS policy DELETE
-=======
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
           }]);
 
           if (itemErr) throw new Error(`Piatto "${row.nome}": ${itemErr.message}`);
@@ -879,23 +772,6 @@ export function MenuSection({ ctx, theme }: Props) {
         </div>
         {!isEditing && (
           <div className="flex items-center gap-2">
-<<<<<<< HEAD
-            {/* Bottone Elimina tutto il menu */}
-            {(menuItems.length > 0 || categories.length > 0) && (
-              <button
-                onClick={handleDeleteAllMenu}
-                className={`px-4 py-2 rounded-xl flex items-center gap-2 font-medium transition-all border ${
-                  dark
-                    ? "bg-red-500/10 border-red-500/20 text-red-400 hover:bg-red-500/20 hover:border-red-500/40"
-                    : "bg-red-50 border-red-200 text-red-500 hover:bg-red-100 hover:border-red-300"
-                }`}
-                title="Elimina tutto il menu">
-                <Trash2 className="w-4 h-4" />
-                Svuota Menu
-              </button>
-            )}
-=======
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
             {/* Bottone Import */}
             <button
               onClick={() => { setShowImport(v => !v); setImportPreview(null); setImportResult(null); setImportError(null); }}
@@ -946,23 +822,12 @@ export function MenuSection({ ctx, theme }: Props) {
   {
     "categoria": "Primi",
     "nome": "Carbonara",
-<<<<<<< HEAD
-    "descrizione": "Con guanciale e pecorino",
-    "prezzo": 12.50,
-    "disponibile": true,
-    "keywords": ["pasta", "uova"],
-    "image_url": "https://esempio.com/carbonara.jpg"
-  }
-]`}</pre>
-                  <p className={`text-xs ${muted} mt-2 opacity-70`}><code>image_url</code> → URL pubblico dell'immagine (opzionale)</p>
-=======
     "descrizione": "Con guanciale",
     "prezzo": 12.50,
     "disponibile": true,
     "keywords": ["pasta"]
   }
 ]`}</pre>
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
                 </div>
                 {/* CSV */}
                 <div className={`rounded-lg p-3 ${bgSoft} border ${border}`}>
@@ -970,17 +835,10 @@ export function MenuSection({ ctx, theme }: Props) {
                     <FileText className="w-4 h-4 text-green-400" />
                     <span className={`text-sm font-semibold ${txt}`}>CSV</span>
                   </div>
-<<<<<<< HEAD
-                  <pre className={`text-xs ${muted} overflow-x-auto`}>{`categoria,nome,descrizione,prezzo,disponibile,keywords,image_url
-Primi,Carbonara,"Con guanciale",12.50,true,"pasta;uova",https://esempio.com/carbonara.jpg
-Secondi,Bistecca,,18.00,true,,`}</pre>
-                  <p className={`text-xs ${muted} mt-2 opacity-70`}><code>keywords</code> separati da <code>;</code> · <code>image_url</code> URL pubblico (opzionale)</p>
-=======
                   <pre className={`text-xs ${muted} overflow-x-auto`}>{`categoria,nome,descrizione,prezzo,disponibile
 Primi,Carbonara,"Con guanciale",12.50,true
 Secondi,Bistecca,,18.00,true`}</pre>
                   <p className={`text-xs ${muted} mt-2 opacity-70`}>Keywords CSV: colonna <code>keywords</code> separata da <code>;</code></p>
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
                 </div>
               </div>
             </div>
@@ -1108,11 +966,7 @@ Secondi,Bistecca,,18.00,true`}</pre>
           FORM CREA / MODIFICA PIATTO
           ════════════════════════════════════════════════════════════════════ */}
       {isEditing && (
-<<<<<<< HEAD
-        <div ref={formRef} className={`${bg} rounded-2xl border ${border} overflow-hidden shadow-lg`}>
-=======
         <div className={`${bg} rounded-2xl border ${border} overflow-hidden shadow-lg`}>
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
           <div className={`px-6 py-4 border-b ${border} ${bgSoft}`}>
             <h3 className={`text-lg font-semibold ${txt} flex items-center gap-2`}>
               {currentItem.id ? <Edit className="w-5 h-5 text-green-500" /> : <Plus className="w-5 h-5 text-green-500" />}
@@ -1394,25 +1248,7 @@ Secondi,Bistecca,,18.00,true`}</pre>
                               <ListTree className="w-4 h-4" />
                               {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                             </button>
-<<<<<<< HEAD
-                            <button onClick={() => {
-                              setCurrentItem({ ...item, search_keywords: item.search_keywords || [] });
-                              setKeywordInput("");
-                              setIsEditing(true);
-                              // Il form viene montato al prossimo render: aspettiamo 2 frame
-                              requestAnimationFrame(() => {
-                                requestAnimationFrame(() => {
-                                  if (formRef.current) {
-                                    formRef.current.scrollIntoView({ behavior: "smooth", block: "start" });
-                                  } else {
-                                    window.scrollTo({ top: 0, behavior: "smooth" });
-                                  }
-                                });
-                              });
-                            }}
-=======
                             <button onClick={() => { setCurrentItem({ ...item, search_keywords: item.search_keywords || [] }); setKeywordInput(""); setIsEditing(true); }}
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
                               title="Modifica"
                               className={`p-2 text-blue-400 hover:bg-blue-500/20 rounded-lg transition-all opacity-0 group-hover:opacity-100`}>
                               <Edit className="w-4 h-4" />

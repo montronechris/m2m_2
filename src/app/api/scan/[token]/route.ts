@@ -39,16 +39,6 @@ export async function GET(
       return NextResponse.json({ error: 'Ristorante non configurato' }, { status: 500 });
     }
 
-<<<<<<< HEAD
-    // 3. Riusa la sessione attiva se esiste (stesso tavolo, più dispositivi)
-    //    La sessione scade solo quando il ristorante chiude il tavolo dall'admin
-    const { data: existingSession } = await supabase
-      .from('qr_sessions')
-      .select('id, token')
-      .eq('table_id', table.id)
-      .eq('is_active', true)
-      .gt('expires_at', new Date().toISOString())
-=======
     // 3. Crea (o riusa) una sessione attiva per questo tavolo in `qr_sessions`
     //    Riusa se esiste già una sessione attiva per non creare duplicati
     const { data: existingSession } = await supabase
@@ -56,52 +46,28 @@ export async function GET(
       .select('id')
       .eq('table_id', table.id)
       .eq('is_active', true)
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
       .order('created_at', { ascending: false })
       .limit(1)
       .single();
 
     let sessionId: string;
-<<<<<<< HEAD
-    let sessionToken: string;
-
-    if (existingSession) {
-      // Sessione ancora valida — tutti i dispositivi al tavolo la condividono
-      sessionId    = existingSession.id;
-      sessionToken = existingSession.token;
-    } else {
-      // Nessuna sessione attiva → crea una nuova (nuovo turno / tavolo libero)
-      sessionToken = crypto.randomUUID();
-      const expiresAt = new Date(Date.now() + 45 * 60 * 1000).toISOString(); // 45 minuti
-
-=======
 
     if (existingSession) {
       sessionId = existingSession.id;
     } else {
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
       const { data: newSession, error: sessionError } = await supabase
         .from('qr_sessions')
         .insert({
           table_id:      table.id,
           restaurant_id: table.restaurant_id,
-<<<<<<< HEAD
-          token:         sessionToken,
-          is_active:     true,
-          expires_at:    expiresAt,
-=======
           token:         token.toUpperCase(),
           is_active:     true,
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
         })
         .select('id')
         .single();
 
       if (sessionError || !newSession) {
-<<<<<<< HEAD
-=======
         // qr_sessions potrebbe non esistere — usa l'id del tavolo come sessionId
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
         sessionId = table.id;
       } else {
         sessionId = newSession.id;
@@ -110,10 +76,6 @@ export async function GET(
 
     return NextResponse.json({
       sessionId,
-<<<<<<< HEAD
-      sessionToken,          // UUID monouso da usare come x-session-token
-=======
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
       restaurantId:   restaurant.id,
       restaurantSlug: restaurant.slug ?? restaurant.name,
       tableId:        table.id,

@@ -1,9 +1,5 @@
 "use client";
 
-<<<<<<< HEAD
-import { useRef, useEffect, useState } from "react";
-=======
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
 import Link from "next/link";
 import { ShoppingCart, QrCode } from "lucide-react";
 import type { Palette } from "@/components/client/order/CategoryFilter";
@@ -20,27 +16,8 @@ export function OrderHeader({ cartCount, cartHref, palette: T }: OrderHeaderProp
   const bgMid  = shadeHex(T.brand, -0.45);
   const bgTo   = shadeHex(T.brand, -0.35);
 
-<<<<<<< HEAD
-  // Nasconde la label "Carrello" se l'header è troppo stretto
-  const headerRef = useRef<HTMLElement>(null);
-  const [compact, setCompact] = useState(false);
-
-  useEffect(() => {
-    const el = headerRef.current;
-    if (!el) return;
-    const obs = new ResizeObserver(([entry]) => {
-      setCompact(entry.contentRect.width < 360);
-    });
-    obs.observe(el);
-    return () => obs.disconnect();
-  }, []);
-
-  return (
-    <header ref={headerRef} style={{
-=======
   return (
     <header style={{
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
       position: "fixed", top: 0, left: 0, right: 0, zIndex: 50,
       background: `linear-gradient(135deg, ${bgFrom} 0%, ${bgMid} 50%, ${bgTo} 100%)`,
       borderBottom: "1px solid rgba(255,255,255,0.1)",
@@ -96,11 +73,7 @@ export function OrderHeader({ cartCount, cartHref, palette: T }: OrderHeaderProp
             style={{
               position: "relative",
               display: "flex", alignItems: "center", gap: 8,
-<<<<<<< HEAD
-              padding: compact ? "8px" : "8px 18px",
-=======
               padding: "8px 18px",
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
               borderRadius: 10,
               background: "rgba(255,255,255,0.15)",
               border: "1.5px solid rgba(255,255,255,0.25)",
@@ -118,19 +91,10 @@ export function OrderHeader({ cartCount, cartHref, palette: T }: OrderHeaderProp
             }}
           >
             <ShoppingCart style={{ width: 18, height: 18, color: "#fff" }} />
-<<<<<<< HEAD
-            {!compact && (
-              <span style={{
-                fontFamily: "'Inter', system-ui, sans-serif",
-                fontWeight: 600, fontSize: 14, color: "#fff",
-              }}>Carrello</span>
-            )}
-=======
             <span style={{
               fontFamily: "'Inter', system-ui, sans-serif",
               fontWeight: 600, fontSize: 14, color: "#fff",
             }}>Carrello</span>
->>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
             {cartCount > 0 && (
               <span style={{
                 position: "absolute", top: -8, right: -8,
