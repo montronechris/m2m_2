@@ -3,7 +3,11 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useRouter } from "next/navigation";
+<<<<<<< HEAD
 import { useEffect, useRef, useState } from "react";
+=======
+import { useEffect, useState } from "react";
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
 import { QrCode, ArrowRight, ShoppingCart, X, Menu } from "lucide-react";
 import type { Palette } from "@/components/client/order/CategoryFilter";
 
@@ -23,6 +27,7 @@ export function Navbar({ onScrollToTop, tableNumber, sessionId, cartCount = 0, c
   const router = useRouter();
   const [panelOpen, setPanelOpen] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+<<<<<<< HEAD
   const [compact, setCompact] = useState(false);
   const [ultraCompact, setUltraCompact] = useState(false);
   const headerRef = useRef<HTMLElement>(null);
@@ -39,6 +44,8 @@ export function Navbar({ onScrollToTop, tableNumber, sessionId, cartCount = 0, c
     update(el.getBoundingClientRect().width);
     return () => obs.disconnect();
   }, []);
+=======
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
 
   const brand = palette?.brand ?? "#10b981";
   const bgFrom = palette ? shadeHex(brand, -0.55) : null;
@@ -77,7 +84,10 @@ export function Navbar({ onScrollToTop, tableNumber, sessionId, cartCount = 0, c
   return (
     <>
       <header
+<<<<<<< HEAD
         ref={headerRef}
+=======
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
         className="fixed top-0 left-0 right-0 z-50 transition-all duration-300 backdrop-blur-md"
         style={palette ? {
           background: `${palette.light100}e6`,
@@ -105,6 +115,7 @@ export function Navbar({ onScrollToTop, tableNumber, sessionId, cartCount = 0, c
             >
               <QrCode className="w-6 h-6 text-white" />
             </div>
+<<<<<<< HEAD
             {!ultraCompact && (
               <div className="flex flex-col items-start">
                 <span
@@ -119,6 +130,20 @@ export function Navbar({ onScrollToTop, tableNumber, sessionId, cartCount = 0, c
                 </span>
               </div>
             )}
+=======
+            <div className="flex flex-col items-start">
+              <span
+                className="font-bold text-xl text-gray-900 tracking-tight leading-none transition-colors"
+                onMouseEnter={e => palette && ((e.currentTarget as HTMLSpanElement).style.color = brand)}
+                onMouseLeave={e => palette && ((e.currentTarget as HTMLSpanElement).style.color = "")}
+              >
+                TavolaRapida
+              </span>
+              <span className="text-[10px] font-bold text-gray-400/80 uppercase tracking-[0.12em]">
+                Digital Menu
+              </span>
+            </div>
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
           </button>
 
           {/* DESKTOP NAVIGATION */}
@@ -196,6 +221,7 @@ export function Navbar({ onScrollToTop, tableNumber, sessionId, cartCount = 0, c
             {/* On /order pages: cart button instead of hamburger (mobile) */}
             {isOrderPage && sessionId ? (
               <Link
+<<<<<<< HEAD
                 id="cart-icon"
                 href={cartHref ?? `/cart/${sessionId}`}
                 aria-label="Carrello"
@@ -227,6 +253,19 @@ export function Navbar({ onScrollToTop, tableNumber, sessionId, cartCount = 0, c
                       {cartCount}
                     </span>
                   )
+=======
+                href={cartHref ?? `/cart/${sessionId}`}
+                aria-label="Carrello"
+                className="md:hidden flex items-center gap-2 px-4 py-2 text-white text-sm font-bold rounded-xl transition-all duration-200 hover:opacity-90 active:scale-95"
+                style={{ background: brand, boxShadow: `0 4px 14px ${brand}40` }}
+              >
+                <ShoppingCart className="w-4 h-4" />
+                <span>Carrello</span>
+                {cartCount > 0 && (
+                  <span className="bg-white/25 text-white text-[11px] font-bold px-1.5 py-0.5 rounded-full leading-none">
+                    {cartCount}
+                  </span>
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
                 )}
               </Link>
             ) : (

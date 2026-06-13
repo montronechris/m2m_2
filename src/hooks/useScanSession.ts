@@ -35,9 +35,14 @@ export function useScanSession(tableCode: string) {
         });
 
         // salva sessione locale (solo meta)
+<<<<<<< HEAD
         // sessionToken è il token UUID monouso da passare come x-session-token nelle chiamate API
         saveTableSession({
           tableCode: data.sessionToken ?? tableCode, // UUID monouso, non il codice fisso del tavolo
+=======
+        saveTableSession({
+          tableCode: tableCode,
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
           sessionId: data.sessionId,
           tableNumber: data.tableNumber,
           restaurantSlug: data.restaurantSlug,

@@ -8,7 +8,11 @@ import {
   Palette, Upload, Save, AlertCircle,
   CheckCircle2, Loader2, Globe, Phone,
   MapPin, Instagram, Star, ImageIcon,
+<<<<<<< HEAD
   MessageSquare, Facebook,
+=======
+  MessageSquare,
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
 } from "lucide-react";
 import type { RestaurantCtx, ThemeMode } from "../page";
 
@@ -25,7 +29,10 @@ interface BrandingData {
   address:         string;
   phone:           string;
   instagram:       string;
+<<<<<<< HEAD
   facebook:        string;
+=======
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
   tripadvisor:     string;
   website:         string;
 }
@@ -33,7 +40,11 @@ interface BrandingData {
 const DEFAULTS: BrandingData = {
   name: "", tagline: "", logo_url: "", cover_url: "",
   brand_color: "#10b981", welcome_message: "", confirm_message: "",
+<<<<<<< HEAD
   address: "", phone: "", instagram: "", facebook: "", tripadvisor: "", website: "",
+=======
+  address: "", phone: "", instagram: "", tripadvisor: "", website: "",
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
 };
 
 const BRAND_PALETTE: { hex: string; name: string }[] = [
@@ -228,7 +239,11 @@ export function BrandingSection({ ctx, theme }: Props) {
       try {
         const { data: r, error: e } = await supabase
           .from("restaurants")
+<<<<<<< HEAD
           .select("name,tagline,logo_url,cover_url,brand_color,welcome_message,confirm_message,address,phone,instagram,facebook,tripadvisor,website")
+=======
+          .select("name,tagline,logo_url,cover_url,brand_color,welcome_message,confirm_message,address,phone,instagram,tripadvisor,website")
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
           .eq("id", ctx.restaurantId).single();
         if (e) throw e;
         setData({
@@ -242,7 +257,10 @@ export function BrandingSection({ ctx, theme }: Props) {
           address:         r.address         ?? "",
           phone:           r.phone           ?? "",
           instagram:       r.instagram       ?? "",
+<<<<<<< HEAD
           facebook:        r.facebook        ?? "",
+=======
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
           tripadvisor:     r.tripadvisor     ?? "",
           website:         r.website         ?? "",
         });
@@ -269,7 +287,10 @@ export function BrandingSection({ ctx, theme }: Props) {
         address:         data.address,
         phone:           data.phone,
         instagram:       data.instagram,
+<<<<<<< HEAD
         facebook:        data.facebook,
+=======
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
         tripadvisor:     data.tripadvisor,
         website:         data.website,
       }).eq("id", ctx.restaurantId);
@@ -447,6 +468,7 @@ export function BrandingSection({ ctx, theme }: Props) {
             </div>
           </div>
           <div className="flex items-start gap-3">
+<<<<<<< HEAD
             <Facebook className="w-4 h-4 text-gray-400 mt-8 shrink-0" />
             <div className="flex-1">
               <Field label="Facebook (URL)" value={data.facebook} onChange={set("facebook")}
@@ -454,6 +476,8 @@ export function BrandingSection({ ctx, theme }: Props) {
             </div>
           </div>
           <div className="flex items-start gap-3">
+=======
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
             <Star className="w-4 h-4 text-gray-400 mt-8 shrink-0" />
             <div className="flex-1">
               <Field label="TripAdvisor (URL)" value={data.tripadvisor} onChange={set("tripadvisor")}

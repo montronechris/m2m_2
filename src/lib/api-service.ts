@@ -6,6 +6,7 @@ const SUPABASE_KEY  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // ─── INTERNAL REST HELPERS ────────────────────────────────────────────────────
 
+<<<<<<< HEAD
 function getSessionToken(): string | null {
   if (typeof window === "undefined") return null;
   try {
@@ -20,12 +21,18 @@ function getSessionToken(): string | null {
 
 function baseHeaders(): HeadersInit {
   const sessionToken = getSessionToken();
+=======
+function baseHeaders(): HeadersInit {
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
   return {
     apikey: SUPABASE_KEY,
     Authorization: `Bearer ${SUPABASE_KEY}`,
     "Content-Type": "application/json",
     Accept: "application/json",
+<<<<<<< HEAD
     ...(sessionToken ? { "x-session-token": sessionToken } : {}),
+=======
+>>>>>>> 7c85809aabc815c67c3275935da3c1e8e5a33a4b
   };
 }
 
