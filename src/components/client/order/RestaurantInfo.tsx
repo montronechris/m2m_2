@@ -24,17 +24,19 @@ export function RestaurantInfo({
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
-    const obs = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect(); } },
-      { threshold: 0.15 }
-    );
+const obs = new IntersectionObserver(
+  ([entry]) => { if (entry.isIntersecting) { setVisible(true); obs.disconnect(); } },
+  { threshold: 0 }  // ← era 0.15
+);
     obs.observe(el);
     return () => obs.disconnect();
   }, []);
 
   // Almeno un campo social/contatto deve esistere
-  const hasContact = address || phone || instagram || facebook || tripadvisor || website;
-  if (!hasContact) return null;
+const hasContact = address || phone || instagram || facebook || tripadvisor || website;
+console.log("RestaurantInfo hasContact:", hasContact, { address, phone, instagram, facebook, tripadvisor, website });
+console.log("visible:", visible);
+if (!hasContact) return null;
 
   const socials = [
     instagram && {

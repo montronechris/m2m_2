@@ -52,10 +52,17 @@ Tabelle disponibili:
 
 orders (id, restaurant_id, table_id, status, total_cents, created_at, confirmed_at)
   - total_cents: importo in centesimi (dividi per 100 per avere €)
-  - status: 'pending' | 'confirmed' | 'ready' | 'delivered' | 'cancelled'
+  - status: 'pending' | 'confirmed' | 'cooking' | 'preparing' | 'ready' | 'served' | 'cancelled' | 'expired'
+  - 'delivered' NON esiste come status, non usarlo mai
+  - per "fatturato" o "ordini totali" usa status NOT IN ('cancelled','expired') — questo è l'UNICO filtro status da usare per il fatturato, NON filtrare per status = 'served'
+  - usa "= 'served'" SOLO se l'utente chiede esplicitamente di "ordini serviti/completati e consegnati al tavolo"
 
 order_items (id, order_id, menu_item_id, name_snapshot, name, quantity, base_price)
-  - name_snapshot o name: nome del piatto
+  - usa SEMPRE name_snapshot per il nome del piatto (il campo "name" è sempre vuoto, NON usarlo)
+  - ATTENZIONE: order_items NON ha restaurant_id e NON ha created_at.
+    Per filtrare per ristorante e/o data devi SEMPRE fare JOIN con orders:
+    JOIN orders o ON o.id = order_items.order_id
+    poi WHERE o.restaurant_id = '{{RESTAURANT_ID}}' AND o.created_at >= ...
 
 reviews (id, restaurant_id, stars, text, created_at)
   - stars: da 1 a 5
@@ -68,6 +75,12 @@ menu_categories (id, restaurant_id, name)
 
 qr_sessions (id, restaurant_id, table_id, created_at, last_activity)
 
+Esempio — "piatti più richiesti questa settimana":
+{
+  "sql": "SELECT oi.name_snapshot AS piatto, SUM(oi.quantity) AS totale FROM order_items oi JOIN orders o ON o.id = oi.order_id WHERE o.restaurant_id = '{{RESTAURANT_ID}}' AND o.created_at >= now() - interval '7 days' AND o.status NOT IN ('cancelled','expired') GROUP BY oi.name_snapshot ORDER BY totale DESC LIMIT 10",
+  "explanation": "Somma le quantità ordinate per piatto negli ultimi 7 giorni"
+}
+
 Il tuo compito:
 1. Analizza la domanda dell'utente
 2. Scrivi UNA query SQL valida per rispondere
@@ -79,20 +92,20 @@ Il tuo compito:
 }
 
 Regole SQL:
-- Filtra SEMPRE per restaurant_id
-- Per ore: EXTRACT(HOUR FROM created_at AT TIME ZONE 'Europe/Rome')
-- Per giorni: TO_CHAR(created_at AT TIME ZONE 'Europe/Rome', 'Day')
+- Filtra SEMPRE per restaurant_id (direttamente o via JOIN con orders/menu_items)
+- Per ore: EXTRACT(HOUR FROM o.created_at AT TIME ZONE 'Europe/Rome')
+- Per giorni: TO_CHAR(o.created_at AT TIME ZONE 'Europe/Rome', 'Day')
+- "Questa settimana" / "ultimi 7 giorni" = created_at >= now() - interval '7 days'
 - LIMIT 10 o 20 max
 - Solo SELECT — mai DROP, DELETE, UPDATE, INSERT, ALTER, CREATE
 `.trim();
 
 const ANSWER_PROMPT = `
-Sei un assistente analitico per un ristorante italiano.
+Sei un assistente analitico per un ristorante italiano, con un tono simpatico e un po' scherzoso — come un collega sveglio.
 Hai eseguito una query SQL e ricevuto i risultati.
-Rispondi in italiano in modo chiaro, conciso e utile.
-Usa emoji dove appropriato.
-Se i dati sono vuoti, dillo e suggerisci il motivo.
-Evidenzia i dati più importanti con un'interpretazione pratica.
+Vai dritto al punto: prima il dato/la risposta, poi eventualmente un commento o una battuta breve. Niente preamboli, niente "allora vediamo un po'", niente giri di parole.
+Rispondi in italiano, frasi corte, con qualche emoji per dare colore.
+Se i dati sono vuoti, dillo subito in una riga e proponi un'alternativa.
 Non mostrare mai il codice SQL.
 `.trim();
 
@@ -214,9 +227,15 @@ export function AIAnalyticsSection({ ctx, theme, onSectionChange }: Props) {
         throw new Error("Il modello ha generato una query non valida.");
       }
 
-      // Step 2: esegui su Supabase via RPC
-      const { data: { session } } = await supabase.auth.getSession();
-      const token = session?.access_token ?? process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
+      // Step 2: esegui su Supabase via RPC, usando il token della sessione
+      // autenticata (NON la anon key) → RLS filtra automaticamente per
+      // restaurant_id del titolare loggato
+      const { data: sessionData } = await supabase.auth.getSession();
+      const accessToken = sessionData?.session?.access_token;
+
+      if (!accessToken) {
+        throw new Error("Sessione non valida. Ricarica la pagina e riprova ad accedere.");
+      }
 
       const queryRes = await fetch(
         `${process.env.NEXT_PUBLIC_SUPABASE_URL}/rest/v1/rpc/execute_analytics_query`,
@@ -225,7 +244,7 @@ export function AIAnalyticsSection({ ctx, theme, onSectionChange }: Props) {
           headers: {
             "Content-Type":  "application/json",
             "apikey":        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-            "Authorization": `Bearer ${token}`,
+            "Authorization": `Bearer ${accessToken}`,
           },
           body: JSON.stringify({ query: sql }),
         }

@@ -35,7 +35,10 @@ import { MenuSection } from "./sections/MenuSection";
 import { OrdersSection } from "./sections/OrdersSection";
 import { TablesSection } from "./sections/TablesSection";
 import { BrandingSection } from "./sections/BrandingSection";
-
+import { AnalyticsSection } from "./sections/AnalyticsSection";
+import { AIAnalyticsSection } from "./sections/AIAnalyticsSection";
+import { SettingsSection } from "./sections/SettingsSection";
+import { AIAssistantOverlay } from "./components/AIAssistantOverlay";
 
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -99,6 +102,10 @@ function SectionRenderer({
       return <StaffSection ctx={ctx} theme={theme} />;
     case "branding":
       return <BrandingSection ctx={ctx} theme={theme} />;
+    case "analytics":
+      return <AIAnalyticsSection ctx={ctx} theme={theme} />;
+    case "settings":
+      return <SettingsSection ctx={ctx} theme={theme} />;
     // ── Sezioni non ancora implementate ──────────────────────────────────────
     case "menu":
       return <MenuSection ctx={ctx} theme={theme} />;
@@ -107,7 +114,7 @@ function SectionRenderer({
     case "tables":
       return <TablesSection ctx={ctx} theme={theme} />;
     case "qr":
-    case "analytics":
+    case "analytics": return <AnalyticsSection ctx={ctx} theme={theme} />;
     case "branding":
     case "settings":
       return <PlaceholderSection id={section} theme={theme} />;
@@ -389,6 +396,12 @@ export default function AdminDashboardPage() {
         </div>
 
       </main>
+
+      {/* ════════════════════════════════════════════════════════════════════
+          AI ASSISTANT — overlay floating, disponibile in tutta la dashboard
+          ════════════════════════════════════════════════════════════════════ */}
+      <AIAssistantOverlay ctx={ctx} theme={theme} />
+
     </div>
   );
 }

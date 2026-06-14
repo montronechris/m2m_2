@@ -13,6 +13,12 @@ type Restaurant = {
   name: string;
   slug: string;
   brand_color: string;
+  address?: string | null;
+  phone?: string | null;
+  instagram?: string | null;
+  facebook?: string | null;
+  tripadvisor?: string | null;
+  website?: string | null;
 };
 
 type Category = {
@@ -84,6 +90,8 @@ export function useOrderSession(
         const actualTableId = sessionData.tableId ?? sessionData.table_id ?? null;
         const actualRestaurantId = sessionData.restaurantId ?? sessionData.restaurant_id ?? null;
 
+        console.log("actualRestaurantId:", actualRestaurantId, "initialSlug:", initialSlug);
+
         setTableNumber(actualTableNumber);
         setTableId(actualTableId);
         setRestaurantId(actualRestaurantId);
@@ -101,7 +109,7 @@ export function useOrderSession(
           );
           const { data: r, error: rErr } = await supabase
             .from("restaurants")
-            .select("id, name, slug, brand_color")
+            .select("id, name, slug, brand_color, address, phone, instagram, facebook, tripadvisor, website")
             .eq("id", actualRestaurantId)
             .single();
           if (rErr || !r) throw new Error("Ristorante non trovato");

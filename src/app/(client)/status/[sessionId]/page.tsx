@@ -65,7 +65,7 @@ const shortId = (id: string) => id.slice(-4).toUpperCase();
 
 function Comanda({ order, tick, isDark }: { order: Order; tick: number; isDark: boolean }) {
   const displayTime = order._displayTime || order.created_at;
-  const isPending = order.status === "confirmed";
+  const isPending = order.status === "confirmed" || order.status === "pending";
   const isCooking = order.status === "cooking";
   const isReady   = order.status === "ready";
 
@@ -331,22 +331,38 @@ export default function StatusPage() {
     if (typeof window === "undefined") return "light";
     return (localStorage.getItem("client-theme") as "dark" | "light") || "light";
   });
-  const [brandColor, setBrandColor] = useState<string>("#ffffff");
+  const [brandColor, setBrandColor] = useState<string>(() => {
+    if (typeof window === "undefined") return "#ffffff";
+    try {
+      // Prima prova: session attiva in localStorage (ristorante corrente)
+      const { getTableSession } = require("@/lib/table-session");
+      const sess = getTableSession();
+      if (sess?.restaurantId) {
+        const cached = localStorage.getItem(`brand_color_${sess.restaurantId}`);
+        if (cached) return cached;
+      }
+      // Seconda prova: cerca la chiave brand_color che appartiene alla sessione
+      // attuale leggendo il sessionId dall'URL (window.location)
+      const pathParts = window.location.pathname.split("/");
+      const urlSessionId = pathParts[pathParts.length - 1];
+      if (urlSessionId) {
+        // Cerca brand_color_* in cache; li confrontiamo dopo nel useEffect
+        // Per ora restituisce il primo disponibile come fallback visivo
+        const keys = Object.keys(localStorage).filter(k => k.startsWith("brand_color_"));
+        if (keys.length === 1) return localStorage.getItem(keys[0]) || "#ffffff";
+      }
+      return "#ffffff";
+    } catch { return "#ffffff"; }
+  });
 
   useEffect(() => {
     const saved = localStorage.getItem("client-theme") as "dark" | "light" | null;
     if (saved) setTheme(saved);
   }, []);
 
-  // Aggiorna brandColor dal fetch della sessione — usa SOLO sessionId dall'URL
+  // Aggiorna brandColor dal fetch della sessione
   useEffect(() => {
     if (!sessionId) return;
-    // Controlla prima la cache specifica per questa sessione
-    const cacheKey = `brand_color_session_${sessionId}`;
-    try {
-      const cached = localStorage.getItem(cacheKey);
-      if (cached) { setBrandColor(cached); return; }
-    } catch {}
     supabase.from("qr_sessions").select("restaurant_id").eq("id", sessionId).maybeSingle()
       .then(({ data }) => {
         if (data?.restaurant_id) {
@@ -354,7 +370,7 @@ export default function StatusPage() {
             .then(({ data: r }) => {
               if (r?.brand_color) {
                 setBrandColor(r.brand_color);
-                try { localStorage.setItem(cacheKey, r.brand_color); } catch {}
+                try { localStorage.setItem(`brand_color_${data.restaurant_id}`, r.brand_color); } catch {}
               }
             });
         }
@@ -384,13 +400,65 @@ export default function StatusPage() {
   const fetchOrders = useCallback(async () => {
     if (!sessionId) return;
     try {
-      // Usa la stessa API route di /order — usa service role key, legge label correttamente
-      const sessionRes = await fetch(`/api/session/${sessionId}`);
-      if (!sessionRes.ok) { setOrders([]); setLoading(false); return; }
-      const sessionData = await sessionRes.json();
+      // Strategia 1: cerca in qr_sessions (nuova tabella con FK a tables)
+      let resolvedTableId: string | null = null;
+      let resolvedRestaurantId: string | null = null;
+      let resolvedTableNumber: string | null = null;
 
-      const resolvedTableId: string | null = sessionData.tableId ?? null;
-      const resolvedTableNumber: string | null = sessionData.tableNumber ?? null;
+      const { data: qrSession } = await supabase
+        .from("qr_sessions").select("restaurant_id, table_number, table_id")
+        .eq("id", sessionId).maybeSingle();
+
+      if (qrSession) {
+        resolvedRestaurantId = qrSession.restaurant_id;
+        // Se qr_sessions ha già table_id (FK a tables), usalo direttamente
+        if (qrSession.table_id) {
+          resolvedTableId = qrSession.table_id;
+        } else if (resolvedRestaurantId) {
+          // Altrimenti cerca in tables per restaurant_id
+          const { data: tbl } = await supabase
+            .from("tables").select("id")
+            .eq("restaurant_id", resolvedRestaurantId)
+            .maybeSingle();
+          if (tbl) resolvedTableId = tbl.id;
+        }
+
+        // Leggi il label del tavolo da tables
+        if (resolvedTableId) {
+          const { data: tableData } = await supabase
+            .from("tables").select("label")
+            .eq("id", resolvedTableId).maybeSingle();
+          if (tableData?.label) resolvedTableNumber = tableData.label;
+        }
+        // Fallback al table_number numerico solo se non c'è label
+        if (!resolvedTableNumber && qrSession.table_number != null) {
+          resolvedTableNumber = String(qrSession.table_number);
+        }
+      }
+
+      // Strategia 2: cerca in table_qr_sessions (tabella vecchia/alternativa)
+      if (!resolvedTableId) {
+        const { data: tqr } = await supabase
+          .from("table_qr_sessions").select("id, restaurant_id, table_number")
+          .eq("id", sessionId).maybeSingle();
+        if (tqr) {
+          resolvedRestaurantId = tqr.restaurant_id;
+          // Cerca il table_id reale nella tabella tables
+          const { data: tbl } = await supabase
+            .from("tables").select("id, label")
+            .eq("restaurant_id", tqr.restaurant_id)
+            .maybeSingle();
+          if (tbl) {
+            resolvedTableId = tbl.id;
+            resolvedTableNumber = tbl.label || (tqr.table_number != null ? String(tqr.table_number) : null);
+          }
+          // Fallback: usa l'id di table_qr_sessions come table_id (vecchio schema)
+          if (!resolvedTableId) {
+            resolvedTableId = tqr.id;
+            resolvedTableNumber = tqr.table_number != null ? String(tqr.table_number) : null;
+          }
+        }
+      }
 
       if (!resolvedTableId) { setOrders([]); setLoading(false); return; }
       if (resolvedTableNumber) setTableNumber(resolvedTableNumber);
@@ -398,7 +466,7 @@ export default function StatusPage() {
       const { data: ordersData, error: ordErr } = await supabase
         .from("orders").select("*")
         .eq("table_id", resolvedTableId)
-        .in("status", ["confirmed", "cooking", "ready"])
+        .in("status", ["confirmed", "pending", "cooking", "ready"])
         .order("created_at", { ascending: true });
       if (ordErr) throw ordErr;
       if (!ordersData?.length) { setOrders([]); setLoading(false); return; }
@@ -459,14 +527,14 @@ export default function StatusPage() {
       <div style={{ minHeight: "100vh", background: isDark ? "#0e0d0b" : "#faf8f3", display: "flex", alignItems: "center", justifyContent: "center" }}>
         <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
         <div style={{ textAlign: "center", fontFamily: "'Space Grotesk', sans-serif" }}>
-          <Loader2 style={{ width: 40, height: 40, color: brandColor, animation: "spin 1s linear infinite", margin: "0 auto 16px" }} />
+          <Loader2 style={{ width: 40, height: 40, color: "#0d9488", animation: "spin 1s linear infinite", margin: "0 auto 16px" }} />
           <p style={{ color: isDark ? "#7c7872" : "#9c9484", fontSize: 14, letterSpacing: "0.08em", textTransform: "uppercase", fontWeight: 600 }}>Caricamento…</p>
         </div>
       </div>
     );
   }
 
-  const pending = orders.filter(o => o.status === "confirmed");
+  const pending = orders.filter(o => o.status === "confirmed" || o.status === "pending");
   const cooking = orders.filter(o => o.status === "cooking");
   const ready   = orders.filter(o => o.status === "ready");
 
@@ -514,7 +582,7 @@ export default function StatusPage() {
             style={{
               fontSize: 13, fontWeight: 700, color: "#fff",
               padding: "11px 26px", borderRadius: 8,
-              background: brandColor,
+              background: "#0d9488",
               letterSpacing: "0.03em",
               textDecoration: "none",
             }}

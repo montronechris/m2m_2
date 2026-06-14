@@ -123,20 +123,6 @@ export default function CartPage() {
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [noteItem,      setNoteItem]      = useState<{ orderItemId: string; name: string; note: string } | null>(null);
 
-  // ── Promo code ───────────────────────────────────────────────────────────────
-  const [promoInput,   setPromoInput]   = useState("");
-  const [promoOpen,    setPromoOpen]    = useState(false);
-  const [promoApplied, setPromoApplied] = useState<string | null>(null);
-  const [promoError,   setPromoError]   = useState<string | null>(null);
-
-  const handleApplyPromo = () => {
-    const code = promoInput.trim().toUpperCase();
-    if (!code) return;
-    // placeholder: here you would validate via API
-    setPromoError("Codice non valido o scaduto");
-    // on success: setPromoApplied(code); setPromoOpen(false); setPromoError(null);
-  };
-
   // ── Swipe-delete animation ───────────────────────────────────────────────────
   // revealedId  = card spostata a sx, pannello rosso visibile, in attesa di conferma
   // confirmingId = tap su "Elimina" → vola via
@@ -863,88 +849,16 @@ useEffect(() => {
         backdropFilter: "blur(16px)",
         WebkitBackdropFilter: "blur(16px)",
         borderTop: `1px solid ${T.border}`,
-        padding: "12px 20px",
-        paddingBottom: "max(12px, env(safe-area-inset-bottom))",
+        padding: "14px 20px",
+        paddingBottom: "max(14px, env(safe-area-inset-bottom))",
       }}>
-        <div style={{ maxWidth: 560, margin: "0 auto", display: "flex", flexDirection: "column", gap: 0 }}>
-
-          {/* Subtotale */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 6 }}>
-            <span style={{ color: T.textMuted, fontSize: 13 }}>Subtotale</span>
-            <span style={{ fontSize: 13, color: T.textMuted, fontVariantNumeric: "tabular-nums" }}>{formatPrice(totalCents)} €</span>
-          </div>
-
-          {/* Coperti */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", paddingBottom: 8 }}>
-            <span style={{ color: T.textMuted, fontSize: 13 }}>Coperti ({items.reduce((s, i) => s + i.quantity, 0)})</span>
-            <span style={{ fontSize: 13, color: T.textMuted }}>0,00 €</span>
-          </div>
-
-          {/* Promo code */}
-          {!promoApplied ? (
-            <div style={{ marginBottom: 10 }}>
-              {!promoOpen ? (
-                <button
-                  onClick={() => setPromoOpen(true)}
-                  style={{
-                    width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between",
-                    background: "transparent", border: `1px dashed ${T.border}`, borderRadius: 10,
-                    padding: "8px 12px", cursor: "pointer", color: T.accent, fontSize: 13, fontWeight: 500,
-                  }}
-                >
-                  <span>🏷 Hai un codice promo?</span>
-                  <span style={{ fontSize: 18, lineHeight: 1, color: T.textMuted }}>+</span>
-                </button>
-              ) : (
-                <div style={{ display: "flex", gap: 6 }}>
-                  <input
-                    autoFocus
-                    value={promoInput}
-                    onChange={e => { setPromoInput(e.target.value); setPromoError(null); }}
-                    onKeyDown={e => e.key === "Enter" && handleApplyPromo()}
-                    placeholder="Inserisci codice"
-                    style={{
-                      flex: 1, padding: "8px 12px", border: `1px solid ${promoError ? T.danger : T.border}`,
-                      borderRadius: 10, background: T.bgCard, color: T.text, fontSize: 13,
-                      outline: "none",
-                    }}
-                  />
-                  <button
-                    onClick={handleApplyPromo}
-                    style={{
-                      padding: "8px 14px", borderRadius: 10, background: T.accent,
-                      border: "none", color: "#fff", fontSize: 13, fontWeight: 600, cursor: "pointer",
-                    }}
-                  >Applica</button>
-                  <button
-                    onClick={() => { setPromoOpen(false); setPromoInput(""); setPromoError(null); }}
-                    style={{ padding: "8px 10px", borderRadius: 10, background: "transparent", border: `1px solid ${T.border}`, color: T.textMuted, fontSize: 13, cursor: "pointer" }}
-                  >✕</button>
-                </div>
-              )}
-              {promoError && (
-                <p style={{ margin: "4px 0 0", fontSize: 12, color: T.danger }}>{promoError}</p>
-              )}
-            </div>
-          ) : (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10, padding: "7px 10px", background: T.accentBg, borderRadius: 10, border: `1px solid ${T.borderSoft}` }}>
-              <span style={{ fontSize: 13, color: T.accent, fontWeight: 600 }}>🏷 {promoApplied}</span>
-              <button onClick={() => setPromoApplied(null)} style={{ background: "transparent", border: "none", cursor: "pointer", color: T.textMuted, fontSize: 12 }}>Rimuovi</button>
-            </div>
-          )}
-
-          {/* Divisore */}
-          <div style={{ borderTop: `1px solid ${T.border}`, margin: "0 0 10px" }} />
-
-          {/* Totale */}
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 11 }}>
-            <span style={{ color: T.text, fontSize: 15, fontWeight: 600 }}>Totale ordine</span>
+        <div style={{ maxWidth: 560, margin: "0 auto", display: "flex", flexDirection: "column", gap: 11 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+            <span style={{ color: T.textMuted, fontSize: 14, fontWeight: 500 }}>Totale ordine</span>
             <span style={{ fontWeight: 800, fontSize: 22, color: T.text, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
               {formatPrice(totalCents)} €
             </span>
           </div>
-
-          {/* CTA */}
           <button
             onClick={handleCheckout}
             disabled={loading || items.length === 0}
@@ -974,11 +888,6 @@ useEffect(() => {
               </>
             )}
           </button>
-
-          {/* Nota pagamento */}
-          <p style={{ textAlign: "center", fontSize: 11, color: T.textMuted, margin: "8px 0 0", opacity: 0.7 }}>
-            Pagamento al tavolo al termine del pasto
-          </p>
         </div>
       </div>
 

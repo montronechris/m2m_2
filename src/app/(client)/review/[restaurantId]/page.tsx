@@ -33,7 +33,7 @@ function mix(hex1: string, hex2: string, t: number): string {
 export default function ReviewPage() {
   const params = useParams();
   const restaurantId = typeof params?.restaurantId === "string" ? params.restaurantId : null;
-console.log("params:", params, "restaurantId:", restaurantId);
+
   const supabase = createBrowserClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!

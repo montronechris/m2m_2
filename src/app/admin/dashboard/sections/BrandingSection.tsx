@@ -7,7 +7,7 @@ import { createBrowserClient } from "@supabase/ssr";
 import {
   Palette, Upload, Save, AlertCircle,
   CheckCircle2, Loader2, Globe, Phone,
-  MapPin, Instagram, Star, ImageIcon,
+  MapPin, Instagram, Facebook, Star, ImageIcon,
   MessageSquare,
 } from "lucide-react";
 import type { RestaurantCtx, ThemeMode } from "../page";
@@ -25,6 +25,7 @@ interface BrandingData {
   address:         string;
   phone:           string;
   instagram:       string;
+  facebook:        string;
   tripadvisor:     string;
   website:         string;
 }
@@ -32,7 +33,7 @@ interface BrandingData {
 const DEFAULTS: BrandingData = {
   name: "", tagline: "", logo_url: "", cover_url: "",
   brand_color: "#10b981", welcome_message: "", confirm_message: "",
-  address: "", phone: "", instagram: "", tripadvisor: "", website: "",
+  address: "", phone: "", instagram: "", facebook: "", tripadvisor: "", website: "",
 };
 
 const BRAND_PALETTE: { hex: string; name: string }[] = [
@@ -227,7 +228,7 @@ export function BrandingSection({ ctx, theme }: Props) {
       try {
         const { data: r, error: e } = await supabase
           .from("restaurants")
-          .select("name,tagline,logo_url,cover_url,brand_color,welcome_message,confirm_message,address,phone,instagram,tripadvisor,website")
+          .select("name,tagline,logo_url,cover_url,brand_color,welcome_message,confirm_message,address,phone,instagram,facebook,tripadvisor,website")
           .eq("id", ctx.restaurantId).single();
         if (e) throw e;
         setData({
@@ -241,6 +242,7 @@ export function BrandingSection({ ctx, theme }: Props) {
           address:         r.address         ?? "",
           phone:           r.phone           ?? "",
           instagram:       r.instagram       ?? "",
+          facebook:        r.facebook        ?? "",
           tripadvisor:     r.tripadvisor     ?? "",
           website:         r.website         ?? "",
         });
@@ -267,6 +269,7 @@ export function BrandingSection({ ctx, theme }: Props) {
         address:         data.address,
         phone:           data.phone,
         instagram:       data.instagram,
+        facebook:        data.facebook,
         tripadvisor:     data.tripadvisor,
         website:         data.website,
       }).eq("id", ctx.restaurantId);
@@ -441,6 +444,13 @@ export function BrandingSection({ ctx, theme }: Props) {
             <div className="flex-1">
               <Field label="Instagram" value={data.instagram} onChange={set("instagram")}
                 placeholder="es. @ilmioristorante" inputCls={input} mutedCls={muted} />
+            </div>
+          </div>
+          <div className="flex items-start gap-3">
+            <Facebook className="w-4 h-4 text-gray-400 mt-8 shrink-0" />
+            <div className="flex-1">
+              <Field label="Facebook" value={data.facebook} onChange={set("facebook")}
+                placeholder="es. @ilmioristorante o URL pagina" inputCls={input} mutedCls={muted} />
             </div>
           </div>
           <div className="flex items-start gap-3">

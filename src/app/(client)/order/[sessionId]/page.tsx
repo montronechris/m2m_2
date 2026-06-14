@@ -5,7 +5,6 @@ import { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useSearchParams, useRouter } from "next/navigation";
 import { useCartStore } from "@/stores/useCartStore";
 import { useOrderSession } from "@/hooks/useOrderSession";
-import { OrderHeader } from "@/components/client/order/OrderHeader";
 import { CategoryFilter } from "@/components/client/order/CategoryFilter";
 import { MenuItemCard } from "@/components/client/order/MenuItemCard";
 import { Footer } from "@/components/layout/Footer";
@@ -16,6 +15,7 @@ import Link from "next/link";
 import { getMenuItemOptions, type ModalOption, type CartCustomization } from "@/lib/api-service";
 import { useCartExpiry } from "@/hooks/useCartExpiry";
 import CustomizationModal from "@/components/client/cart/CustomizationModal";
+import { RestaurantInfo } from "@/components/client/order/RestaurantInfo";
 
 // ─── Palette dinamica dal brand_color ─────────────────────────────────────────
 
@@ -383,7 +383,7 @@ const closeSearch = (keepQuery = false) => {
 
   // ── RENDER ────────────────────────────────────────────────────────────────
   return (
-    <div style={{ minHeight: "100vh", background: T.bgGradient, color: T.text, fontFamily: "'Inter', 'system-ui', sans-serif", position: "relative", overflowX: "hidden",
+    <div style={{ minHeight: "100vh", background: T.bgGradient, color: T.text, fontFamily: "'Inter', 'system-ui', sans-serif", position: "relative", overflowX: "clip",
       // @ts-ignore CSS variables for Navbar/Footer
       "--brand": T.brand, "--brand-text": T.textMuted, "--brand-dark": T.text, "--brand-border": T.border } as React.CSSProperties}>
       <style>{`
@@ -488,11 +488,6 @@ const closeSearch = (keepQuery = false) => {
 
       {/* ── CONTENUTO ── */}
       <div style={{ position: "relative", zIndex: 10, paddingTop: 80 }}>
-<OrderHeader
-  cartCount={cartCount}
-  cartHref={cartHref}
-  palette={T}
-/>
         {/* ── Restaurant Header (inline, senza box tavolo) ── */}
         <div style={{ textAlign: "center", padding: "48px 16px 32px", position: "relative", zIndex: 10 }}>
           {/* Badge Ristorante Partner – più grande */}
@@ -695,9 +690,7 @@ const closeSearch = (keepQuery = false) => {
               </div>
             )}
           </div>
-        </main>
-
-        <Footer palette={T} />
+</main>
       </div>
 
       {/* ── AI Search Overlay ── */}
@@ -941,6 +934,20 @@ const closeSearch = (keepQuery = false) => {
         onClose={handleCloseModal}
         onConfirm={handleCustomizationConfirm}
       />
+              {/* ── Info ristorante ── */}
+        <RestaurantInfo
+          name={restaurant?.name ?? ""}
+          restaurantId={restaurant?.id ?? null}
+          address={restaurant?.address ?? null}
+          phone={restaurant?.phone ?? null}
+          instagram={restaurant?.instagram ?? null}
+          facebook={restaurant?.facebook ?? null}
+          tripadvisor={restaurant?.tripadvisor ?? null}
+          website={restaurant?.website ?? null}
+          palette={T}
+        />
+
+        <Footer palette={T} />  
     </div>
   );
 }
