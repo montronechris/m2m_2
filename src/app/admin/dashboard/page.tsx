@@ -69,7 +69,7 @@ export interface RestaurantCtx {
 
 // ─── Nav items ────────────────────────────────────────────────────────────────
 
-const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
+const NAV_ITEMS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: "dashboard", label: "Dashboard",    icon: LayoutDashboard },
   { id: "menu",      label: "Menu",         icon: Utensils        },
   { id: "orders",    label: "Ordini",       icon: ShoppingCart    },
@@ -106,7 +106,6 @@ function SectionRenderer({
       return <AIAnalyticsSection ctx={ctx} theme={theme} />;
     case "settings":
       return <SettingsSection ctx={ctx} theme={theme} />;
-    // ── Sezioni non ancora implementate ──────────────────────────────────────
     case "menu":
       return <MenuSection ctx={ctx} theme={theme} />;
     case "orders":
@@ -114,9 +113,6 @@ function SectionRenderer({
     case "tables":
       return <TablesSection ctx={ctx} theme={theme} />;
     case "qr":
-    case "analytics": return <AnalyticsSection ctx={ctx} theme={theme} />;
-    case "branding":
-    case "settings":
       return <PlaceholderSection id={section} theme={theme} />;
   }
 }
