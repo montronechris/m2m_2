@@ -63,7 +63,7 @@ export interface RestaurantCtx {
 
 // ─── Nav items ────────────────────────────────────────────────────────────────
 
-const NAV_ITEMS: { id: SectionId; label: string; icon: React.ElementType }[] = [
+const NAV_ITEMS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
   { id: "dashboard", label: "Dashboard",    icon: LayoutDashboard },
   { id: "menu",      label: "Menu",         icon: Utensils        },
   { id: "orders",    label: "Ordini",       icon: ShoppingCart    },
