@@ -60,7 +60,8 @@ function Stars({ n, color }: { n: number; color: string }) {
 function KpiCard({
   icon: Icon, label, value, sub, trend, color = "green", cardCls, bordCls, txtCls, mutedCls, dark,
 }: {
-  icon: React.ElementType; label: string; value: string; sub?: string;
+  icon: React.ComponentType<{ className?: string }>;
+  label: string; value: string; sub?: string;
   trend?: number; color?: string; cardCls: string; bordCls: string;
   txtCls: string; mutedCls: string; dark: boolean;
 }) {
