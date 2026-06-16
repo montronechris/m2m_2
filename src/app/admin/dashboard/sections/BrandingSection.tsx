@@ -96,7 +96,7 @@ const TextArea = ({
 const SectionCard = ({
   icon: Icon, title, children, color = "green", cardCls, bordCls, txtCls,
 }: {
-  icon: React.ElementType; title: string; children: React.ReactNode;
+  icon: React.ComponentType<{ className?: string }>; title: string; children: React.ReactNode;
   color?: string; cardCls: string; bordCls: string; txtCls: string;
 }) => (
   <div className={`${cardCls} rounded-2xl border ${bordCls} overflow-hidden`}>
