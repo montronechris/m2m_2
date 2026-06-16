@@ -41,6 +41,7 @@ export function useScanSession(tableCode: string) {
           tableNumber: data.tableNumber,
           restaurantSlug: data.restaurantSlug,
           restaurantId: data.restaurantId,
+          tableId: data.tableId,
         });
 
         // Debug in console per verificare

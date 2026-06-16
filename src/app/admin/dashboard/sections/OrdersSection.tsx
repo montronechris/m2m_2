@@ -157,10 +157,11 @@ export function OrdersSection({ ctx, theme }: Props) {
   const [tableFilter,   setTableFilter]  = useState<string | null>(null);
 
   // ── CRONOLOGIA ──────────────────────────────────────────────────────────────
-  const [showHistory,      setShowHistory]      = useState(false);
-  const [historyOrders,    setHistoryOrders]    = useState<Order[]>([]);
-  const [historyLoading,   setHistoryLoading]   = useState(false);
-  const [historyDateFilter, setHistoryDateFilter] = useState<string>(
+  const [showHistory,        setShowHistory]        = useState(false);
+  const [historyOrders,      setHistoryOrders]      = useState<Order[]>([]);
+  const [cancelledOrders,    setCancelledOrders]    = useState<Order[]>([]);
+  const [historyLoading,     setHistoryLoading]     = useState(false);
+  const [historyDateFilter,  setHistoryDateFilter]  = useState<string>(
     new Date().toISOString().slice(0, 10)
   );
 
@@ -263,58 +264,73 @@ export function OrdersSection({ ctx, theme }: Props) {
       const from = `${dateStr}T00:00:00`;
       const to   = `${dateStr}T23:59:59`;
 
-      const { data: ordersData, error: ordErr } = await supabase
-        .from("orders")
-        .select("*")
-        .eq("restaurant_id", ctx.restaurantId)
-        .in("status", ["served"])
-        .gte("updated_at", from)
-        .lte("updated_at", to)
-        .order("updated_at", { ascending: false });
-      if (ordErr) throw ordErr;
-      if (!ordersData?.length) { setHistoryOrders([]); setHistoryLoading(false); return; }
+      // Fetch served e cancelled in parallelo
+      const [{ data: servedData }, { data: cancelledData }] = await Promise.all([
+        supabase.from("orders").select("*")
+          .eq("restaurant_id", ctx.restaurantId)
+          .eq("status", "served")
+          .gte("updated_at", from).lte("updated_at", to)
+          .order("updated_at", { ascending: false }),
+        supabase.from("orders").select("*")
+          .eq("restaurant_id", ctx.restaurantId)
+          .eq("status", "cancelled")
+          .gte("updated_at", from).lte("updated_at", to)
+          .order("updated_at", { ascending: false }),
+      ]);
 
-      const orderIds = ordersData.map((o) => o.id);
-      const { data: itemsData } = await supabase
-        .from("order_items").select("*").in("order_id", orderIds);
+      const allOrders = [...(servedData || []), ...(cancelledData || [])];
 
-      const menuItemIds = [...new Set((itemsData || []).map((i) => i.menu_item_id).filter(Boolean))];
-      let nameMap: Record<string, string> = {};
-      if (menuItemIds.length) {
-        const { data: menuItems } = await supabase
-          .from("menu_items").select("id, name").in("id", menuItemIds);
-        (menuItems || []).forEach((m) => { nameMap[m.id] = m.name; });
-      }
+      // Costruisce nameMap e tableMap una volta sola per entrambi i set
+      const buildFormatted = async (ordersData: typeof allOrders) => {
+        if (!ordersData.length) return [];
+        const orderIds = ordersData.map((o) => o.id);
+        const { data: itemsData } = await supabase
+          .from("order_items").select("*").in("order_id", orderIds);
 
-      const tableIds = [...new Set(ordersData.map((o) => o.table_id).filter(Boolean))];
-      let tableMap: Record<string, string> = {};
-      if (tableIds.length) {
-        const { data: tables } = await supabase
-          .from("table_qr_sessions").select("id, table_number").in("id", tableIds);
-        (tables || []).forEach((t) => { tableMap[t.id] = String(t.table_number ?? "?"); });
-      }
+        const menuItemIds = [...new Set((itemsData || []).map((i) => i.menu_item_id).filter(Boolean))];
+        let nameMap: Record<string, string> = {};
+        if (menuItemIds.length) {
+          const { data: menuItems } = await supabase
+            .from("menu_items").select("id, name").in("id", menuItemIds);
+          (menuItems || []).forEach((m) => { nameMap[m.id] = m.name; });
+        }
 
-      const formatted: Order[] = ordersData.map((order) => {
-        const orderItems = (itemsData || []).filter((i) => i.order_id === order.id);
-        const computedTotalCents = orderItems.reduce(
-          (sum, i) => sum + Math.round((i.base_price ?? 0) * 100) * (i.quantity ?? 1), 0
-        );
-        return {
-          ...order,
-          _displayTime: order.confirmed_at || order.updated_at || order.created_at,
-          total_cents: computedTotalCents > 0 ? computedTotalCents : (order.total_cents ?? 0),
-          table_number: order.table_id ? (tableMap[order.table_id] ?? null) : null,
-          items: orderItems.map((i): OrderItem => ({
-            id:       i.id,
-            name:     nameMap[i.menu_item_id] || i.name_snapshot || i.name || "Prodotto",
-            quantity: i.quantity ?? 1,
-            note:     i.note ?? "",
-            customizations: Array.isArray(i.customizations) ? i.customizations : [],
-          })),
-        };
-      });
+        const tableIds = [...new Set(ordersData.map((o) => o.table_id).filter(Boolean))];
+        let tableMap: Record<string, string> = {};
+        if (tableIds.length) {
+          const { data: tables } = await supabase
+            .from("table_qr_sessions").select("id, table_number").in("id", tableIds);
+          (tables || []).forEach((t) => { tableMap[t.id] = String(t.table_number ?? "?"); });
+        }
 
-      setHistoryOrders(formatted);
+        return ordersData.map((order) => {
+          const orderItems = (itemsData || []).filter((i) => i.order_id === order.id);
+          const computedTotalCents = orderItems.reduce(
+            (sum, i) => sum + Math.round((i.base_price ?? 0) * 100) * (i.quantity ?? 1), 0
+          );
+          return {
+            ...order,
+            _displayTime: order.confirmed_at || order.updated_at || order.created_at,
+            total_cents: computedTotalCents > 0 ? computedTotalCents : (order.total_cents ?? 0),
+            table_number: order.table_id ? (tableMap[order.table_id] ?? null) : null,
+            items: orderItems.map((i): OrderItem => ({
+              id:       i.id,
+              name:     nameMap[i.menu_item_id] || i.name_snapshot || i.name || "Prodotto",
+              quantity: i.quantity ?? 1,
+              note:     i.note ?? "",
+              customizations: Array.isArray(i.customizations) ? i.customizations : [],
+            })),
+          };
+        });
+      };
+
+      const [formattedServed, formattedCancelled] = await Promise.all([
+        buildFormatted(servedData || []),
+        buildFormatted(cancelledData || []),
+      ]);
+
+      setHistoryOrders(formattedServed);
+      setCancelledOrders(formattedCancelled);
     } catch (err: any) {
       console.error("Errore cronologia:", err?.message);
     } finally {
@@ -402,7 +418,8 @@ export function OrdersSection({ ctx, theme }: Props) {
   })();
 
   // Totale cronologia del giorno
-  const historyTotal = historyOrders.reduce((sum, o) => sum + o.total_cents, 0);
+  const historyTotal   = historyOrders.reduce((sum, o) => sum + o.total_cents, 0);
+  const cancelledTotal = cancelledOrders.reduce((sum, o) => sum + o.total_cents, 0);
 
   // ── LOADING ─────────────────────────────────────────────────────────────────
   if (loading) {
@@ -421,94 +438,88 @@ export function OrdersSection({ ctx, theme }: Props) {
     <div className={`flex-1 flex flex-col ${bg} ${textPrimary}`}>
 
       {/* HEADER */}
-      <div className={`px-6 py-4 border-b ${borderColor} ${isDark ? "bg-gray-950/90" : "bg-white/90"} backdrop-blur sticky top-0 z-10`}>
-        <div className="flex items-center justify-between mb-3">
+      <div className={`px-6 py-4 border-b ${borderColor} ${isDark ? "bg-gray-950/95" : "bg-white/95"} backdrop-blur-sm sticky top-0 z-10`}>
+        <div className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 bg-green-500/20 rounded-xl flex items-center justify-center">
-              <ChefHat className="w-6 h-6 text-green-400" />
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${isDark ? "bg-green-500/15" : "bg-green-50"}`}>
+              <ChefHat className="w-5 h-5 text-green-400" />
             </div>
             <div>
-              <h2 className="text-lg font-bold tracking-tight">Cucina Live</h2>
-              <p className="text-xs text-gray-500">Ordini più vecchi in cima</p>
+              <h2 className={`text-base font-bold tracking-tight ${textPrimary}`}>Cucina Live</h2>
+              <p className={`text-[11px] ${textSecond} leading-none mt-0.5`}>Ordini più vecchi in cima</p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+
+          <div className="flex items-center gap-2 flex-wrap justify-end">
             <StatPill color="yellow" count={orders.filter(o => o.status === "confirmed").length} label="Attesa" />
             <StatPill color="blue"   count={orders.filter(o => o.status === "cooking").length}   label="Cucina" />
             <StatPill color="green"  count={orders.filter(o => o.status === "ready").length}     label="Pronti" />
-            {/* ── TASTO CRONOLOGIA ── */}
+
+            <div className={`hidden sm:block w-px h-5 ${isDark ? "bg-white/10" : "bg-gray-200"} mx-1`} />
+
             <button
               onClick={() => setShowHistory(h => !h)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all ml-1
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all
                 ${showHistory
-                  ? "bg-purple-500/20 text-purple-400 border-purple-500/30"
-                  : isDark ? "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10" : "bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200"}`}
-              title="Cronologia ordini completati"
+                  ? "bg-purple-500/15 text-purple-400 border-purple-500/25"
+                  : isDark ? "bg-white/5 border-white/8 text-gray-400 hover:bg-white/10 hover:text-gray-300" : "bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200"}`}
             >
               <History className="w-3.5 h-3.5" />
               Cronologia
             </button>
-            <button onClick={fetchOrders}
-              className="p-2 text-gray-500 hover:text-white hover:bg-white/10 rounded-lg transition-all"
-              title="Aggiorna">
+            <button onClick={fetchOrders} title="Aggiorna"
+              className={`p-2 rounded-xl transition-all ${isDark ? "text-gray-500 hover:text-gray-300 hover:bg-white/8" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"}`}>
               <Loader2 className="w-4 h-4" />
             </button>
           </div>
         </div>
 
-        {/* TOOLBAR FILTRI — nascosta quando cronologia aperta */}
+        {/* TOOLBAR FILTRI */}
         {!showHistory && (
-          <div className="flex flex-wrap items-center gap-2">
-            <button onClick={() => setViewMode("kanban")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all
-                ${viewMode === "kanban"
-                  ? "bg-green-500/20 text-green-400 border-green-500/30"
-                  : isDark ? "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10" : "bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200"}`}>
-              <LayoutGrid className="w-3.5 h-3.5" />
-              Kanban
-            </button>
+          <div className={`flex flex-wrap items-center gap-1.5 mt-3 pt-3 border-t ${isDark ? "border-white/6" : "border-gray-100"}`}>
+            {/* Viste */}
+            {(["kanban", "aggregated", "urgent"] as const).map(mode => {
+              const cfg = {
+                kanban:     { label: "Kanban",    Icon: LayoutGrid,    active: "bg-green-500/15 text-green-400 border-green-500/25" },
+                aggregated: { label: "Per piatto", Icon: Utensils,     active: "bg-purple-500/15 text-purple-400 border-purple-500/25" },
+                urgent:     { label: "Urgenti",   Icon: AlertTriangle, active: "bg-red-500/15 text-red-400 border-red-500/25" },
+              }[mode];
+              const urgentCount = orders.filter(o => formatElapsedNum(o._displayTime || o.created_at) >= 10).length;
+              const isActive = viewMode === mode || (mode === "urgent" && viewMode === "urgent");
+              return (
+                <button key={mode}
+                  onClick={() => setViewMode(viewMode === mode && mode === "urgent" ? "kanban" : mode)}
+                  className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold border transition-all
+                    ${isActive ? cfg.active : isDark ? "bg-white/4 border-white/8 text-gray-500 hover:bg-white/8 hover:text-gray-300" : "bg-transparent border-gray-200 text-gray-400 hover:bg-gray-100 hover:text-gray-600"}`}>
+                  <cfg.Icon className="w-3.5 h-3.5" />
+                  {cfg.label}
+                  {mode === "urgent" && urgentCount > 0 && (
+                    <span className="bg-red-500 text-white rounded-full min-w-[16px] h-4 flex items-center justify-center text-[10px] font-black px-1">
+                      {urgentCount}
+                    </span>
+                  )}
+                </button>
+              );
+            })}
 
-            <button onClick={() => setViewMode("aggregated")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all
-                ${viewMode === "aggregated"
-                  ? "bg-purple-500/20 text-purple-400 border-purple-500/30"
-                  : isDark ? "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10" : "bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200"}`}>
-              <Utensils className="w-3.5 h-3.5" />
-              Per Piatto
-            </button>
+            <div className={`w-px h-4 ${isDark ? "bg-white/10" : "bg-gray-200"} mx-0.5`} />
 
-            <button onClick={() => setViewMode(viewMode === "urgent" ? "kanban" : "urgent")}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold border transition-all
-                ${viewMode === "urgent"
-                  ? "bg-red-500/20 text-red-400 border-red-500/30"
-                  : isDark ? "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10" : "bg-gray-100 border-gray-200 text-gray-500 hover:bg-gray-200"}`}>
-              <AlertTriangle className="w-3.5 h-3.5" />
-              Urgenti
-              {orders.filter(o => formatElapsedNum(o._displayTime || o.created_at) >= 10).length > 0 && (
-                <span className="ml-1 bg-red-500 text-white rounded-full w-4 h-4 flex items-center justify-center text-[10px]">
-                  {orders.filter(o => formatElapsedNum(o._displayTime || o.created_at) >= 10).length}
-                </span>
-              )}
-            </button>
-
-            <div className={`w-px h-5 ${isDark ? "bg-white/10" : "bg-gray-200"} mx-1`} />
-
+            {/* Filtro tavolo */}
             <div className="flex items-center gap-1.5">
-              <Filter className="w-3.5 h-3.5 text-gray-500" />
-              <span className="text-xs text-gray-500">Tavolo:</span>
+              <Filter className="w-3 h-3 text-gray-500" />
               <button onClick={() => setTableFilter(null)}
-                className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all
                   ${tableFilter === null
-                    ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                    : isDark ? "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10" : "bg-gray-100 border-gray-200 text-gray-500"}`}>
+                    ? "bg-blue-500/15 text-blue-400 border-blue-500/25"
+                    : isDark ? "bg-white/4 border-white/8 text-gray-500 hover:bg-white/8" : "bg-transparent border-gray-200 text-gray-400 hover:bg-gray-100"}`}>
                 Tutti
               </button>
               {allTableNumbers.map(tn => (
                 <button key={tn} onClick={() => setTableFilter(tableFilter === tn ? null : tn)}
-                  className={`px-2.5 py-1 rounded-lg text-xs font-semibold border transition-all
+                  className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all
                     ${tableFilter === tn
-                      ? "bg-blue-500/20 text-blue-400 border-blue-500/30"
-                      : isDark ? "bg-white/5 border-white/10 text-gray-400 hover:bg-white/10" : "bg-gray-100 border-gray-200 text-gray-500"}`}>
+                      ? "bg-blue-500/15 text-blue-400 border-blue-500/25"
+                      : isDark ? "bg-white/4 border-white/8 text-gray-500 hover:bg-white/8" : "bg-transparent border-gray-200 text-gray-400 hover:bg-gray-100"}`}>
                   {tn}
                 </button>
               ))}
@@ -530,87 +541,150 @@ export function OrdersSection({ ctx, theme }: Props) {
         <div className="flex-1 p-6">
 
           {/* Barra filtro data + totale */}
-          <div className="flex flex-wrap items-center gap-4 mb-6">
+          <div className={`flex flex-wrap items-center gap-3 mb-5 pb-5 border-b ${borderColor}`}>
             <div className="flex items-center gap-2">
-              <label className={`text-sm font-medium ${textSecond}`}>Data:</label>
+              <label className={`text-xs font-bold uppercase tracking-wide ${textSecond}`}>Data</label>
               <input
                 type="date"
                 value={historyDateFilter}
                 onChange={e => setHistoryDateFilter(e.target.value)}
-                className={`px-3 py-1.5 rounded-lg border text-sm outline-none focus:ring-2 focus:ring-purple-500 transition-all
-                  ${isDark ? "bg-gray-900 border-white/10 text-white" : "bg-white border-gray-200 text-gray-900"}`}
+                className={`px-3 py-1.5 rounded-xl border text-sm font-medium outline-none focus:ring-2 focus:ring-purple-500/50 transition-all
+                  ${isDark ? "bg-white/5 border-white/8 text-white" : "bg-white border-gray-200 text-gray-900"}`}
               />
             </div>
-            {!historyLoading && historyOrders.length > 0 && (
-              <>
-                <span className={`text-sm ${textSecond}`}>
-                  <span className="font-bold text-purple-400">{historyOrders.length}</span> ordini completati
-                </span>
-                <span className={`text-sm font-bold text-green-400`}>
-                  Totale: €{formatPrice(historyTotal)}
-                </span>
-              </>
+            {!historyLoading && (historyOrders.length > 0 || cancelledOrders.length > 0) && (
+              <div className="flex items-center gap-3 ml-auto">
+                {historyOrders.length > 0 && (
+                  <span className={`text-xs ${textSecond}`}>
+                    <span className="font-black text-purple-400 text-base">{historyOrders.length}</span>
+                    <span className="ml-1">serviti</span>
+                    <span className="font-black text-green-400 ml-2 tabular-nums">€{formatPrice(historyTotal)}</span>
+                  </span>
+                )}
+                {cancelledOrders.length > 0 && (
+                  <span className={`text-xs ${textSecond}`}>
+                    <span className="font-black text-red-400 text-base">{cancelledOrders.length}</span>
+                    <span className="ml-1">eliminati</span>
+                    <span className={`font-black ml-2 tabular-nums line-through ${textSecond}`}>€{formatPrice(cancelledTotal)}</span>
+                  </span>
+                )}
+              </div>
             )}
           </div>
 
           {historyLoading ? (
             <div className="flex items-center justify-center py-20">
-              <Loader2 className="w-8 h-8 animate-spin text-purple-400" />
+              <Loader2 className="w-7 h-7 animate-spin text-purple-400" />
             </div>
-          ) : historyOrders.length === 0 ? (
+          ) : historyOrders.length === 0 && cancelledOrders.length === 0 ? (
             <div className="text-center py-20">
-              <History className={`w-12 h-12 mx-auto mb-4 ${textSecond} opacity-30`} />
-              <p className={`${textSecond} font-medium`}>Nessun ordine completato in questa data</p>
+              <History className={`w-10 h-10 mx-auto mb-3 ${textSecond} opacity-20`} />
+              <p className={`${textSecond} text-sm font-medium`}>Nessun ordine in questa data</p>
             </div>
           ) : (
-            <div className="space-y-3">
-              {historyOrders.map(order => (
-                <div key={order.id}
-                  className={`${bgCard} border ${borderColor} rounded-2xl overflow-hidden`}>
-                  <div className={`flex items-center justify-between px-4 py-3 border-b ${borderColor} bg-green-500/5`}>
-                    <div className="flex items-center gap-3">
-                      <span className={`font-bold text-sm px-3 py-1 rounded-lg ${isDark ? "bg-white/10 text-white" : "bg-gray-100 text-gray-700"}`}>
-                        {order.table_number ? `TAV ${order.table_number}` : "TAV —"}
-                      </span>
-                      <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold bg-green-500/15 text-green-400 border border-green-500/20">
-                        <CheckCircle className="w-3 h-3" />
-                        Completato
-                      </span>
-                      <span className={`text-xs ${textSecond}`}>
-                        {formatDateTime(order.updated_at)}
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                      <span className="font-bold text-green-400">€{formatPrice(order.total_cents)}</span>
-                      <button onClick={() => printOrder(order)} title="Stampa comanda"
-                        className={`p-1.5 rounded-lg transition-all ${isDark ? "text-gray-500 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"}`}>
-                        <Printer className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
+            <div className="space-y-6">
+
+              {/* ── Serviti ── */}
+              {historyOrders.length > 0 && (
+                <div>
+                  <div className="flex items-center gap-2 mb-3">
+                    <CheckCircle className="w-3.5 h-3.5 text-green-400" />
+                    <span className="text-xs font-black uppercase tracking-widest text-green-400">Serviti</span>
+                    <span className={`text-xs ${textSecond}`}>({historyOrders.length})</span>
                   </div>
-                  <div className="px-4 py-3 space-y-2">
-                    {order.items.length === 0 ? (
-                      <p className={`text-xs italic ${textSecond}`}>Nessun prodotto</p>
-                    ) : order.items.map(item => (
-                      <div key={item.id} className="flex items-baseline gap-2">
-                        <span className="text-green-400 font-bold text-sm tabular-nums min-w-[24px]">{item.quantity}×</span>
-                        <span className={`text-sm font-medium ${textPrimary}`}>{item.name}</span>
-                        {item.customizations.length > 0 && (
-                          <span className={`text-xs ${textSecond}`}>
-                            ({item.customizations.map(c => `${c.optionName}: ${c.choiceName}`).join(", ")})
+                  <div className="space-y-2">
+                    {historyOrders.map(order => (
+                      <div key={order.id} className={`${bgCard} border ${borderColor} rounded-2xl overflow-hidden`}>
+                        <div className={`flex items-center gap-3 px-4 py-3 border-b ${isDark ? "border-white/6 bg-green-500/5" : "border-gray-100 bg-green-50/40"}`}>
+                          <span className={`font-black text-sm px-2.5 py-1 rounded-lg ${isDark ? "bg-white/10 text-white" : "bg-black/8 text-gray-800"}`}>
+                            {order.table_number ? `T${order.table_number}` : "T—"}
                           </span>
-                        )}
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-green-400 bg-green-500/12 border border-green-500/20 px-2 py-0.5 rounded-lg">
+                            <CheckCircle className="w-3 h-3" />
+                            Servito
+                          </span>
+                          <span className={`text-xs ${textSecond}`}>{formatDateTime(order.updated_at)}</span>
+                          <div className="ml-auto flex items-center gap-3">
+                            <span className="font-black text-sm text-green-400 tabular-nums">€{formatPrice(order.total_cents)}</span>
+                            <button onClick={() => printOrder(order)} title="Stampa comanda"
+                              className={`p-1.5 rounded-lg transition-all ${isDark ? "text-gray-600 hover:text-gray-300 hover:bg-white/8" : "text-gray-400 hover:text-gray-600 hover:bg-gray-100"}`}>
+                              <Printer className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="px-4 py-3 space-y-1.5">
+                          {order.items.length === 0 ? (
+                            <p className={`text-xs italic ${textSecond}`}>Nessun prodotto</p>
+                          ) : order.items.map(item => (
+                            <div key={item.id} className="flex items-baseline gap-2">
+                              <span className={`font-black text-sm tabular-nums min-w-[22px] ${isDark ? "text-green-400" : "text-green-600"}`}>{item.quantity}×</span>
+                              <span className={`text-sm font-medium ${textPrimary}`}>{item.name}</span>
+                              {item.customizations.length > 0 && (
+                                <span className={`text-xs ${textSecond} truncate`}>
+                                  ({item.customizations.map(c => `${c.optionName}: ${c.choiceName}`).join(", ")})
+                                </span>
+                              )}
+                            </div>
+                          ))}
+                          {order.notes && (
+                            <div className={`flex items-start gap-1.5 text-xs mt-1 ${textSecond}`}>
+                              <Bell className="w-3 h-3 shrink-0 mt-0.5 opacity-60" />
+                              <span className="italic">{order.notes}</span>
+                            </div>
+                          )}
+                        </div>
                       </div>
                     ))}
-                    {order.notes && (
-                      <div className={`flex items-start gap-1.5 text-xs mt-1 ${textSecond}`}>
-                        <Bell className="w-3 h-3 shrink-0 mt-0.5" />
-                        <span className="italic">{order.notes}</span>
-                      </div>
-                    )}
                   </div>
                 </div>
-              ))}
+              )}
+
+              {/* ── Eliminati ── */}
+              {cancelledOrders.length > 0 && (
+                <div>
+                  <div className={`flex items-center gap-2 mb-3 pb-3 border-t ${isDark ? "border-white/6 pt-5" : "border-gray-100 pt-5"}`}>
+                    <Trash2 className="w-3.5 h-3.5 text-red-400" />
+                    <span className="text-xs font-black uppercase tracking-widest text-red-400">Eliminati</span>
+                    <span className={`text-xs ${textSecond}`}>({cancelledOrders.length})</span>
+                  </div>
+                  <div className="space-y-2">
+                    {cancelledOrders.map(order => (
+                      <div key={order.id} className={`${bgCard} border rounded-2xl overflow-hidden opacity-75 ${isDark ? "border-red-500/15" : "border-red-100"}`}>
+                        <div className={`flex items-center gap-3 px-4 py-3 border-b ${isDark ? "border-red-500/10 bg-red-500/5" : "border-red-50 bg-red-50/60"}`}>
+                          <span className={`font-black text-sm px-2.5 py-1 rounded-lg ${isDark ? "bg-white/8 text-gray-300" : "bg-black/5 text-gray-600"}`}>
+                            {order.table_number ? `T${order.table_number}` : "T—"}
+                          </span>
+                          <span className="inline-flex items-center gap-1 text-[11px] font-bold text-red-400 bg-red-500/12 border border-red-500/20 px-2 py-0.5 rounded-lg">
+                            <Trash2 className="w-3 h-3" />
+                            Eliminato
+                          </span>
+                          <span className={`text-xs ${textSecond}`}>{formatDateTime(order.updated_at)}</span>
+                          <div className="ml-auto">
+                            <span className={`font-black text-sm tabular-nums line-through ${textSecond}`}>€{formatPrice(order.total_cents)}</span>
+                          </div>
+                        </div>
+                        <div className="px-4 py-3 space-y-1.5">
+                          {order.items.length === 0 ? (
+                            <p className={`text-xs italic ${textSecond}`}>Nessun prodotto</p>
+                          ) : order.items.map(item => (
+                            <div key={item.id} className="flex items-baseline gap-2">
+                              <span className={`font-black text-sm tabular-nums min-w-[22px] ${textSecond}`}>{item.quantity}×</span>
+                              <span className={`text-sm font-medium line-through ${textSecond}`}>{item.name}</span>
+                            </div>
+                          ))}
+                          {order.notes && (
+                            <div className={`flex items-start gap-1.5 text-xs mt-1 ${textSecond}`}>
+                              <Bell className="w-3 h-3 shrink-0 mt-0.5 opacity-60" />
+                              <span className="italic">{order.notes}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
             </div>
           )}
         </div>
@@ -657,23 +731,26 @@ export function OrdersSection({ ctx, theme }: Props) {
 
           ) : (
             /* VISTA KANBAN / URGENTI */
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-0 lg:divide-x divide-white/10">
+            <div className={`grid grid-cols-1 lg:grid-cols-3 divide-y lg:divide-y-0 lg:divide-x ${isDark ? "divide-white/6" : "divide-gray-100"}`}>
               <Column title="In Attesa" count={pending.length} colorClass="text-yellow-400"
-                icon={<Clock className="w-4 h-4" />} emptyText="Nessun ordine in attesa" bgAccent="border-yellow-500/20">
+                icon={<Clock className="w-3.5 h-3.5" />} emptyText="Nessun ordine in attesa"
+                bgAccent="border-yellow-500/25 bg-yellow-500/10" accentBg={isDark ? "bg-yellow-500/5" : "bg-yellow-50/60"}>
                 {pending.map(o => (
                   <OrderCard key={o.id} order={o} isUpdating={updating === o.id}
                     onUpdate={updateStatus} onDelete={deleteOrder} onPrint={printOrder} tick={tick} isDark={isDark} />
                 ))}
               </Column>
               <Column title="In Cucina" count={cooking.length} colorClass="text-blue-400"
-                icon={<ChefHat className="w-4 h-4" />} emptyText="Nessun ordine in preparazione" bgAccent="border-blue-500/20">
+                icon={<ChefHat className="w-3.5 h-3.5" />} emptyText="Nessun ordine in preparazione"
+                bgAccent="border-blue-500/25 bg-blue-500/10" accentBg={isDark ? "bg-blue-500/5" : "bg-blue-50/60"}>
                 {cooking.map(o => (
                   <OrderCard key={o.id} order={o} isUpdating={updating === o.id}
                     onUpdate={updateStatus} onDelete={deleteOrder} onPrint={printOrder} tick={tick} isDark={isDark} />
                 ))}
               </Column>
               <Column title="Pronti" count={ready.length} colorClass="text-green-400"
-                icon={<CheckCircle className="w-4 h-4" />} emptyText="Nessun ordine pronto" bgAccent="border-green-500/20">
+                icon={<CheckCircle className="w-3.5 h-3.5" />} emptyText="Nessun ordine pronto"
+                bgAccent="border-green-500/25 bg-green-500/10" accentBg={isDark ? "bg-green-500/5" : "bg-green-50/60"}>
                 {ready.map(o => (
                   <OrderCard key={o.id} order={o} isUpdating={updating === o.id}
                     onUpdate={updateStatus} onDelete={deleteOrder} onPrint={printOrder} tick={tick} isDark={isDark} />
@@ -692,34 +769,36 @@ export function OrdersSection({ ctx, theme }: Props) {
 
 function StatPill({ color, count, label }: { color: "yellow" | "blue" | "green"; count: number; label: string }) {
   const colors = {
-    yellow: "bg-yellow-500/15 text-yellow-400 border-yellow-500/20",
-    blue:   "bg-blue-500/15   text-blue-400   border-blue-500/20",
-    green:  "bg-green-500/15  text-green-400  border-green-500/20",
+    yellow: "bg-yellow-500/12 text-yellow-400 border-yellow-500/25",
+    blue:   "bg-blue-500/12   text-blue-400   border-blue-500/25",
+    green:  "bg-green-500/12  text-green-400  border-green-500/25",
   };
   return (
-    <div className={`hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-xs font-semibold ${colors[color]}`}>
-      <span className="text-base font-bold tabular-nums">{count}</span>
-      <span className="opacity-70">{label}</span>
+    <div className={`hidden sm:flex items-center gap-2 px-3.5 py-1.5 rounded-xl border text-xs font-semibold ${colors[color]}`}>
+      <span className="text-lg font-black tabular-nums leading-none">{count}</span>
+      <span className="opacity-60 font-medium">{label}</span>
     </div>
   );
 }
 
-function Column({ title, count, colorClass, icon, emptyText, bgAccent, children }: {
+function Column({ title, count, colorClass, icon, emptyText, bgAccent, accentBg, children }: {
   title: string; count: number; colorClass: string; icon: React.ReactNode;
-  emptyText: string; bgAccent: string; children: React.ReactNode;
+  emptyText: string; bgAccent: string; accentBg: string; children: React.ReactNode;
 }) {
   return (
-    <div className="flex flex-col">
-      <div className="px-5 py-4 border-b border-white/10 flex items-center gap-2">
+    <div className="flex flex-col min-h-0">
+      <div className={`px-5 py-3.5 flex items-center gap-2.5 ${accentBg} border-b border-white/8`}>
         <span className={colorClass}>{icon}</span>
-        <span className={`text-sm font-semibold uppercase tracking-wider ${colorClass}`}>{title}</span>
-        <span className={`ml-auto text-xs font-bold px-2 py-0.5 rounded-full border ${bgAccent} ${colorClass}`}>{count}</span>
+        <span className={`text-xs font-bold uppercase tracking-widest ${colorClass}`}>{title}</span>
+        <span className={`ml-auto min-w-[24px] h-6 flex items-center justify-center text-xs font-black rounded-lg border ${bgAccent} ${colorClass}`}>
+          {count}
+        </span>
       </div>
-      <div className="flex-1 p-4 space-y-4 overflow-y-auto">
+      <div className="flex-1 p-4 space-y-3 overflow-y-auto">
         {count === 0 ? (
           <div className="text-center py-16 text-gray-600">
-            <Utensils className="w-8 h-8 mx-auto mb-3 opacity-30" />
-            <p className="text-sm">{emptyText}</p>
+            <Utensils className="w-7 h-7 mx-auto mb-2.5 opacity-20" />
+            <p className="text-xs font-medium opacity-50">{emptyText}</p>
           </div>
         ) : children}
       </div>
@@ -739,102 +818,119 @@ function OrderCard({ order, isUpdating, onUpdate, onDelete, onPrint, tick, isDar
   const elapsed     = formatElapsedNum(displayTime);
   const isUrgent    = elapsed >= 10;
 
+  const cardBg     = isDark ? "bg-[#111118]" : "bg-white";
+  const cardBorder = isUrgent
+    ? "border-red-500/40"
+    : isDark ? "border-white/8" : "border-gray-150";
+  const headerBg =
+    order.status === "confirmed" || order.status === "pending"
+      ? isDark ? "bg-yellow-500/8" : "bg-yellow-50/80"
+      : order.status === "cooking"
+      ? isDark ? "bg-blue-500/8"   : "bg-blue-50/80"
+      : isDark ? "bg-green-500/8"  : "bg-green-50/80";
+
   return (
-    <div className={`rounded-2xl border overflow-hidden transition-all ${
-      isDark
-        ? isUrgent ? "bg-gray-900 border-red-500/50 shadow-red-500/10 shadow-lg" : "bg-gray-900 border-white/10"
-        : isUrgent ? "bg-white border-red-400/50 shadow-red-400/10 shadow-lg"   : "bg-white border-gray-200"
-    }`}>
-      <div className={`flex items-center justify-between px-4 py-3 border-b ${isDark ? "border-white/10" : "border-gray-100"} ${
-        (order.status === "confirmed" || order.status === "pending") ? "bg-yellow-500/10"
-        : order.status === "cooking" ? "bg-blue-500/10" : "bg-green-500/10"}`}>
-        <div className="flex items-center gap-2">
-          <span className={`font-bold px-3 py-1 rounded-lg text-sm tracking-wide ${isDark ? "bg-white/15 text-white" : "bg-gray-100 text-gray-800"}`}>
-            {order.table_number ? `TAV ${order.table_number}` : "TAV —"}
+    <div className={`rounded-2xl border overflow-hidden transition-shadow ${cardBg} ${cardBorder} ${isUrgent ? "shadow-lg shadow-red-500/10" : ""}`}>
+
+      {/* ── Card header ── */}
+      <div className={`flex items-center gap-2.5 px-4 py-3 ${headerBg} border-b ${isDark ? "border-white/6" : "border-black/5"}`}>
+        {/* Tavolo badge */}
+        <span className={`font-black text-sm tracking-tight px-2.5 py-1 rounded-lg ${isDark ? "bg-white/12 text-white" : "bg-black/8 text-gray-900"}`}>
+          {order.table_number ? `T${order.table_number}` : "T—"}
+        </span>
+
+        {/* Timer */}
+        <span className={`flex items-center gap-1 text-xs font-bold tabular-nums ${isUrgent ? "text-red-400" : isDark ? "text-gray-500" : "text-gray-400"}`}>
+          <Clock className="w-3 h-3" />
+          {formatElapsed(displayTime)}
+          {isUrgent && <span className="ml-0.5 text-[10px] font-black text-red-400 bg-red-500/15 px-1.5 py-0.5 rounded-md">URGENTE</span>}
+        </span>
+
+        <div className="ml-auto flex items-center gap-2">
+          <span className={`text-sm font-bold tabular-nums ${isDark ? "text-white/60" : "text-gray-600"}`}>
+            €{formatPrice(order.total_cents)}
           </span>
-          <span className={`text-xs font-semibold flex items-center gap-1 ${isUrgent ? "text-red-400" : "text-gray-400"}`}>
-            <Clock className="w-3 h-3" />
-            {formatElapsed(displayTime)}
-            {isUrgent && " ⚠"}
-          </span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`text-sm font-bold ${isDark ? "text-white/70" : "text-gray-700"}`}>€{formatPrice(order.total_cents)}</span>
           <button onClick={() => onPrint(order)} title="Stampa comanda"
-            className={`p-1.5 rounded-lg transition-all ${isDark ? "text-gray-500 hover:text-white hover:bg-white/10" : "text-gray-400 hover:text-gray-700 hover:bg-gray-100"}`}>
+            className={`p-1.5 rounded-lg transition-all ${isDark ? "text-gray-600 hover:text-gray-300 hover:bg-white/8" : "text-gray-400 hover:text-gray-600 hover:bg-black/5"}`}>
             <Printer className="w-3.5 h-3.5" />
           </button>
         </div>
       </div>
 
-      <div className="px-4 py-3 space-y-3">
+      {/* ── Items ── */}
+      <div className="px-4 pt-3 pb-2 space-y-3">
         {order.items.length === 0 ? (
-          <p className="text-xs text-gray-500 italic">Nessun prodotto</p>
+          <p className="text-xs text-gray-500 italic py-2">Nessun prodotto</p>
         ) : order.items.map(item => (
-          <div key={item.id} className="space-y-1.5">
+          <div key={item.id}>
             <div className="flex items-baseline gap-2">
-              <span className="text-green-400 font-bold text-sm tabular-nums min-w-[24px]">{item.quantity}×</span>
-              <span className={`${isDark ? "text-white" : "text-gray-900"} font-semibold text-sm`}>{item.name}</span>
+              <span className={`font-black text-sm tabular-nums min-w-[22px] ${isDark ? "text-green-400" : "text-green-600"}`}>
+                {item.quantity}×
+              </span>
+              <span className={`font-semibold text-sm leading-tight ${isDark ? "text-white" : "text-gray-900"}`}>
+                {item.name}
+              </span>
             </div>
             {item.customizations.length > 0 && (
-              <div className="ml-7 flex flex-wrap gap-1.5">
+              <div className="mt-1.5 ml-6 flex flex-wrap gap-1">
                 {item.customizations.map((c, i) => (
-                  <span key={i} className="inline-flex items-center gap-1 text-xs bg-orange-500/15 border border-orange-500/25 text-orange-300 px-2 py-0.5 rounded-md">
-                    <span className="text-orange-400/60 font-medium">{c.optionName}:</span>
-                    {c.choiceName}
-                    {c.priceModifierCents > 0 && <span className="text-orange-400/70 ml-0.5">+€{formatPrice(c.priceModifierCents)}</span>}
+                  <span key={i} className="inline-flex items-center gap-1 text-[11px] bg-orange-500/12 border border-orange-500/20 text-orange-300 px-2 py-0.5 rounded-md font-medium">
+                    <span className="opacity-60">{c.optionName}:</span> {c.choiceName}
+                    {c.priceModifierCents > 0 && <span className="opacity-60 ml-0.5">+€{formatPrice(c.priceModifierCents)}</span>}
                   </span>
                 ))}
               </div>
             )}
             {item.note && (
-              <div className="ml-7 flex items-start gap-1.5 text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg px-2.5 py-1.5">
-                <StickyNote className="w-3 h-3 shrink-0 mt-0.5" />
-                <span className="italic">{item.note}</span>
+              <div className="mt-1.5 ml-6 flex items-start gap-1.5 text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/18 rounded-lg px-2.5 py-1.5 font-medium italic">
+                <StickyNote className="w-3 h-3 shrink-0 mt-0.5 opacity-70" />
+                {item.note}
               </div>
             )}
           </div>
         ))}
+
         {order.notes && (
-          <div className={`mt-2 flex items-start gap-1.5 text-xs rounded-lg px-3 py-2 border ${isDark ? "text-gray-400 bg-white/5 border-white/10" : "text-gray-500 bg-gray-50 border-gray-100"}`}>
-            <Bell className="w-3 h-3 shrink-0 mt-0.5 text-gray-500" />
+          <div className={`flex items-start gap-1.5 text-[11px] rounded-xl px-3 py-2 border mt-1 ${isDark ? "text-gray-400 bg-white/4 border-white/8" : "text-gray-500 bg-gray-50 border-gray-100"}`}>
+            <Bell className="w-3 h-3 shrink-0 mt-0.5 opacity-60" />
             <span className="italic">{order.notes}</span>
           </div>
         )}
       </div>
 
-      <div className="px-4 pb-4 flex gap-2">
+      {/* ── Actions ── */}
+      <div className="px-4 pb-4 pt-2 flex gap-2">
         {(order.status === "confirmed" || order.status === "pending") && (
           <>
             <button onClick={() => onUpdate(order.id, "cooking")} disabled={isUpdating}
-              className="flex-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 text-white py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-1.5">
-              {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <ChefHat className="w-4 h-4" />}
-              Inizia Cottura
+              className="flex-1 bg-blue-600 hover:bg-blue-500 active:bg-blue-700 disabled:opacity-40 text-white py-2.5 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5 shadow-sm shadow-blue-500/20">
+              {isUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <ChefHat className="w-3.5 h-3.5" />}
+              Inizia cottura
             </button>
             <button onClick={() => onDelete(order.id)}
-              className={`px-3 py-2.5 rounded-xl transition-all ${isDark ? "bg-white/10 hover:bg-red-500/20 text-gray-400 hover:text-red-400" : "bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-500"}`}>
-              <Trash2 className="w-4 h-4" />
+              className={`px-3 py-2.5 rounded-xl transition-all ${isDark ? "bg-white/6 hover:bg-red-500/18 text-gray-500 hover:text-red-400" : "bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-500"}`}>
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </>
         )}
         {order.status === "cooking" && (
           <>
             <button onClick={() => onUpdate(order.id, "ready")} disabled={isUpdating}
-              className="flex-1 bg-green-600 hover:bg-green-500 disabled:opacity-50 text-white py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-1.5">
-              {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-              Segna Pronto
+              className="flex-1 bg-green-600 hover:bg-green-500 active:bg-green-700 disabled:opacity-40 text-white py-2.5 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5 shadow-sm shadow-green-500/20">
+              {isUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+              Pronto
             </button>
             <button onClick={() => onDelete(order.id)}
-              className={`px-3 py-2.5 rounded-xl transition-all ${isDark ? "bg-white/10 hover:bg-red-500/20 text-gray-400 hover:text-red-400" : "bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-500"}`}>
-              <Trash2 className="w-4 h-4" />
+              className={`px-3 py-2.5 rounded-xl transition-all ${isDark ? "bg-white/6 hover:bg-red-500/18 text-gray-500 hover:text-red-400" : "bg-gray-100 hover:bg-red-50 text-gray-400 hover:text-red-500"}`}>
+              <Trash2 className="w-3.5 h-3.5" />
             </button>
           </>
         )}
         {order.status === "ready" && (
           <button onClick={() => onUpdate(order.id, "served")} disabled={isUpdating}
-            className={`flex-1 disabled:opacity-50 py-2.5 rounded-xl font-semibold text-sm transition-all flex items-center justify-center gap-1.5 ${isDark ? "bg-white/10 hover:bg-white/20 text-gray-300" : "bg-gray-100 hover:bg-gray-200 text-gray-600"}`}>
-            {isUpdating ? <Loader2 className="w-4 h-4 animate-spin" /> : <CheckCircle className="w-4 h-4" />}
-            Completato — Consegnato
+            className={`flex-1 disabled:opacity-40 py-2.5 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5 ${isDark ? "bg-white/8 hover:bg-white/14 text-gray-300" : "bg-gray-100 hover:bg-gray-200 text-gray-600"}`}>
+            {isUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
+            Consegnato
           </button>
         )}
       </div>

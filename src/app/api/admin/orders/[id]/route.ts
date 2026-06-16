@@ -14,10 +14,13 @@ export async function DELETE(
 ) {
   const { id } = await params;
 
-  // Elimina prima gli order_items (FK constraint)
-  await supabaseAdmin.from("order_items").delete().eq("order_id", id);
+  // Soft delete: segna l'ordine come cancellato invece di eliminarlo fisicamente,
+  // così rimane visibile in cronologia nella sezione "Eliminati".
+  const { error } = await supabaseAdmin
+    .from("orders")
+    .update({ status: "cancelled", updated_at: new Date().toISOString() })
+    .eq("id", id);
 
-  const { error } = await supabaseAdmin.from("orders").delete().eq("id", id);
   if (error) {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }

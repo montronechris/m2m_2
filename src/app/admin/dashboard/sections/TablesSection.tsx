@@ -1,18 +1,6 @@
 // src/app/admin/dashboard/sections/TablesSection.tsx
 //
 // ─── SEZIONE: TAVOLI ──────────────────────────────────────────────────────────
-//
-// Gestione tavoli del ristorante:
-//   - Lista tavoli con stato (libero / occupato / QR generato)
-//   - Aggiunta / eliminazione tavolo
-//   - Generazione QR code univoco per ogni tavolo
-//   - Link QR: http://localhost:3000/scan/<codice_univoco>
-//   - Download QR come PNG
-//
-// Props ricevute dal page.tsx orchestratore:
-//   - ctx:   dati ristorante e utente (già caricati)
-//   - theme: "dark" | "light"
-// ──────────────────────────────────────────────────────────────────────────────
 
 "use client";
 
@@ -22,6 +10,7 @@ import {
   LayoutGrid, Plus, Trash2, QrCode,
   Download, RefreshCw, CheckCircle2,
   Coffee, Loader2, AlertCircle, Copy,
+  Info, Wifi, WifiOff, ShoppingCart, CreditCard, Banknote, X,
 } from "lucide-react";
 import QRCode from "qrcode";
 import type { RestaurantCtx, ThemeMode } from "../page";
@@ -30,10 +19,25 @@ import type { RestaurantCtx, ThemeMode } from "../page";
 
 interface Table {
   id:         string;
-  label:      string;   // es. "Tavolo 1"
-  code:       string;   // es. "TAV1-X9Z2"
+  label:      string;
+  code:       string;
   is_active:  boolean;
   created_at: string;
+}
+
+interface TableInfo {
+  session:  { id: string; is_active: boolean; created_at: string } | null;
+  order:    {
+    id: string;
+    status: string;
+    total_cents: number;
+    payment_method: string | null;
+    discount_cents: number;
+    coupon_code: string | null;
+    confirmed_at: string | null;
+    created_at: string;
+    items_count: number;
+  } | null;
 }
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
@@ -62,6 +66,273 @@ async function renderQR(code: string): Promise<string> {
     margin: 2,
     color: { dark: "#000000", light: "#ffffff" },
   });
+}
+
+function formatEur(cents: number): string {
+  return (cents / 100).toFixed(2).replace(".", ",") + " €";
+}
+
+function formatDate(iso: string): string {
+  return new Date(iso).toLocaleString("it-IT", {
+    day: "2-digit", month: "2-digit", year: "numeric",
+    hour: "2-digit", minute: "2-digit",
+  });
+}
+
+// ─── Sub-component: Info Modal ────────────────────────────────────────────────
+
+function InfoModal({
+  table,
+  onClose,
+  theme,
+  supabase,
+}: {
+  table: Table;
+  onClose: () => void;
+  theme: ThemeMode;
+  supabase: ReturnType<typeof createBrowserClient>;
+}) {
+  const dark   = theme === "dark";
+  const bg     = dark ? "#0e0d0b" : "#faf8f3";
+  const card   = dark ? "#13131e" : "#ffffff";
+  const txt    = dark ? "#f5f5f4" : "#1c1917";
+  const muted  = dark ? "#a8a29e" : "#78716c";
+  const border = dark ? "rgba(255,255,255,0.08)" : "#e7e5e4";
+
+  const [info,    setInfo]    = useState<TableInfo | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchInfo = async () => {
+      setLoading(true);
+      try {
+        // 1. Sessione attiva
+        const { data: sessions } = await supabase
+          .from("qr_sessions")
+          .select("id, is_active, created_at")
+          .eq("table_id", table.id)
+          .eq("is_active", true)
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        const session = sessions?.[0] ?? null;
+
+        // 2. Ordine pending/confirmed più recente per questo tavolo
+        const { data: orders } = await supabase
+          .from("orders")
+          .select("id, status, total_cents, payment_method, discount_cents, coupon_code, confirmed_at, created_at")
+          .eq("table_id", table.id)
+          .in("status", ["pending", "confirmed"])
+          .order("created_at", { ascending: false })
+          .limit(1);
+
+        const order = orders?.[0] ?? null;
+
+        // 3. Conta items se c'è un ordine
+        let items_count = 0;
+        if (order) {
+          const { count } = await supabase
+            .from("order_items")
+            .select("id", { count: "exact", head: true })
+            .eq("order_id", order.id);
+          items_count = count ?? 0;
+        }
+
+        setInfo({
+          session,
+          order: order ? { ...order, items_count } : null,
+        });
+      } catch {
+        setInfo({ session: null, order: null });
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchInfo();
+  }, [table.id]);
+
+  const statusColor = (status: string) => {
+    if (status === "confirmed") return "#4ade80";
+    if (status === "pending")   return "#facc15";
+    return muted;
+  };
+
+  const statusLabel = (status: string) => {
+    if (status === "confirmed") return "Confermato";
+    if (status === "pending")   return "In attesa";
+    if (status === "cancelled") return "Annullato";
+    return status;
+  };
+
+  const paymentIcon = (method: string | null) => {
+    if (method === "card") return <CreditCard style={{ width: 14, height: 14 }} />;
+    if (method === "cash") return <Banknote style={{ width: 14, height: 14 }} />;
+    return <AlertCircle style={{ width: 14, height: 14, color: muted }} />;
+  };
+
+  const paymentLabel = (method: string | null) => {
+    if (method === "card") return "Carta / Apple Pay";
+    if (method === "cash") return "Contanti";
+    return "Non ancora assegnata";
+  };
+
+  return (
+    <div
+      style={{
+        position: "fixed", inset: 0, zIndex: 50,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 16,
+        background: "rgba(0,0,0,0.6)",
+        backdropFilter: "blur(4px)",
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: card,
+          border: `1px solid ${border}`,
+          borderRadius: 24,
+          padding: 28,
+          width: "100%",
+          maxWidth: 400,
+          boxShadow: "0 24px 64px rgba(0,0,0,0.4)",
+        }}
+        onClick={e => e.stopPropagation()}
+      >
+        {/* Header */}
+        <div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", marginBottom: 24 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            <div style={{ width: 36, height: 36, borderRadius: 12, background: "rgba(99,102,241,0.15)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <Info style={{ width: 18, height: 18, color: "#818cf8" }} />
+            </div>
+            <div>
+              <p style={{ color: txt, fontWeight: 700, fontSize: 15, margin: 0 }}>{table.label}</p>
+              <p style={{ color: muted, fontSize: 12, margin: 0, fontFamily: "monospace" }}>{table.code}</p>
+            </div>
+          </div>
+          <button
+            onClick={onClose}
+            style={{ background: "transparent", border: "none", cursor: "pointer", color: muted, padding: 4, display: "flex" }}
+          >
+            <X style={{ width: 18, height: 18 }} />
+          </button>
+        </div>
+
+        {loading ? (
+          <div style={{ display: "flex", justifyContent: "center", padding: "32px 0" }}>
+            <Loader2 style={{ width: 28, height: 28, color: muted, animation: "spin 0.8s linear infinite" }} />
+            <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+          </div>
+        ) : (
+          <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+
+            {/* Sessione */}
+            <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 16, padding: "14px 16px" }}>
+              <p style={{ color: muted, fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", margin: "0 0 10px" }}>
+                Sessione
+              </p>
+              {info?.session ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: "#4ade80", boxShadow: "0 0 8px #4ade80" }} />
+                  <div>
+                    <p style={{ color: txt, fontSize: 13, fontWeight: 600, margin: 0 }}>Sessione attiva</p>
+                    <p style={{ color: muted, fontSize: 11, margin: 0 }}>Avviata il {formatDate(info.session.created_at)}</p>
+                  </div>
+                  <Wifi style={{ width: 16, height: 16, color: "#4ade80", marginLeft: "auto" }} />
+                </div>
+              ) : (
+                <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+                  <div style={{ width: 8, height: 8, borderRadius: "50%", background: muted }} />
+                  <p style={{ color: muted, fontSize: 13, fontWeight: 500, margin: 0 }}>Nessuna sessione attiva</p>
+                  <WifiOff style={{ width: 16, height: 16, color: muted, marginLeft: "auto" }} />
+                </div>
+              )}
+            </div>
+
+            {/* Ordine */}
+            <div style={{ background: bg, border: `1px solid ${border}`, borderRadius: 16, padding: "14px 16px" }}>
+              <p style={{ color: muted, fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", margin: "0 0 10px" }}>
+                Ordine
+              </p>
+              {info?.order ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+                  {/* Status */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <ShoppingCart style={{ width: 14, height: 14, color: statusColor(info.order.status) }} />
+                      <span style={{ color: txt, fontSize: 13, fontWeight: 600 }}>
+                        {statusLabel(info.order.status)}
+                      </span>
+                    </div>
+                    <span style={{
+                      fontSize: 11, fontWeight: 700, padding: "2px 10px", borderRadius: 20,
+                      background: `${statusColor(info.order.status)}20`,
+                      color: statusColor(info.order.status),
+                    }}>
+                      {info.order.items_count} {info.order.items_count === 1 ? "piatto" : "piatti"}
+                    </span>
+                  </div>
+
+                  {/* Divisore */}
+                  <div style={{ height: 1, background: border }} />
+
+                  {/* Totale */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ color: muted, fontSize: 12 }}>Totale</span>
+                    <span style={{ color: txt, fontSize: 14, fontWeight: 800 }}>
+                      {formatEur(info.order.total_cents)}
+                    </span>
+                  </div>
+
+                  {/* Sconto */}
+                  {(info.order.discount_cents ?? 0) > 0 && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ color: muted, fontSize: 12 }}>
+                        Sconto {info.order.coupon_code ? `(${info.order.coupon_code})` : ""}
+                      </span>
+                      <span style={{ color: "#4ade80", fontSize: 13, fontWeight: 700 }}>
+                        -{formatEur(info.order.discount_cents)}
+                      </span>
+                    </div>
+                  )}
+
+                  {/* Pagamento */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ color: muted, fontSize: 12 }}>Pagamento</span>
+                    <div style={{
+                      display: "flex", alignItems: "center", gap: 5, fontSize: 12, fontWeight: 600,
+                      color: info.order.payment_method ? txt : muted,
+                      fontStyle: info.order.payment_method ? "normal" : "italic",
+                    }}>
+                      {paymentIcon(info.order.payment_method)}
+                      {paymentLabel(info.order.payment_method)}
+                    </div>
+                  </div>
+
+                  {/* Data */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                    <span style={{ color: muted, fontSize: 12 }}>Creato</span>
+                    <span style={{ color: muted, fontSize: 11 }}>{formatDate(info.order.created_at)}</span>
+                  </div>
+
+                  {info.order.confirmed_at && (
+                    <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                      <span style={{ color: muted, fontSize: 12 }}>Confermato</span>
+                      <span style={{ color: muted, fontSize: 11 }}>{formatDate(info.order.confirmed_at)}</span>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p style={{ color: muted, fontSize: 13, margin: 0 }}>Nessun ordine attivo</p>
+              )}
+            </div>
+
+          </div>
+        )}
+      </div>
+    </div>
+  );
 }
 
 // ─── Sub-component: QR Modal ──────────────────────────────────────────────────
@@ -116,7 +387,6 @@ function QrModal({
         style={{ background: card, border: `1px solid ${border}` }}
         onClick={e => e.stopPropagation()}
       >
-        {/* Header */}
         <div>
           <h3 className="text-lg font-bold" style={{ color: txt }}>
             QR Code — {table.label}
@@ -126,7 +396,6 @@ function QrModal({
           </p>
         </div>
 
-        {/* QR */}
         <div className="flex justify-center">
           {qrSrc ? (
             <img
@@ -145,7 +414,6 @@ function QrModal({
           )}
         </div>
 
-        {/* URL */}
         <div
           className="flex items-center gap-2 rounded-xl px-3 py-2.5"
           style={{ background: bg, border: `1px solid ${border}` }}
@@ -162,7 +430,6 @@ function QrModal({
           </button>
         </div>
 
-        {/* Codice badge */}
         <div className="flex items-center justify-between">
           <span className="text-xs font-mono px-2.5 py-1 rounded-lg font-semibold"
             style={{ background: "rgba(74,222,128,0.12)", color: "#4ade80" }}>
@@ -210,6 +477,7 @@ export function TablesSection({ ctx, theme }: Props) {
   const [saving,    setSaving]    = useState(false);
   const [deleting,  setDeleting]  = useState<string | null>(null);
   const [qrTable,   setQrTable]   = useState<Table | null>(null);
+  const [infoTable, setInfoTable] = useState<Table | null>(null);
   const [error,     setError]     = useState<string | null>(null);
 
   // ── Tema ──────────────────────────────────────────────────────────────────
@@ -394,10 +662,11 @@ export function TablesSection({ ctx, theme }: Props) {
       ) : (
         <div className={`${card} rounded-2xl border ${bord} overflow-hidden`}>
           {/* Intestazione colonne */}
-          <div className={`grid grid-cols-[1fr_auto_auto_auto] gap-4 px-5 py-3 border-b ${bord}`}>
+          <div className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 px-5 py-3 border-b ${bord}`}>
             <p className={`text-xs font-semibold uppercase tracking-wide ${muted}`}>Tavolo</p>
             <p className={`text-xs font-semibold uppercase tracking-wide ${muted} text-center w-28`}>Codice QR</p>
             <p className={`text-xs font-semibold uppercase tracking-wide ${muted} text-center w-20`}>QR</p>
+            <p className={`text-xs font-semibold uppercase tracking-wide ${muted} text-center w-10`}>Info</p>
             <p className={`text-xs font-semibold uppercase tracking-wide ${muted} text-center w-16`}>Azioni</p>
           </div>
 
@@ -405,7 +674,7 @@ export function TablesSection({ ctx, theme }: Props) {
             {tables.map(table => (
               <div
                 key={table.id}
-                className={`grid grid-cols-[1fr_auto_auto_auto] gap-4 items-center px-5 py-4 transition-all ${dark ? "hover:bg-white/3" : "hover:bg-gray-50"}`}
+                className={`grid grid-cols-[1fr_auto_auto_auto_auto] gap-4 items-center px-5 py-4 transition-all ${dark ? "hover:bg-white/3" : "hover:bg-gray-50"}`}
               >
                 {/* Label + stato */}
                 <div className="flex items-center gap-3 min-w-0">
@@ -435,6 +704,17 @@ export function TablesSection({ ctx, theme }: Props) {
                   >
                     <QrCode className="w-3.5 h-3.5" />
                     Mostra
+                  </button>
+                </div>
+
+                {/* Pulsante Info */}
+                <div className="w-10 flex justify-center">
+                  <button
+                    onClick={() => setInfoTable(table)}
+                    title="Info sessione e ordine"
+                    className={`p-1.5 rounded-lg transition-all ${dark ? "hover:bg-indigo-500/15 text-gray-400 hover:text-indigo-400" : "hover:bg-indigo-50 text-gray-400 hover:text-indigo-500"}`}
+                  >
+                    <Info className="w-4 h-4" />
                   </button>
                 </div>
 
@@ -488,6 +768,16 @@ export function TablesSection({ ctx, theme }: Props) {
           table={qrTable}
           theme={theme}
           onClose={() => setQrTable(null)}
+        />
+      )}
+
+      {/* ── MODAL INFO ──────────────────────────────────────────────────── */}
+      {infoTable && (
+        <InfoModal
+          table={infoTable}
+          theme={theme}
+          supabase={supabase}
+          onClose={() => setInfoTable(null)}
         />
       )}
 

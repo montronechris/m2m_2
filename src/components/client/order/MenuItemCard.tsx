@@ -119,61 +119,65 @@ export function MenuItemCard({ item, onAdd, isLoadingOptions = false, palette: T
               )}
             </div>
 
-            {/* Prezzo + azioni */}
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+{/* Prezzo + azioni */}
+<div style={{
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  flexWrap: "wrap",   // ← AGGIUNTO: va a capo se non c'è spazio
+}}>
 
-              {/* Prezzo */}
-              <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
-                <span style={{ fontSize: 12, fontWeight: 700, color: T.brand, letterSpacing: "0.02em" }}>€</span>
-                <span style={{ fontSize: 23, fontWeight: 900, color: T.text, letterSpacing: "-0.03em", lineHeight: 1 }}>
-                  {(item.price_cents / 100).toFixed(2)}
-                </span>
-              </div>
+  {/* Prezzo */}
+  <div style={{ display: "flex", alignItems: "baseline", gap: 2 }}>
+    <span style={{ fontSize: 12, fontWeight: 700, color: T.brand, letterSpacing: "0.02em" }}>€</span>
+    <span style={{ fontSize: 23, fontWeight: 900, color: T.text, letterSpacing: "-0.03em", lineHeight: 1 }}>
+      {(item.price_cents / 100).toFixed(2)}
+    </span>
+  </div>
 
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                {/* Info */}
-                <button
-                  ref={infoButtonRef}
-                  onClick={openInfo}
-                  aria-label="Informazioni piatto"
-                  style={{
-                    width: 34, height: 34, borderRadius: "50%",
-                    border: `1.5px solid ${T.border}`,
-                    background: T.chipBg,
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    cursor: "pointer", transition: "all 0.18s", flexShrink: 0,
-                  }}
-                  onMouseEnter={e => {
-                    (e.currentTarget as HTMLButtonElement).style.background = T.chipBgActive;
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = T.borderStrong;
-                  }}
-                  onMouseLeave={e => {
-                    (e.currentTarget as HTMLButtonElement).style.background = T.chipBg;
-                    (e.currentTarget as HTMLButtonElement).style.borderColor = T.border;
-                  }}
-                >
-                  <Info style={{ width: 15, height: 15, color: T.brand }} />
-                </button>
+  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+    {/* Info */}
+    <button
+      ref={infoButtonRef}
+      onClick={openInfo}
+      aria-label="Informazioni piatto"
+      style={{
+        width: 34, height: 34, borderRadius: "50%",
+        border: `1.5px solid ${T.border}`,
+        background: T.chipBg,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        cursor: "pointer", transition: "all 0.18s", flexShrink: 0,
+      }}
+      // ...mouseEnter/Leave invariati
+    >
+      <Info style={{ width: 15, height: 15, color: T.brand }} />
+    </button>
 
-                {/* Aggiungi */}
-                <button
-                  onClick={(e) => {
-                    const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
-                    onAdd(item, rect);
-                  }}
-                  disabled={isLoadingOptions}
-                  style={{
-                    height: 40, paddingLeft: 18, paddingRight: 18,
-                    borderRadius: 999, border: "none",
-                    background: isLoadingOptions ? `${T.brand}66` : T.btnBg,
-                    color: "#fff",
-                    fontSize: 14, fontWeight: 700,
-                    display: "flex", alignItems: "center", gap: 6,
-                    cursor: isLoadingOptions ? "not-allowed" : "pointer",
-                    boxShadow: isLoadingOptions ? "none" : T.btnShadow,
-                    transition: "transform 0.15s, box-shadow 0.15s",
-                    flexShrink: 0,
-                  }}
+    {/* Aggiungi */}
+    <button
+      onClick={(e) => {
+        const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+        onAdd(item, rect);
+      }}
+      disabled={isLoadingOptions}
+      style={{
+        height: 40,
+        paddingLeft: 14,   // ← ridotto leggermente
+        paddingRight: 14,  // ← ridotto leggermente
+        minWidth: 0,       // ← AGGIUNTO: non forza larghezza minima
+        borderRadius: 999, border: "none",
+        background: isLoadingOptions ? `${T.brand}66` : T.btnBg,
+        color: "#fff",
+        fontSize: 13,      // ← leggermente più piccolo su mobile
+        fontWeight: 700,
+        display: "flex", alignItems: "center", gap: 5,
+        cursor: isLoadingOptions ? "not-allowed" : "pointer",
+        boxShadow: isLoadingOptions ? "none" : T.btnShadow,
+        transition: "transform 0.15s, box-shadow 0.15s",
+        flexShrink: 0,
+        whiteSpace: "nowrap",  // ← AGGIUNTO: evita che il testo vada a capo
+      }}
                   onMouseEnter={e => {
                     if (!isLoadingOptions) {
                       (e.currentTarget as HTMLButtonElement).style.transform = "scale(1.05)";
@@ -184,14 +188,14 @@ export function MenuItemCard({ item, onAdd, isLoadingOptions = false, palette: T
                     (e.currentTarget as HTMLButtonElement).style.transform = "scale(1)";
                     (e.currentTarget as HTMLButtonElement).style.boxShadow = isLoadingOptions ? "none" : T.btnShadow;
                   }}
-                >
-                  {isLoadingOptions
-                    ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" />
-                    : <><Plus style={{ width: 16, height: 16 }} />Aggiungi</>
-                  }
-                </button>
-              </div>
-            </div>
+    >
+      {isLoadingOptions
+        ? <Loader2 style={{ width: 16, height: 16 }} className="animate-spin" />
+        : <><Plus style={{ width: 16, height: 16 }} />Aggiungi</>
+      }
+    </button>
+  </div>
+</div>
           </div>
         </div>
       </div>

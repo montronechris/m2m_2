@@ -9,6 +9,7 @@ import {
   Trash2, Plus, Minus, ArrowLeft,
   Settings, CheckCircle, AlertCircle,
   ShoppingBag, StickyNote, ChefHat,
+  Tag, Banknote, CreditCard, X, Loader2,
 } from "lucide-react";
 import Link from "next/link";
 import CustomizationModal from "@/components/client/cart/CustomizationModal";
@@ -87,6 +88,8 @@ export default function CartPage() {
   const removeItem     = useCartStore((s) => s.removeItem);
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const updateNote     = useCartStore((s) => s.updateNote);
+  const initFromDB     = useCartStore((s) => s.initFromDB);
+  const initialized    = useCartStore((s) => s.initialized);
 
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState<string | null>(null);
@@ -94,25 +97,8 @@ export default function CartPage() {
   const submitted = React.useRef(false);
   const [session,       setSession]       = useState<ReturnType<typeof getTableSession>>(null);
   const [sessionLoaded, setSessionLoaded] = useState(false);
-  const [brandColor,    setBrandColor]    = useState<string>(() => {
-    if (typeof window === "undefined") return "#ffffff";
-    try {
-      const sess = getTableSession();
-      const cached = sess?.restaurantId
-        ? localStorage.getItem(`brand_color_${sess.restaurantId}`)
-        : null;
-      return cached || "#ffffff";
-    } catch { return "#ffffff"; }
-  });
-  const [brandReady, setBrandReady] = useState<boolean>(() => {
-    if (typeof window === "undefined") return false;
-    try {
-      const sess = getTableSession();
-      return sess?.restaurantId
-        ? !!localStorage.getItem(`brand_color_${sess.restaurantId}`)
-        : false;
-    } catch { return false; }
-  });
+  const [brandColor,    setBrandColor]    = useState<string>("#ffffff");
+  const [brandReady, setBrandReady] = useState<boolean>(false);
 
   const [showCustomization, setShowCustomization] = useState(false);
   const [customizingItem,   setCustomizingItem]   = useState<{
@@ -122,6 +108,58 @@ export default function CartPage() {
 
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [noteItem,      setNoteItem]      = useState<{ orderItemId: string; name: string; note: string } | null>(null);
+
+  // ── Coupon ────────────────────────────────────────────────────────────────
+  const [couponCode,    setCouponCode]    = useState("");
+  const [couponApplied, setCouponApplied] = useState<{ code: string; discountCents: number } | null>(null);
+  const [couponLoading, setCouponLoading] = useState(false);
+  const [couponError,   setCouponError]   = useState<string | null>(null);
+  const [showCouponInput, setShowCouponInput] = useState(false);
+
+  // ── Metodo di pagamento ──────────────────────────────────────────────────
+  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
+
+  const handleApplyCoupon = async () => {
+    const code = couponCode.trim().toUpperCase();
+    if (!code) return;
+    setCouponLoading(true);
+    setCouponError(null);
+    try {
+      // TODO: collegare alla validazione reale del coupon (es. tabella `coupons`)
+      const res = await fetch(
+        `${SUPABASE_URL}/rest/v1/coupons?code=eq.${encodeURIComponent(code)}&select=*`,
+        { headers: supabaseHeaders }
+      );
+      if (!res.ok) throw new Error("Errore di rete");
+      const data = await res.json();
+      if (!Array.isArray(data) || data.length === 0) {
+        setCouponError("Codice coupon non valido");
+        setCouponApplied(null);
+        return;
+      }
+      const coupon = data[0];
+      let discountCents = 0;
+      if (coupon.discount_type === "percent") {
+        discountCents = Math.round((totalCents * coupon.discount_value) / 100);
+      } else {
+        discountCents = coupon.discount_value;
+      }
+      discountCents = Math.min(discountCents, totalCents);
+      setCouponApplied({ code, discountCents });
+    } catch {
+      setCouponError("Impossibile verificare il coupon");
+      setCouponApplied(null);
+    } finally {
+      setCouponLoading(false);
+    }
+  };
+
+  const handleRemoveCoupon = () => {
+    setCouponApplied(null);
+    setCouponCode("");
+    setCouponError(null);
+    setShowCouponInput(false);
+  };
 
   // ── Swipe-delete animation ───────────────────────────────────────────────────
   // revealedId  = card spostata a sx, pannello rosso visibile, in attesa di conferma
@@ -158,6 +196,19 @@ useEffect(() => {
   setSession(sess);
   setSessionLoaded(true);
 
+  // Legge il colore brand dalla cache locale solo dopo il mount (client-only),
+  // così l'HTML iniziale combacia tra server e client.
+  let cachedColor: string | null = null;
+  try {
+    cachedColor = sess?.restaurantId
+      ? localStorage.getItem(`brand_color_${sess.restaurantId}`)
+      : null;
+    if (cachedColor) {
+      setBrandColor(cachedColor);
+      setBrandReady(true);
+    }
+  } catch {}
+
   if (sess?.restaurantId) {
     (async () => {
       try {
@@ -185,15 +236,36 @@ useEffect(() => {
   const storeLoading = useCartStore((s) => s.loading);
   const orderId      = useCartStore((s) => s.orderId);
 
+  // ── Inizializza il carrello dal DB se non è già stato fatto ──────────────
+  // Necessario perché lo store Zustand non persiste tra reload: senza questo,
+  // un refresh della pagina /cart troverebbe items=[] e orderId=null e
+  // reindirizzerebbe erroneamente a /order anche con un ordine attivo.
   useEffect(() => {
-    if (!sessionLoaded || storeLoading) return;
+    if (!sessionLoaded || !session) return;
+    if (initialized || storeLoading) return;
+    const tableId = (session as { tableId?: string | null }).tableId ?? null;
+initFromDB(
+  tableId,
+  session.restaurantId ?? null,
+  session.restaurantSlug ?? "",
+  session.sessionId ?? null,   // ← corretto
+);  }, [sessionLoaded, session, initialized, storeLoading, initFromDB]);
+
+  useEffect(() => {
+    if (!sessionLoaded || storeLoading || !initialized) return;
     if (!session) return;
     const sid = session.sessionId;
     if (!sid) return;
-    if (!storeLoading && orderId === null && items.length === 0 && !submitted.current) {
-      router.replace(`/order/${sid}`);
-    }
-  }, [sessionLoaded, storeLoading, orderId, items.length, session, router]);
+    // Piccolo debounce: lascia a Zustand il tempo di committare items e orderId
+    // nello stesso batch dopo che initFromDB ha completato, evitando il redirect
+    // prematuro che si verificava al F5 quando initialized=true ma items=[] ancora.
+    const t = setTimeout(() => {
+      if (orderId === null && items.length === 0 && !submitted.current) {
+        router.replace(`/order/${sid}`);
+      }
+    }, 80);
+    return () => clearTimeout(t);
+  }, [sessionLoaded, storeLoading, initialized, orderId, items.length, session, router]);
 
   const TIMEOUT_MS      = 15 * 60 * 1000;
   const lastActivityRef = React.useRef<number>(Date.now());
@@ -232,6 +304,9 @@ useEffect(() => {
   }, [router]);
 
   const sessionId = useMemo(() => session?.sessionId || null, [session]);
+
+  const discountCents = couponApplied?.discountCents ?? 0;
+  const finalTotalCents = Math.max(0, totalCents - discountCents);
 
   const menuHref = useMemo(() => {
     if (!sessionId) return "/";
@@ -335,11 +410,14 @@ useEffect(() => {
         method: "PATCH",
         headers: { ...supabaseHeaders, Prefer: "return=minimal" },
         body: JSON.stringify({
-          status:       "confirmed",
-          total_cents:  totalCents,
-          ordine:       items.map((i) => `${i.quantity}x ${i.name}`).join(", "),
-          confirmed_at: new Date().toISOString(),
-          updated_at:   new Date().toISOString(),
+          status:        "confirmed",
+          total_cents:   finalTotalCents,
+          discount_cents: discountCents,
+          coupon_code:   couponApplied?.code ?? null,
+          payment_method: paymentMethod,
+          ordine:        items.map((i) => `${i.quantity}x ${i.name}`).join(", "),
+          confirmed_at:  new Date().toISOString(),
+          updated_at:    new Date().toISOString(),
         }),
       });
       if (!patchRes.ok) {
@@ -402,6 +480,15 @@ useEffect(() => {
             </button>
           </Link>
         </div>
+      </div>
+    );
+  }
+
+  if (!initialized || storeLoading) {
+    return (
+      <div style={{ minHeight: "100vh", background: T.bgGradient, display: "flex", alignItems: "center", justifyContent: "center" }}>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+        <div style={{ width: 40, height: 40, border: `3px solid ${T.accent}`, borderTopColor: "transparent", borderRadius: "50%", animation: "spin 0.8s linear infinite" }} />
       </div>
     );
   }
@@ -591,33 +678,128 @@ useEffect(() => {
           from { opacity:0; transform: scale(0.92) translateY(16px); }
           to   { opacity:1; transform: scale(1)    translateY(0);    }
         }
+
+        .spin-icon {
+          animation: spin 0.8s linear infinite;
+        }
+
+        /* ── Menu button: stile FAB (ripple + shimmer) ── */
+        @keyframes menuShimmer {
+          0%   { background-position: -200% center; }
+          100% { background-position:  200% center; }
+        }
+        @keyframes menuRipple {
+          0%   { transform: scale(1);   opacity: 0.45; }
+          100% { transform: scale(2.2); opacity: 0;    }
+        }
+        @keyframes menuFloat {
+          0%, 100% { transform: translateY(0px); }
+          50%      { transform: translateY(-2px); }
+        }
+        .menu-btn {
+          transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1), box-shadow 0.2s ease;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .menu-btn:active {
+          transform: scale(0.90) !important;
+        }
+        .menu-btn-icon {
+          animation: menuFloat 3.2s ease-in-out infinite;
+        }
+
+        /* ── Coupon & metodo pagamento: entrata + interazione ── */
+        @keyframes sectionEnter {
+          0%   { opacity: 0; transform: translateY(14px) scale(0.98); }
+          100% { opacity: 1; transform: translateY(0)    scale(1);    }
+        }
+        @keyframes paymentPop {
+          0%   { transform: scale(1);    }
+          40%  { transform: scale(0.95); }
+          70%  { transform: scale(1.03); }
+          100% { transform: scale(1);    }
+        }
+        @keyframes couponSuccessIn {
+          0%   { opacity: 0; transform: scale(0.92) translateY(-4px); }
+          60%  { opacity: 1; transform: scale(1.02) translateY(0);    }
+          100% { opacity: 1; transform: scale(1)    translateY(0);    }
+        }
+        .coupon-trigger, .coupon-apply-btn, .payment-card {
+          transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1),
+                      background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .coupon-trigger:active, .coupon-apply-btn:active {
+          transform: scale(0.97) !important;
+        }
+        .payment-card:active {
+          transform: scale(0.96) !important;
+        }
+        .payment-card.selected {
+          animation: paymentPop 0.32s cubic-bezier(0.34,1.3,0.64,1);
+        }
       `}</style>
 
       {/* Header sticky */}
       <div style={{
         position: "sticky", top: 0, zIndex: 50,
         background: T.headerBg,
-        backdropFilter: "blur(12px)",
-        WebkitBackdropFilter: "blur(12px)",
-        borderBottom: `1px solid ${T.border}`,
-        padding: "13px 20px",
+        backdropFilter: "blur(16px)",
+        WebkitBackdropFilter: "blur(16px)",
+        borderBottom: `1px solid ${T.borderSoft}`,
+        padding: "0 20px",
+        height: 60,
         display: "flex", alignItems: "center", justifyContent: "space-between",
       }}>
         <Link
           href={menuHref}
-          style={{ display: "flex", alignItems: "center", gap: 6, color: T.textMuted, textDecoration: "none", fontSize: 14, fontWeight: 600 }}
+          className="menu-btn"
+          style={{ display: "flex", alignItems: "center", gap: 8, color: T.textMuted, textDecoration: "none", fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}
         >
-          <ArrowLeft size={16} />
-          Torna al menu
+          <div className="menu-btn-icon" style={{
+            position: "relative",
+            width: 32, height: 32,
+            borderRadius: "50%",
+            background: `linear-gradient(135deg, ${T.accent}, ${T.accentDark})`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            overflow: "hidden",
+            boxShadow: `0 3px 10px ${T.accentBg}`,
+            flexShrink: 0,
+          }}>
+            {/* Ripple rings */}
+            <div style={{
+              position: "absolute", inset: 0, borderRadius: "50%",
+              background: T.accent, opacity: 0,
+              animation: "menuRipple 2.6s ease-out 0.4s infinite",
+              pointerEvents: "none",
+            }} />
+            <div style={{
+              position: "absolute", inset: 0, borderRadius: "50%",
+              background: T.accent, opacity: 0,
+              animation: "menuRipple 2.6s ease-out 1.7s infinite",
+              pointerEvents: "none",
+            }} />
+            {/* Shimmer */}
+            <div style={{
+              position: "absolute", inset: 0,
+              background: "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.35) 50%, transparent 60%)",
+              backgroundSize: "200% 100%",
+              animation: "menuShimmer 2.8s ease-in-out 1s infinite",
+              pointerEvents: "none",
+            }} />
+            <ArrowLeft size={15} strokeWidth={2.5} color="#fff" style={{ position: "relative", zIndex: 1 }} />
+          </div>
+          Menu
         </Link>
-        <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-          <ChefHat size={17} color={T.accent} />
-          <span style={{ fontWeight: 800, fontSize: 16, color: T.text, letterSpacing: "-0.02em" }}>Il tuo ordine</span>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
+          <div style={{ width: 28, height: 28, borderRadius: 8, background: T.accentBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
+            <ChefHat size={15} color={T.accent} />
+          </div>
+          <span style={{ fontWeight: 800, fontSize: 15, color: T.text, letterSpacing: "-0.02em" }}>Il tuo ordine</span>
         </div>
-        <div style={{ width: 90 }} />
+        <div style={{ width: 50 }} />
       </div>
 
-      <div style={{ maxWidth: 560, margin: "0 auto", padding: "20px 16px 140px" }}>
+      <div style={{ maxWidth: 560, margin: "0 auto", padding: "24px 16px 160px" }}>
 
         {/* Errore */}
         {error && (
@@ -628,9 +810,16 @@ useEffect(() => {
         )}
 
         {/* Conteggio */}
-        <p style={{ color: T.textMuted, fontSize: 12, fontWeight: 600, marginBottom: 14, letterSpacing: "0.06em", textTransform: "uppercase", opacity: 0.7 }}>
-          {items.length} {items.length === 1 ? "piatto selezionato" : "piatti selezionati"}
-        </p>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ width: 22, height: 22, borderRadius: "50%", background: T.accent, display: "flex", alignItems: "center", justifyContent: "center" }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "#fff" }}>{items.length}</span>
+            </div>
+            <p style={{ color: T.textMuted, fontSize: 12, fontWeight: 700, margin: 0, letterSpacing: "0.07em", textTransform: "uppercase" }}>
+              {items.length === 1 ? "piatto selezionato" : "piatti selezionati"}
+            </p>
+          </div>
+        </div>
 
         {/* Lista items */}
         <div onClick={handleDismissReveal} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
@@ -692,11 +881,12 @@ useEffect(() => {
                     position: "relative",
                     zIndex: 1,
                     background: T.bgCard,
-                    border: `1px solid ${T.border}`,
+                    border: `1px solid ${T.borderSoft}`,
                     borderRadius: 18,
                     borderLeft: `3px solid ${isRevealed || isConfirming ? "#ef4444" : T.accent}`,
-                    padding: "16px",
+                    padding: "16px 16px 14px",
                     backdropFilter: "blur(8px)",
+                    boxShadow: `0 2px 12px ${T.borderSoft}`,
                     // CSS custom property per le keyframe
                     ["--reveal-offset" as string]: REVEAL_OFFSET,
                     animation: isConfirming
@@ -711,32 +901,34 @@ useEffect(() => {
                   }}
                 >
                 {/* Nome + prezzo + cestino */}
-                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 12 }}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", gap: 12, marginBottom: 14 }}>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <h3 style={{ fontWeight: 700, fontSize: 16, margin: 0, color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    <h3 style={{ fontWeight: 700, fontSize: 16, margin: "0 0 4px", color: T.text, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", letterSpacing: "-0.01em" }}>
                       {item.name}
                     </h3>
-                    <p style={{ color: T.textMuted, fontSize: 13, margin: "3px 0 0", opacity: 0.8 }}>{formatPrice(price)} € cad.</p>
+                    <span style={{ display: "inline-block", fontSize: 11, fontWeight: 600, color: T.textMuted, background: T.accentBg, borderRadius: 5, padding: "2px 7px", letterSpacing: "0.01em" }}>
+                      {formatPrice(price)} € cad.
+                    </span>
                   </div>
-                  <div style={{ display: "flex", alignItems: "center", gap: 10, flexShrink: 0 }}>
-                    <span style={{ fontWeight: 800, fontSize: 17, color: T.text, fontVariantNumeric: "tabular-nums" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
+                    <span style={{ fontWeight: 800, fontSize: 18, color: T.text, fontVariantNumeric: "tabular-nums", letterSpacing: "-0.02em" }}>
                       {formatPrice(lineTotal)} €
                     </span>
                     <button
                       onClick={(e) => handleRevealDelete(item.orderItemId!, e)}
                       disabled={!!confirmingId}
                       style={{
-                        background: isRevealed ? "rgba(239,68,68,0.12)" : "transparent",
-                        border: "none",
+                        background: isRevealed ? "rgba(239,68,68,0.10)" : T.accentBg,
+                        border: `1px solid ${isRevealed ? "rgba(239,68,68,0.25)" : T.borderSoft}`,
                         cursor: confirmingId ? "not-allowed" : "pointer",
-                        color: isRevealed ? T.danger : T.border,
-                        padding: 4, borderRadius: 8, display: "flex",
-                        transition: "color 0.15s, background 0.15s",
+                        color: isRevealed ? T.danger : T.textMuted,
+                        padding: 6, borderRadius: 9, display: "flex",
+                        transition: "color 0.15s, background 0.15s, border-color 0.15s",
                       }}
-                      onMouseEnter={e => { if (!isRevealed) e.currentTarget.style.color = T.danger; }}
-                      onMouseLeave={e => { if (!isRevealed) e.currentTarget.style.color = T.border; }}
+                      onMouseEnter={e => { if (!isRevealed) { e.currentTarget.style.color = T.danger; e.currentTarget.style.background = "rgba(239,68,68,0.08)"; } }}
+                      onMouseLeave={e => { if (!isRevealed) { e.currentTarget.style.color = T.textMuted; e.currentTarget.style.background = T.accentBg; } }}
                     >
-                      <Trash2 size={16} />
+                      <Trash2 size={15} />
                     </button>
                   </div>
                 </div>
@@ -761,60 +953,215 @@ useEffect(() => {
                 )}
 
                 {/* Azioni */}
-                <div style={{ display: "flex", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
                   {/* Stepper */}
-                  <div style={{ display: "flex", alignItems: "center", background: T.accentBg, border: `1px solid ${T.borderSoft}`, borderRadius: 10, overflow: "hidden" }}>
+                  <div style={{ display: "flex", alignItems: "center", background: T.accentBg, border: `1px solid ${T.borderSoft}`, borderRadius: 11, overflow: "hidden" }}>
                     <button
                       className="btn-stepper"
                       onClick={() => updateQuantity(item.orderItemId!, -1)}
                       disabled={qty <= 1}
-                      style={{ padding: "7px 11px", background: "transparent", border: "none", cursor: qty <= 1 ? "not-allowed" : "pointer", color: qty <= 1 ? T.border : T.textMuted, display: "flex" }}
+                      style={{ padding: "8px 13px", background: "transparent", border: "none", cursor: qty <= 1 ? "not-allowed" : "pointer", color: qty <= 1 ? T.border : T.accent, display: "flex" }}
                     >
-                      <Minus size={14} />
+                      <Minus size={13} strokeWidth={2.5} />
                     </button>
-                    <span style={{ padding: "0 4px", minWidth: 28, textAlign: "center", fontWeight: 700, fontSize: 15, color: T.text }}>
+                    <span style={{ padding: "0 2px", minWidth: 30, textAlign: "center", fontWeight: 800, fontSize: 15, color: T.text, letterSpacing: "-0.01em" }}>
                       {qty}
                     </span>
                     <button
                       className="btn-stepper"
                       onClick={() => updateQuantity(item.orderItemId!, 1)}
-                      style={{ padding: "7px 11px", background: "transparent", border: "none", cursor: "pointer", color: T.textMuted, display: "flex" }}
+                      style={{ padding: "8px 13px", background: "transparent", border: "none", cursor: "pointer", color: T.accent, display: "flex" }}
                     >
-                      <Plus size={14} />
+                      <Plus size={13} strokeWidth={2.5} />
                     </button>
                   </div>
 
-                  {/* Personalizza */}
-                  <button
-                    className={`btn-action${activeBtn === `${item.orderItemId}-personalizza` ? " btn-pressed" : ""}`}
-                    onClick={() => pressBtn(`${item.orderItemId}-personalizza`, () => handleOpenCustomization(item.menuItemId, customizationsKey))}
-                    style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 12px", background: "transparent", border: `1px solid ${T.border}`, borderRadius: 10, color: T.textMuted, fontSize: 12, fontWeight: 500, cursor: "pointer" }}
-                  >
-                    <Settings size={13} className="btn-icon" /> Personalizza
-                  </button>
+                  {/* Personalizza + Nota */}
+                  <div style={{ display: "flex", gap: 6 }}>
+                    <button
+                      className={`btn-action${activeBtn === `${item.orderItemId}-personalizza` ? " btn-pressed" : ""}`}
+                      onClick={() => pressBtn(`${item.orderItemId}-personalizza`, () => handleOpenCustomization(item.menuItemId, customizationsKey))}
+                      style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 11px", background: "transparent", border: `1px solid ${T.border}`, borderRadius: 10, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", letterSpacing: "-0.01em" }}
+                    >
+                      <Settings size={12} className="btn-icon" strokeWidth={2.2} /> Personalizza
+                    </button>
 
-                  {/* Nota */}
-                  <button
-                    className={`btn-action${activeBtn === `${item.orderItemId}-nota` ? " btn-pressed" : ""}`}
-                    onClick={() => pressBtn(`${item.orderItemId}-nota`, () => handleOpenNote(item.orderItemId!, item.name, item.note ?? ""))}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 5,
-                      padding: "7px 12px",
-                      background: item.note ? T.amberBg : "transparent",
-                      border: `1px solid ${item.note ? "rgba(245,158,11,0.3)" : T.border}`,
-                      borderRadius: 10,
-                      color: item.note ? "#92400e" : T.textMuted,
-                      fontSize: 12, fontWeight: 500, cursor: "pointer",
-                    }}
-                  >
-                    <StickyNote size={13} className="btn-icon" />
-                    {item.note ? "Modifica nota" : "Aggiungi nota"}
-                  </button>
+                    <button
+                      className={`btn-action${activeBtn === `${item.orderItemId}-nota` ? " btn-pressed" : ""}`}
+                      onClick={() => pressBtn(`${item.orderItemId}-nota`, () => handleOpenNote(item.orderItemId!, item.name, item.note ?? ""))}
+                      style={{
+                        display: "flex", alignItems: "center", gap: 4,
+                        padding: "7px 11px",
+                        background: item.note ? T.amberBg : "transparent",
+                        border: `1px solid ${item.note ? "rgba(245,158,11,0.3)" : T.border}`,
+                        borderRadius: 10,
+                        color: item.note ? "#92400e" : T.textMuted,
+                        fontSize: 12, fontWeight: 600, cursor: "pointer", letterSpacing: "-0.01em",
+                      }}
+                    >
+                      <StickyNote size={12} className="btn-icon" strokeWidth={2.2} />
+                      {item.note ? "Nota" : "Nota"}
+                    </button>
+                  </div>
                 </div>
                 </div>{/* fine card inner */}
               </div>
             );
           })}
+        </div>
+
+        {/* ── Coupon ─────────────────────────────────────────────────────── */}
+        <div style={{ marginTop: 20, animation: "sectionEnter 0.4s cubic-bezier(0.25,0.46,0.45,0.94) forwards" }}>
+          {!couponApplied ? (
+            <>
+              {!showCouponInput ? (
+                <button
+                  className="coupon-trigger"
+                  onClick={() => setShowCouponInput(true)}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 8,
+                    width: "100%", padding: "13px 16px",
+                    background: T.bgCard, border: `1px solid ${T.borderSoft}`,
+                    borderRadius: 14, cursor: "pointer",
+                    color: T.textMuted, fontSize: 13, fontWeight: 700,
+                    letterSpacing: "-0.01em",
+                  }}
+                >
+                  <Tag size={15} color={T.accent} />
+                  Hai un codice coupon?
+                </button>
+              ) : (
+                <div style={{
+                  background: T.bgCard, border: `1px solid ${T.borderSoft}`,
+                  borderRadius: 14, padding: 12,
+                  display: "flex", flexDirection: "column", gap: 8,
+                  animation: "sectionEnter 0.3s cubic-bezier(0.25,0.46,0.45,0.94) forwards",
+                }}>
+                  <div style={{ display: "flex", gap: 8 }}>
+                    <div style={{ position: "relative", flex: 1 }}>
+                      <Tag size={14} color={T.accent} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
+                      <input
+                        value={couponCode}
+                        onChange={(e) => { setCouponCode(e.target.value); setCouponError(null); }}
+                        placeholder="Codice coupon"
+                        autoFocus
+                        style={{
+                          width: "100%", padding: "11px 12px 11px 34px",
+                          borderRadius: 10, border: `1px solid ${T.border}`,
+                          fontSize: 14, fontWeight: 600, color: T.text,
+                          background: "#fff", outline: "none",
+                          letterSpacing: "0.04em", textTransform: "uppercase",
+                          boxSizing: "border-box",
+                        }}
+                      />
+                    </div>
+                    <button
+                      className="coupon-apply-btn"
+                      onClick={handleApplyCoupon}
+                      disabled={couponLoading || !couponCode.trim()}
+                      style={{
+                        padding: "0 18px", borderRadius: 10, border: "none",
+                        background: T.btnBg, color: "#fff", fontWeight: 700, fontSize: 13,
+                        cursor: couponLoading || !couponCode.trim() ? "not-allowed" : "pointer",
+                        opacity: !couponCode.trim() ? 0.5 : 1,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        minWidth: 76,
+                      }}
+                    >
+                      {couponLoading ? <Loader2 size={15} className="spin-icon" /> : "Applica"}
+                    </button>
+                  </div>
+                  {couponError && (
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: T.danger, fontSize: 12, fontWeight: 600, animation: "sectionEnter 0.25s ease forwards" }}>
+                      <AlertCircle size={13} />
+                      {couponError}
+                    </div>
+                  )}
+                </div>
+              )}
+            </>
+          ) : (
+            <div style={{
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)",
+              borderRadius: 14, padding: "12px 14px",
+              animation: "couponSuccessIn 0.4s cubic-bezier(0.34,1.3,0.64,1) forwards",
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <Tag size={15} color="#16a34a" />
+                <div>
+                  <div style={{ fontSize: 13, fontWeight: 800, color: "#15803d", letterSpacing: "0.02em" }}>
+                    {couponApplied.code}
+                  </div>
+                  <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>
+                    Sconto di {formatPrice(couponApplied.discountCents)} € applicato
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={handleRemoveCoupon}
+                style={{ background: "transparent", border: "none", cursor: "pointer", color: "#16a34a", padding: 4, display: "flex" }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* ── Metodo di pagamento ───────────────────────────────────────── */}
+        <div style={{ marginTop: 18, animation: "sectionEnter 0.4s 0.05s cubic-bezier(0.25,0.46,0.45,0.94) forwards" }}>
+          <p style={{ color: T.textMuted, fontSize: 12, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", margin: "0 0 10px" }}>
+            Come vuoi pagare?
+          </p>
+          <div style={{ display: "flex", gap: 10 }}>
+            <button
+              className={`payment-card${paymentMethod === "cash" ? " selected" : ""}`}
+              onClick={() => setPaymentMethod("cash")}
+              style={{
+                flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                padding: "14px 10px", borderRadius: 14,
+                border: paymentMethod === "cash" ? `2px solid ${T.accent}` : `1px solid ${T.borderSoft}`,
+                background: paymentMethod === "cash" ? T.accentBg : T.bgCard,
+                boxShadow: paymentMethod === "cash" ? `0 4px 14px ${T.accentBg}` : "none",
+                cursor: "pointer",
+              }}
+            >
+              <Banknote size={20} color={paymentMethod === "cash" ? T.accent : T.textMuted} />
+              <span style={{ fontSize: 13, fontWeight: 700, color: paymentMethod === "cash" ? T.text : T.textMuted, letterSpacing: "-0.01em" }}>
+                Contanti
+              </span>
+              <span style={{ fontSize: 11, color: T.textMuted, opacity: 0.7, textAlign: "center" }}>
+                Paghi dopo aver mangiato
+              </span>
+            </button>
+
+            <button
+              className={`payment-card${paymentMethod === "card" ? " selected" : ""}`}
+              onClick={() => setPaymentMethod("card")}
+              style={{
+                flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
+                padding: "14px 10px", borderRadius: 14,
+                border: paymentMethod === "card" ? `2px solid ${T.accent}` : `1px solid ${T.borderSoft}`,
+                background: paymentMethod === "card" ? T.accentBg : T.bgCard,
+                boxShadow: paymentMethod === "card" ? `0 4px 14px ${T.accentBg}` : "none",
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
+                <CreditCard size={20} color={paymentMethod === "card" ? T.accent : T.textMuted} />
+              </div>
+              <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, fontWeight: 700, color: paymentMethod === "card" ? T.text : T.textMuted, letterSpacing: "-0.01em" }}>
+                Paga con carta
+                <svg viewBox="0 0 24 24" width="15" height="15" fill={paymentMethod === "card" ? T.text : T.textMuted} aria-label="Apple Pay">
+                  <path d="M16.5 3.5c-.9.1-1.95.65-2.55 1.35-.55.65-1 1.6-.85 2.55.95.05 1.95-.5 2.55-1.2.6-.65 1-1.55.85-2.7zM19.4 8.85c-1.4-.05-2.55.8-3.2.8-.7 0-1.7-.75-2.85-.75-1.45 0-2.8.85-3.55 2.15-1.5 2.6-.4 6.6 1.05 8.8.7 1.05 1.55 2.2 2.65 2.15 1.05-.05 1.45-.7 2.75-.7 1.3 0 1.65.7 2.8.65 1.15-.05 1.9-1.05 2.6-2.1.8-1.2 1.15-2.35 1.15-2.45-.05 0-2.25-.85-2.25-3.4 0-2.15 1.7-3.15 1.8-3.2-.95-1.4-2.45-1.6-2.95-1.95z"/>
+                  <text x="11" y="20" fontSize="9" fontWeight="700" fontFamily="system-ui" fill="currentColor" textAnchor="middle">Pay</text>
+                </svg>
+              </span>
+              <span style={{ fontSize: 11, color: T.textMuted, opacity: 0.7, textAlign: "center" }}>
+                Apple Pay / Carta
+              </span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -852,11 +1199,26 @@ useEffect(() => {
         padding: "14px 20px",
         paddingBottom: "max(14px, env(safe-area-inset-bottom))",
       }}>
-        <div style={{ maxWidth: 560, margin: "0 auto", display: "flex", flexDirection: "column", gap: 11 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <span style={{ color: T.textMuted, fontSize: 14, fontWeight: 500 }}>Totale ordine</span>
-            <span style={{ fontWeight: 800, fontSize: 22, color: T.text, letterSpacing: "-0.02em", fontVariantNumeric: "tabular-nums" }}>
-              {formatPrice(totalCents)} €
+        <div style={{ maxWidth: 560, margin: "0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
+          {couponApplied && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: T.textMuted }}>
+              <span>Subtotale</span>
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatPrice(totalCents)} €</span>
+            </div>
+          )}
+          {couponApplied && (
+            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "#16a34a", fontWeight: 700 }}>
+              <span>Sconto ({couponApplied.code})</span>
+              <span style={{ fontVariantNumeric: "tabular-nums" }}>-{formatPrice(discountCents)} €</span>
+            </div>
+          )}
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}>
+            <div>
+              <span style={{ color: T.textMuted, fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "block", marginBottom: 2 }}>Totale ordine</span>
+              <span style={{ fontSize: 11, color: T.textMuted, opacity: 0.6 }}>{items.length} {items.length === 1 ? "piatto" : "piatti"} · {paymentMethod === "cash" ? "Contanti" : "Carta"}</span>
+            </div>
+            <span style={{ fontWeight: 900, fontSize: 26, color: T.text, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums" }}>
+              {formatPrice(finalTotalCents)} €
             </span>
           </div>
           <button

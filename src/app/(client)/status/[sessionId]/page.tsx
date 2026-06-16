@@ -1,11 +1,12 @@
 // src/app/(client)/status/[sessionId]/page.tsx
 "use client";
 
-import { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
-import { Clock, Loader2, ChefHat, CheckCircle, Utensils } from "lucide-react";
+import { Clock, Loader2, ChefHat, CheckCircle, Utensils, Bell } from "lucide-react";
 import { Footer } from "@/components/layout/Footer";
 import { Navbar } from "@/components/layout/Navbar";
 import type { Palette } from "@/components/client/order/CategoryFilter";
@@ -47,6 +48,8 @@ type Order = {
   items:         OrderItem[];
 };
 
+type TabKey = "attesa" | "cucina" | "pronti";
+
 // ─── HELPERS ──────────────────────────────────────────────────────────────────
 
 const formatElapsed = (dateStr: string) => {
@@ -69,7 +72,6 @@ function Comanda({ order, tick, isDark }: { order: Order; tick: number; isDark: 
   const isCooking = order.status === "cooking";
   const isReady   = order.status === "ready";
 
-  // palette card
   const cardBg     = isDark ? "#161412" : "#ffffff";
   const cardBorder = isDark ? "#2e2a27" : "#e8e4d8";
   const divider    = isDark ? "#2a2623" : "#ede9da";
@@ -83,7 +85,6 @@ function Comanda({ order, tick, isDark }: { order: Order; tick: number; isDark: 
   const noteColor    = isDark ? "#f59e0b" : "#b45309";
   const rowDot       = isDark ? "#2a2623" : "#e8e4d8";
 
-  // status accent
   const accent =
     isPending ? "#f59e0b" :
     isCooking ? "#3b82f6" :
@@ -115,10 +116,8 @@ function Comanda({ order, tick, isDark }: { order: Order; tick: number; isDark: 
         ? "0 1px 3px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.02)"
         : "0 1px 4px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.02)",
     }}>
-      {/* Accent bar top */}
       <div style={{ height: 3, background: accent }} />
 
-      {/* Header: tavolo + status + ora */}
       <div style={{
         padding: "12px 16px 10px",
         borderBottom: `1px solid ${divider}`,
@@ -127,9 +126,7 @@ function Comanda({ order, tick, isDark }: { order: Order; tick: number; isDark: 
         justifyContent: "space-between",
         gap: 8,
       }}>
-        <span style={{
-          fontSize: 22, fontWeight: 800, letterSpacing: "-0.01em", color: nameColor,
-        }}>
+        <span style={{ fontSize: 22, fontWeight: 800, letterSpacing: "-0.01em", color: nameColor }}>
           Tavolo {order.table_number ?? "—"}
         </span>
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -150,7 +147,6 @@ function Comanda({ order, tick, isDark }: { order: Order; tick: number; isDark: 
         </div>
       </div>
 
-      {/* Righe piatti */}
       <div style={{ padding: "10px 16px 4px" }}>
         {order.items.length === 0 ? (
           <p style={{ fontSize: 13, color: timeColor, fontStyle: "italic", margin: "8px 0" }}>Nessun prodotto</p>
@@ -178,12 +174,9 @@ function Comanda({ order, tick, isDark }: { order: Order; tick: number; isDark: 
                 <div style={{ marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
                   {item.customizations.map((c, i) => (
                     <span key={i} style={{
-                      fontSize: 11,
-                      color: customColor,
-                      background: customBg,
-                      border: `1px solid ${customBorder}`,
-                      borderRadius: 4,
-                      padding: "2px 7px",
+                      fontSize: 11, color: customColor,
+                      background: customBg, border: `1px solid ${customBorder}`,
+                      borderRadius: 4, padding: "2px 7px",
                     }}>
                       {c.optionName}: {c.choiceName}
                       {c.priceModifierCents > 0 && ` +€${formatPrice(c.priceModifierCents)}`}
@@ -205,16 +198,12 @@ function Comanda({ order, tick, isDark }: { order: Order; tick: number; isDark: 
         ))}
 
         {order.notes && (
-          <div style={{
-            fontSize: 12, color: noteColor, fontStyle: "italic",
-            marginBottom: 8, display: "flex", gap: 5,
-          }}>
+          <div style={{ fontSize: 12, color: noteColor, fontStyle: "italic", marginBottom: 8, display: "flex", gap: 5 }}>
             <span>⚑</span><span>{order.notes}</span>
           </div>
         )}
       </div>
 
-      {/* Footer: id + totale */}
       <div style={{
         padding: "8px 16px 12px",
         borderTop: `1px solid ${divider}`,
@@ -233,54 +222,17 @@ function Comanda({ order, tick, isDark }: { order: Order; tick: number; isDark: 
   );
 }
 
-// ─── SECTION LABEL ────────────────────────────────────────────────────────────
-
-function SectionLabel({ icon, label, count, color, isDark }: {
-  icon: React.ReactNode; label: string; count: number; color: string; isDark: boolean;
-}) {
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 8,
-      fontFamily: "'Space Grotesk', sans-serif",
-      marginBottom: 14,
-      paddingBottom: 12,
-      borderBottom: `2px solid ${color}`,
-    }}>
-      <span style={{ color, display: "flex", alignItems: "center" }}>{icon}</span>
-      <span style={{
-        fontSize: 12, fontWeight: 700, letterSpacing: "0.1em",
-        textTransform: "uppercase",
-        color: isDark ? "#c0bbb0" : "#6b6560",
-        flex: 1,
-      }}>
-        {label}
-      </span>
-      <span style={{
-        fontSize: 12, fontWeight: 800,
-        width: 24, height: 24,
-        borderRadius: "50%",
-        background: color,
-        color: "#fff",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        flexShrink: 0,
-      }}>
-        {count}
-      </span>
-    </div>
-  );
-}
-
-// ─── EMPTY COLUMN ─────────────────────────────────────────────────────────────
+// ─── EMPTY STATE ──────────────────────────────────────────────────────────────
 
 function EmptyCol({ label, isDark }: { label: string; isDark: boolean }) {
   return (
     <div style={{
       fontFamily: "'Space Grotesk', sans-serif",
-      fontSize: 12,
+      fontSize: 13,
       color: isDark ? "#3a3632" : "#c8c4b8",
       letterSpacing: "0.05em",
       textAlign: "center",
-      padding: "28px 16px",
+      padding: "48px 16px",
       border: `1px dashed ${isDark ? "#262320" : "#dedad0"}`,
       borderRadius: 8,
     }}>
@@ -289,9 +241,131 @@ function EmptyCol({ label, isDark }: { label: string; isDark: boolean }) {
   );
 }
 
-// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
+// ─── TAB BAR ──────────────────────────────────────────────────────────────────
 
-// Builds a minimal Palette object from a brand hex for Navbar/Footer
+function TabBar({
+  activeTab, setActiveTab, counts, badges, clearBadge, isDark,
+}: {
+  activeTab: TabKey;
+  setActiveTab: (t: TabKey) => void;
+  counts: { attesa: number; cucina: number; pronti: number };
+  badges: { attesa: number; cucina: number; pronti: number };
+  clearBadge: (t: TabKey) => void;
+  isDark: boolean;
+}) {
+  const tabs: { key: TabKey; label: string; color: string; icon: React.ReactNode }[] = [
+    { key: "attesa",  label: "In attesa", color: "#f59e0b", icon: <Clock size={16} /> },
+    { key: "cucina",  label: "In cucina", color: "#3b82f6", icon: <ChefHat size={16} /> },
+    { key: "pronti",  label: "Pronti",    color: "#22c55e", icon: <CheckCircle size={16} /> },
+  ];
+
+  const barBg     = isDark ? "#161412" : "#ffffff";
+  const barBorder = isDark ? "#2a2623" : "#e8e4d8";
+  const inactiveColor = isDark ? "#5a5652" : "#a09890";
+
+  return (
+    <div style={{
+      display: "flex",
+      background: barBg,
+      border: `1px solid ${barBorder}`,
+      borderRadius: 12,
+      padding: 4,
+      gap: 4,
+      marginBottom: 20,
+    }}>
+      {tabs.map(({ key, label, color, icon }) => {
+        const isActive = activeTab === key;
+        const badge = badges[key];
+        const count = counts[key];
+
+        return (
+          <button
+            key={key}
+            onClick={() => {
+              setActiveTab(key);
+              clearBadge(key);
+            }}
+            style={{
+              flex: 1,
+              display: "flex",
+              flexDirection: "column",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 4,
+              padding: "10px 6px",
+              borderRadius: 9,
+              border: "none",
+              cursor: "pointer",
+              background: isActive ? `${color}18` : "transparent",
+              position: "relative",
+              transition: "background 0.18s",
+            }}
+          >
+            {/* Badge notifica */}
+            {badge > 0 && !isActive && (
+              <div style={{
+                position: "absolute",
+                top: 6,
+                right: "calc(50% - 18px)",
+                minWidth: 18,
+                height: 18,
+                borderRadius: 9,
+                background: color,
+                color: "#fff",
+                fontSize: 10,
+                fontWeight: 800,
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                padding: "0 4px",
+                boxShadow: `0 0 0 2px ${barBg}`,
+                animation: "badgePop 0.3s cubic-bezier(0.34,1.56,0.64,1) forwards",
+              }}>
+                {badge}
+              </div>
+            )}
+
+            {/* Icona */}
+            <div style={{ color: isActive ? color : inactiveColor, display: "flex", position: "relative" }}>
+              {icon}
+            </div>
+
+            {/* Label */}
+            <span style={{
+              fontSize: 11,
+              fontWeight: isActive ? 700 : 500,
+              color: isActive ? color : inactiveColor,
+              letterSpacing: "0.02em",
+              lineHeight: 1,
+            }}>
+              {label}
+            </span>
+
+            {/* Conteggio */}
+            <span style={{
+              fontSize: 11,
+              fontWeight: 800,
+              width: 20,
+              height: 20,
+              borderRadius: "50%",
+              background: isActive ? color : (isDark ? "#2a2623" : "#ede9da"),
+              color: isActive ? "#fff" : inactiveColor,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "background 0.18s, color 0.18s",
+            }}>
+              {count}
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── PALETTE HELPER ───────────────────────────────────────────────────────────
+
 function makePalette(brand: string): Palette {
   const mix = (h1: string, h2: string, t: number) => {
     const p = (h: string) => { const x = h.replace("#",""); return [parseInt(x.slice(0,2),16), parseInt(x.slice(2,4),16), parseInt(x.slice(4,6),16)]; };
@@ -319,6 +393,162 @@ function makePalette(brand: string): Palette {
   } as Palette;
 }
 
+// ─── FLOATING ORDER BUTTON ────────────────────────────────────────────────────
+
+function FloatingOrderBtn({ sessionId, isDark, brandColor }: { sessionId: string; isDark: boolean; brandColor: string }) {
+  const router = useRouter();
+  const [visible, setVisible] = React.useState(false);
+  const [expanded, setExpanded] = React.useState(false);
+
+  React.useEffect(() => {
+    const t = setTimeout(() => setVisible(true), 800);
+    return () => clearTimeout(t);
+  }, []);
+
+  // Chiudi il panel se si clicca fuori
+  React.useEffect(() => {
+    if (!expanded) return;
+    const handler = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest("#fab-ordina")) setExpanded(false);
+    };
+    document.addEventListener("mousedown", handler);
+    document.addEventListener("touchstart", handler as any);
+    return () => {
+      document.removeEventListener("mousedown", handler);
+      document.removeEventListener("touchstart", handler as any);
+    };
+  }, [expanded]);
+
+  const btnBg  = isDark ? "#1c1917" : "#ffffff";
+  const btnText = isDark ? "#f5f3f0" : "#18130e";
+  const accent  = brandColor === "#ffffff" ? "#0d9488" : brandColor;
+  const shadow  = isDark
+    ? "0 8px 32px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3)"
+    : "0 8px 28px rgba(0,0,0,0.13), 0 2px 8px rgba(0,0,0,0.07)";
+
+  const handleClick = () => {
+    if (expanded) {
+      // Secondo tap → naviga al menu
+      router.push(`/order/${sessionId}`);
+    } else {
+      // Primo tap → apre il panel
+      setExpanded(true);
+    }
+  };
+
+  return (
+    <div
+      id="fab-ordina"
+      style={{
+        position: "fixed",
+        left: 0,
+        top: "15%",
+        zIndex: 100,
+        animation: visible ? "slideInLeft 0.7s cubic-bezier(0.34,1.3,0.64,1) forwards" : "none",
+        opacity: visible ? 1 : 0,
+        ...(visible ? {
+          animationName: "slideInLeft, floatY",
+          animationDuration: "0.7s, 4s",
+          animationDelay: "0s, 0.7s",
+          animationTimingFunction: "cubic-bezier(0.34,1.3,0.64,1), ease-in-out",
+          animationIterationCount: "1, infinite",
+          animationFillMode: "forwards, none",
+        } : {}),
+      }}
+    >
+      {/* Ripple */}
+      {visible && (
+        <>
+          <div style={{
+            position: "absolute",
+            left: "0%", top: "0%",
+            transform: "translate(-50%, -50%)",
+            width: 56, height: 56,
+            borderRadius: "50%",
+            background: accent,
+            opacity: 0,
+            animation: "ripple 2.4s ease-out 1.2s infinite",
+            pointerEvents: "none",
+          }} />
+          <div style={{
+            position: "absolute",
+            left: "0%", top: "0%",
+            transform: "translate(-50%, -50%)",
+            width: 56, height: 56,
+            borderRadius: "50%",
+            background: accent,
+            opacity: 0,
+            animation: "ripple 2.4s ease-out 2.2s infinite",
+            pointerEvents: "none",
+          }} />
+        </>
+      )}
+
+      <button
+        className="fab-btn"
+        onClick={handleClick}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: 0,
+          background: btnBg,
+          borderRadius: "0 28px 28px 0",
+          boxShadow: shadow,
+          border: `1.5px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.07)"}`,
+          borderLeft: "none",
+          overflow: "hidden",
+          cursor: "pointer",
+          transition: "box-shadow 0.2s",
+          position: "relative",
+          padding: 0,
+        }}
+      >
+        {/* Icona */}
+        <div style={{
+          width: 56, height: 56,
+          borderRadius: "0 24px 24px 0",
+          background: `linear-gradient(135deg, ${accent}, ${accent}cc)`,
+          display: "flex", alignItems: "center", justifyContent: "center",
+          flexShrink: 0, position: "relative", overflow: "hidden",
+        }}>
+          <div style={{
+            position: "absolute", inset: 0,
+            background: "linear-gradient(105deg, transparent 40%, rgba(255,255,255,0.28) 50%, transparent 60%)",
+            backgroundSize: "200% 100%",
+            animation: "shimmer 2.5s ease-in-out 1.5s infinite",
+            pointerEvents: "none",
+          }} />
+          <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/>
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <path d="M16 10a4 4 0 0 1-8 0"/>
+          </svg>
+        </div>
+
+        {/* Panel espandibile */}
+        <div style={{
+          maxWidth: expanded ? 180 : 0,
+          overflow: "hidden",
+          transition: "max-width 0.38s cubic-bezier(0.34,1.2,0.64,1)",
+          whiteSpace: "nowrap",
+        }}>
+          <div style={{ padding: "0 18px 0 12px", display: "flex", flexDirection: "column", gap: 3 }}>
+            <span style={{ fontSize: 13, fontWeight: 800, color: btnText, letterSpacing: "-0.01em", fontFamily: "'Space Grotesk', sans-serif" }}>
+              Ordina altro
+            </span>
+            <span style={{ fontSize: 11, fontWeight: 500, color: accent, letterSpacing: "0.01em" }}>
+              Tocca ancora → menu
+            </span>
+          </div>
+        </div>
+      </button>
+    </div>
+  );
+}
+
+// ─── MAIN PAGE ────────────────────────────────────────────────────────────────
+
 export default function StatusPage() {
   const params    = useParams();
   const sessionId = params?.sessionId as string;
@@ -327,6 +557,11 @@ export default function StatusPage() {
   const [loading,     setLoading]     = useState(true);
   const [tableNumber, setTableNumber] = useState<string | null>(null);
   const [tick,        setTick]        = useState(0);
+  const [activeTab,   setActiveTab]   = useState<TabKey>("attesa");
+  const prevCountsRef = useRef<{ attesa: number; cucina: number; pronti: number }>({ attesa: 0, cucina: 0, pronti: 0 });
+  const [badges, setBadges] = useState<{ attesa: number; cucina: number; pronti: number }>({ attesa: 0, cucina: 0, pronti: 0 });
+  const isFirstLoad = useRef(true);
+
   const [theme, setTheme] = useState<"dark" | "light">(() => {
     if (typeof window === "undefined") return "light";
     return (localStorage.getItem("client-theme") as "dark" | "light") || "light";
@@ -334,20 +569,15 @@ export default function StatusPage() {
   const [brandColor, setBrandColor] = useState<string>(() => {
     if (typeof window === "undefined") return "#ffffff";
     try {
-      // Prima prova: session attiva in localStorage (ristorante corrente)
       const { getTableSession } = require("@/lib/table-session");
       const sess = getTableSession();
       if (sess?.restaurantId) {
         const cached = localStorage.getItem(`brand_color_${sess.restaurantId}`);
         if (cached) return cached;
       }
-      // Seconda prova: cerca la chiave brand_color che appartiene alla sessione
-      // attuale leggendo il sessionId dall'URL (window.location)
       const pathParts = window.location.pathname.split("/");
       const urlSessionId = pathParts[pathParts.length - 1];
       if (urlSessionId) {
-        // Cerca brand_color_* in cache; li confrontiamo dopo nel useEffect
-        // Per ora restituisce il primo disponibile come fallback visivo
         const keys = Object.keys(localStorage).filter(k => k.startsWith("brand_color_"));
         if (keys.length === 1) return localStorage.getItem(keys[0]) || "#ffffff";
       }
@@ -360,7 +590,6 @@ export default function StatusPage() {
     if (saved) setTheme(saved);
   }, []);
 
-  // Aggiorna brandColor dal fetch della sessione
   useEffect(() => {
     if (!sessionId) return;
     supabase.from("qr_sessions").select("restaurant_id").eq("id", sessionId).maybeSingle()
@@ -379,7 +608,6 @@ export default function StatusPage() {
 
   const isDark = theme === "dark";
 
-  // Mix brand col bianco per il background (stessa formula di buildPalette)
   const brandBg = (() => {
     try {
       const hex = brandColor.replace("#", "");
@@ -390,17 +618,13 @@ export default function StatusPage() {
     } catch { return "#f5f3ec"; }
   })();
 
-  const bg       = isDark ? "#0c0a09" : brandBg;
-  const textPrim = isDark ? "#f5f5f4" : "#1c1917";
-  const textSec  = isDark ? "#a8a29e" : "#78716c";
-  const textPrimC = textPrim;
-  const textSecC  = textSec;
-
+  const bg        = isDark ? "#0c0a09" : brandBg;
+  const textPrimC = isDark ? "#f5f5f4" : "#1c1917";
+  const textSecC  = isDark ? "#a8a29e" : "#78716c";
 
   const fetchOrders = useCallback(async () => {
     if (!sessionId) return;
     try {
-      // Strategia 1: cerca in qr_sessions (nuova tabella con FK a tables)
       let resolvedTableId: string | null = null;
       let resolvedRestaurantId: string | null = null;
       let resolvedTableNumber: string | null = null;
@@ -411,39 +635,32 @@ export default function StatusPage() {
 
       if (qrSession) {
         resolvedRestaurantId = qrSession.restaurant_id;
-        // Se qr_sessions ha già table_id (FK a tables), usalo direttamente
         if (qrSession.table_id) {
           resolvedTableId = qrSession.table_id;
         } else if (resolvedRestaurantId) {
-          // Altrimenti cerca in tables per restaurant_id
           const { data: tbl } = await supabase
             .from("tables").select("id")
             .eq("restaurant_id", resolvedRestaurantId)
             .maybeSingle();
           if (tbl) resolvedTableId = tbl.id;
         }
-
-        // Leggi il label del tavolo da tables
         if (resolvedTableId) {
           const { data: tableData } = await supabase
             .from("tables").select("label")
             .eq("id", resolvedTableId).maybeSingle();
           if (tableData?.label) resolvedTableNumber = tableData.label;
         }
-        // Fallback al table_number numerico solo se non c'è label
         if (!resolvedTableNumber && qrSession.table_number != null) {
           resolvedTableNumber = String(qrSession.table_number);
         }
       }
 
-      // Strategia 2: cerca in table_qr_sessions (tabella vecchia/alternativa)
       if (!resolvedTableId) {
         const { data: tqr } = await supabase
           .from("table_qr_sessions").select("id, restaurant_id, table_number")
           .eq("id", sessionId).maybeSingle();
         if (tqr) {
           resolvedRestaurantId = tqr.restaurant_id;
-          // Cerca il table_id reale nella tabella tables
           const { data: tbl } = await supabase
             .from("tables").select("id, label")
             .eq("restaurant_id", tqr.restaurant_id)
@@ -452,7 +669,6 @@ export default function StatusPage() {
             resolvedTableId = tbl.id;
             resolvedTableNumber = tbl.label || (tqr.table_number != null ? String(tqr.table_number) : null);
           }
-          // Fallback: usa l'id di table_qr_sessions come table_id (vecchio schema)
           if (!resolvedTableId) {
             resolvedTableId = tqr.id;
             resolvedTableNumber = tqr.table_number != null ? String(tqr.table_number) : null;
@@ -492,7 +708,7 @@ export default function StatusPage() {
           ...order,
           _displayTime: order.confirmed_at || order.updated_at || order.created_at,
           total_cents: computedTotalCents > 0 ? computedTotalCents : (order.total_cents ?? 0),
-          table_number: tableNumber,
+          table_number: resolvedTableNumber,
           items: orderItems.map((i): OrderItem => ({
             id:       i.id,
             name:     nameMap[i.menu_item_id] || i.name_snapshot || i.name || "Prodotto",
@@ -503,13 +719,40 @@ export default function StatusPage() {
         };
       });
 
+      // Calcola badge per tab non attivi quando arrivano aggiornamenti
+      const newPending = formatted.filter(o => o.status === "confirmed" || o.status === "pending").length;
+      const newCooking = formatted.filter(o => o.status === "cooking").length;
+      const newReady   = formatted.filter(o => o.status === "ready").length;
+
+      if (!isFirstLoad.current) {
+        setBadges(prev => ({
+          attesa: activeTab !== "attesa" && newPending > prevCountsRef.current.attesa
+            ? prev.attesa + (newPending - prevCountsRef.current.attesa) : prev.attesa,
+          cucina: activeTab !== "cucina" && newCooking > prevCountsRef.current.cucina
+            ? prev.cucina + (newCooking - prevCountsRef.current.cucina) : prev.cucina,
+          pronti: activeTab !== "pronti" && newReady > prevCountsRef.current.pronti
+            ? prev.pronti + (newReady - prevCountsRef.current.pronti) : prev.pronti,
+        }));
+
+        // Se arrivano nuovi pronti e non siamo sul tab pronti → switch automatico + badge visivo
+        if (newReady > prevCountsRef.current.pronti && activeTab !== "pronti") {
+          // Vibra se supportato
+          if (typeof navigator !== "undefined" && navigator.vibrate) {
+            navigator.vibrate([100, 50, 100]);
+          }
+        }
+      } else {
+        isFirstLoad.current = false;
+      }
+
+      prevCountsRef.current = { attesa: newPending, cucina: newCooking, pronti: newReady };
       setOrders(formatted);
     } catch (err: any) {
       console.error("[StatusPage] fetchOrders:", err?.message);
     } finally {
       setLoading(false);
     }
-  }, [sessionId, tableNumber]);
+  }, [sessionId, activeTab]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -521,6 +764,22 @@ export default function StatusPage() {
     const tickInterval = setInterval(() => setTick(t => t + 1), 60_000);
     return () => { supabase.removeChannel(channel); clearInterval(tickInterval); };
   }, [sessionId, fetchOrders]);
+
+  const pending = orders.filter(o => o.status === "confirmed" || o.status === "pending");
+  const cooking = orders.filter(o => o.status === "cooking");
+  const ready   = orders.filter(o => o.status === "ready");
+  const counts  = { attesa: pending.length, cucina: cooking.length, pronti: ready.length };
+
+  const clearBadge = (tab: TabKey) => {
+    setBadges(prev => ({ ...prev, [tab]: 0 }));
+  };
+
+  const tabOrders: Record<TabKey, Order[]> = { attesa: pending, cucina: cooking, pronti: ready };
+  const tabEmpty: Record<TabKey, string> = {
+    attesa: "Nessun ordine in attesa",
+    cucina: "Nessun ordine in cucina",
+    pronti: "Nessun ordine pronto",
+  };
 
   if (loading) {
     return (
@@ -534,23 +793,35 @@ export default function StatusPage() {
     );
   }
 
-  const pending = orders.filter(o => o.status === "confirmed" || o.status === "pending");
-  const cooking = orders.filter(o => o.status === "cooking");
-  const ready   = orders.filter(o => o.status === "ready");
-
   return (
     <div style={{ minHeight: "100vh", background: bg, color: textPrimC, paddingTop: 80 }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
         @keyframes spin { to { transform: rotate(360deg); } }
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
+        @keyframes pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.5; } }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes badgePop { from { transform: scale(0.4); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+        @keyframes tabSlide { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes slideInLeft {
+          0%   { transform: translateX(-140%) rotate(-6deg); opacity: 0; }
+          55%  { transform: translateX(8%)    rotate(2deg);  opacity: 1; }
+          75%  { transform: translateX(-4%)   rotate(-1deg); opacity: 1; }
+          100% { transform: translateX(0)     rotate(0deg);  opacity: 1; }
         }
-        @keyframes fadeUp {
-          from { opacity: 0; transform: translateY(10px); }
-          to   { opacity: 1; transform: translateY(0); }
+        @keyframes floatY {
+          0%, 100% { transform: translateY(0px)  rotate(0deg);    }
+          35%      { transform: translateY(-7px)  rotate(1.2deg);  }
+          65%      { transform: translateY(-3px)  rotate(-0.6deg); }
         }
+        @keyframes ripple {
+          0%   { transform: scale(1);   opacity: 0.5; }
+          100% { transform: scale(2.4); opacity: 0;   }
+        }
+        @keyframes shimmer {
+          0%   { background-position: -200% center; }
+          100% { background-position:  200% center; }
+        }
+        .fab-btn:active { transform: scale(0.93) !important; transition: transform 0.1s !important; }
       `}</style>
 
       <Navbar tableNumber={tableNumber} sessionId={sessionId} palette={makePalette(brandColor)} />
@@ -570,43 +841,34 @@ export default function StatusPage() {
             <Utensils style={{ width: 28, height: 28, color: textSecC, opacity: 0.4 }} />
           </div>
           <div>
-            <p style={{ fontSize: 18, fontWeight: 700, color: textPrimC, margin: "0 0 6px" }}>
-              Nessun ordine attivo
-            </p>
-            <p style={{ fontSize: 13, color: textSecC, margin: 0 }}>
-              Non hai ancora ordinato nulla per questo tavolo.
-            </p>
+            <p style={{ fontSize: 18, fontWeight: 700, color: textPrimC, margin: "0 0 6px" }}>Nessun ordine attivo</p>
+            <p style={{ fontSize: 13, color: textSecC, margin: 0 }}>Non hai ancora ordinato nulla per questo tavolo.</p>
           </div>
-          <Link
-            href={`/order/${sessionId}`}
-            style={{
-              fontSize: 13, fontWeight: 700, color: "#fff",
-              padding: "11px 26px", borderRadius: 8,
-              background: "#0d9488",
-              letterSpacing: "0.03em",
-              textDecoration: "none",
-            }}
-          >
+          <Link href={`/order/${sessionId}`} style={{
+            fontSize: 13, fontWeight: 700, color: "#fff",
+            padding: "11px 26px", borderRadius: 8,
+            background: "#0d9488", letterSpacing: "0.03em", textDecoration: "none",
+          }}>
             Vai al menu →
           </Link>
         </div>
       ) : (
         <main style={{
-          padding: "24px 20px 60px",
-          maxWidth: 1200,
+          padding: "20px 16px 80px",
+          maxWidth: 600,
           margin: "0 auto",
           fontFamily: "'Space Grotesk', 'Inter', sans-serif",
           animation: "fadeUp 0.4s ease forwards",
         }}>
-          {/* Page title */}
-          <div style={{ marginBottom: 28, display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: 12 }}>
+          {/* Header */}
+          <div style={{ marginBottom: 20, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
-              <h1 style={{ fontSize: 20, fontWeight: 700, color: textPrimC, margin: "0 0 3px", letterSpacing: "-0.01em" }}>
+              <h1 style={{ fontSize: 19, fontWeight: 700, color: textPrimC, margin: "0 0 2px", letterSpacing: "-0.01em" }}>
                 Il tuo ordine
               </h1>
               {tableNumber && (
                 <p style={{ fontSize: 12, color: textSecC, margin: 0, fontWeight: 500 }}>
-                  Tavolo {tableNumber} · aggiornamento in tempo reale
+                  Tavolo {tableNumber} · in tempo reale
                 </p>
               )}
             </div>
@@ -615,7 +877,7 @@ export default function StatusPage() {
               fontSize: 11, color: "#16a34a", fontWeight: 700,
               background: isDark ? "rgba(22,163,74,0.1)" : "rgba(22,163,74,0.07)",
               border: "1px solid rgba(22,163,74,0.2)",
-              borderRadius: 6, padding: "5px 12px",
+              borderRadius: 6, padding: "5px 10px",
               letterSpacing: "0.06em", textTransform: "uppercase",
             }}>
               <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#22c55e", display: "inline-block", animation: "pulse 2s infinite" }} />
@@ -623,47 +885,33 @@ export default function StatusPage() {
             </div>
           </div>
 
-          <div style={{
-            display: "grid",
-            gridTemplateColumns: "repeat(3, 1fr)",
-            gap: 20,
-            alignItems: "start",
-          }}>
-            {/* IN ATTESA */}
-            <section>
-              <SectionLabel icon={<Clock style={{ width: 14, height: 14 }} />} label="In attesa" count={pending.length} color="#f59e0b" isDark={isDark} />
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {pending.length === 0
-                  ? <EmptyCol label="Nessun ordine in attesa" isDark={isDark} />
-                  : pending.map(o => <Comanda key={o.id} order={o} tick={tick} isDark={isDark} />)
-                }
-              </div>
-            </section>
+          {/* Tab bar */}
+          <TabBar
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            counts={counts}
+            badges={badges}
+            clearBadge={clearBadge}
+            isDark={isDark}
+          />
 
-            {/* IN CUCINA */}
-            <section>
-              <SectionLabel icon={<ChefHat style={{ width: 14, height: 14 }} />} label="In cucina" count={cooking.length} color="#3b82f6" isDark={isDark} />
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {cooking.length === 0
-                  ? <EmptyCol label="Nessun ordine in cucina" isDark={isDark} />
-                  : cooking.map(o => <Comanda key={o.id} order={o} tick={tick} isDark={isDark} />)
-                }
-              </div>
-            </section>
-
-            {/* PRONTI */}
-            <section>
-              <SectionLabel icon={<CheckCircle style={{ width: 14, height: 14 }} />} label="Pronti" count={ready.length} color="#22c55e" isDark={isDark} />
-              <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-                {ready.length === 0
-                  ? <EmptyCol label="Nessun ordine pronto" isDark={isDark} />
-                  : ready.map(o => <Comanda key={o.id} order={o} tick={tick} isDark={isDark} />)
-                }
-              </div>
-            </section>
+          {/* Contenuto tab attivo */}
+          <div key={activeTab} style={{ animation: "tabSlide 0.22s ease forwards" }}>
+            {tabOrders[activeTab].length === 0
+              ? <EmptyCol label={tabEmpty[activeTab]} isDark={isDark} />
+              : tabOrders[activeTab].map(o => (
+                  <div key={o.id} style={{ marginBottom: 12 }}>
+                    <Comanda order={o} tick={tick} isDark={isDark} />
+                  </div>
+                ))
+            }
           </div>
         </main>
       )}
+
+      {/* ── FAB: Ordina altro ──────────────────────────────────────────────── */}
+      <FloatingOrderBtn sessionId={sessionId} isDark={isDark} brandColor={brandColor} />
+
       <Footer palette={makePalette(brandColor)} />
     </div>
   );

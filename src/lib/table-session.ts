@@ -6,6 +6,7 @@ export interface TableSession {
   restaurantSlug: string;
   tableNumber?: string;
   restaurantId?: string;
+  tableId?: string;
   createdAt: number;
 }
 

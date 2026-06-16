@@ -13,12 +13,14 @@ type Restaurant = {
   name: string;
   slug: string;
   brand_color: string;
+  logo_url?: string | null;
   address?: string | null;
   phone?: string | null;
   instagram?: string | null;
   facebook?: string | null;
   tripadvisor?: string | null;
   website?: string | null;
+  google_review_url?: string | null;
 };
 
 type Category = {
@@ -42,8 +44,9 @@ type MenuItem = {
 type OrderSessionResult = {
   restaurant: Restaurant | null;
   tableNumber: string | null;
-  tableId: string | null;        // ← nuovo: serve a initFromDB
-  restaurantId: string | null;   // ← nuovo: serve a initFromDB
+  tableId: string | null;
+  tableCode: string | null;      // token monouso per x-session-token
+  restaurantId: string | null;
   categories: Category[];
   items: MenuItem[];
   loading: boolean;
@@ -57,6 +60,7 @@ export function useOrderSession(
   const [restaurant, setRestaurant] = useState<Restaurant | null>(null);
   const [tableNumber, setTableNumber] = useState<string | null>(null);
   const [tableId, setTableId] = useState<string | null>(null);
+  const [tableCode, setTableCode] = useState<string | null>(null);
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [categories, setCategories] = useState<Category[]>([]);
   const [items, setItems] = useState<MenuItem[]>([]);
@@ -94,6 +98,7 @@ export function useOrderSession(
 
         setTableNumber(actualTableNumber);
         setTableId(actualTableId);
+        setTableCode(sessionData.tableCode ?? null);
         setRestaurantId(actualRestaurantId);
 
         // 2. Carica ristorante — priorità all'id dalla sessione,
@@ -109,7 +114,7 @@ export function useOrderSession(
           );
           const { data: r, error: rErr } = await supabase
             .from("restaurants")
-            .select("id, name, slug, brand_color, address, phone, instagram, facebook, tripadvisor, website")
+            .select("id, name, slug, brand_color, logo_url, address, phone, instagram, facebook, tripadvisor, website, google_review_url")
             .eq("id", actualRestaurantId)
             .single();
           if (rErr || !r) throw new Error("Ristorante non trovato");
@@ -148,6 +153,7 @@ export function useOrderSession(
     restaurant,
     tableNumber,
     tableId,
+    tableCode,
     restaurantId,
     categories,
     items,

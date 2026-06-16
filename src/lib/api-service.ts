@@ -6,47 +6,49 @@ const SUPABASE_KEY  = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 // ─── INTERNAL REST HELPERS ────────────────────────────────────────────────────
 
-function baseHeaders(): HeadersInit {
+function baseHeaders(sessionToken?: string): HeadersInit {
   return {
     apikey: SUPABASE_KEY,
     Authorization: `Bearer ${SUPABASE_KEY}`,
     "Content-Type": "application/json",
     Accept: "application/json",
+    ...(sessionToken ? { "x-session-token": sessionToken } : {}),
   };
 }
 
-async function restGet<T = any>(table: string, query: string): Promise<T[]> {
+async function restGet<T = any>(table: string, query: string, sessionToken?: string): Promise<T[]> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}${query}`, {
-    headers: baseHeaders(),
+    headers: baseHeaders(sessionToken),
     cache: "no-store",
   });
   if (!res.ok) throw new Error(`[GET ${table}] ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
-async function restPost<T = any>(table: string, body: object | object[]): Promise<T[]> {
+async function restPost<T = any>(table: string, body: object | object[], sessionToken?: string): Promise<T[]> {
+  console.log(`[restPost] ${table} | sessionToken: ${sessionToken ?? "MISSING"}`);
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
     method: "POST",
-    headers: { ...baseHeaders(), Prefer: "return=representation" },
+    headers: { ...baseHeaders(sessionToken), Prefer: "return=representation" },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`[POST ${table}] ${res.status}: ${await res.text()}`);
   return res.json();
 }
 
-async function restPatch(table: string, id: string, body: object): Promise<void> {
+async function restPatch(table: string, id: string, body: object, sessionToken?: string): Promise<void> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
     method: "PATCH",
-    headers: { ...baseHeaders(), Prefer: "return=minimal" },
+    headers: { ...baseHeaders(sessionToken), Prefer: "return=minimal" },
     body: JSON.stringify(body),
   });
   if (!res.ok) throw new Error(`[PATCH ${table}] ${res.status}: ${await res.text()}`);
 }
 
-async function restDelete(table: string, id: string): Promise<void> {
+async function restDelete(table: string, id: string, sessionToken?: string): Promise<void> {
   const res = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
     method: "DELETE",
-    headers: { ...baseHeaders(), Prefer: "return=minimal" },
+    headers: { ...baseHeaders(sessionToken), Prefer: "return=minimal" },
   });
   if (!res.ok) throw new Error(`[DELETE ${table}] ${res.status}: ${await res.text()}`);
 }
@@ -172,12 +174,14 @@ export const getMenuItemOptions = async (menuItemId: string): Promise<ModalOptio
  */
 export const getOrCreatePendingOrder = async (
   tableId: string | null,
-  restaurantId: string | null
+  restaurantId: string | null,
+  sessionToken?: string
 ): Promise<PendingOrder> => {
   if (tableId) {
     const existing = await restGet<PendingOrder>(
       "orders",
-      `?table_id=eq.${tableId}&status=eq.pending&order=created_at.desc&limit=1`
+      `?table_id=eq.${tableId}&status=eq.pending&order=created_at.desc&limit=1`,
+      sessionToken
     );
     if (existing.length) return existing[0];
   }
@@ -189,7 +193,7 @@ export const getOrCreatePendingOrder = async (
     total_cents: 0,
     notes: null,
     ordine: null,
-  });
+  }, sessionToken);
   return created[0];
 };
 
@@ -207,10 +211,11 @@ export const getPendingOrderById = async (orderId: string): Promise<PendingOrder
  * Load all items for a given order and map them to CartItem shape.
  * Called on mount to rehydrate the local store from DB.
  */
-export const getOrderItems = async (orderId: string): Promise<CartItem[]> => {
+export const getOrderItems = async (orderId: string, sessionToken?: string): Promise<CartItem[]> => {
   const rows = await restGet(
     "order_items",
-    `?order_id=eq.${orderId}&order=id.asc`
+    `?order_id=eq.${orderId}&order=id.asc`,
+    sessionToken
   );
 
   return rows.map((row: any): CartItem => ({
@@ -237,7 +242,8 @@ export const addItemToOrder = async (
     priceCents: number;          // base + extras combined
     quantity: number;
     customizations: CartCustomization[];
-  }
+  },
+  sessionToken?: string
 ): Promise<string> => {
   // 1. Insert order_item — colonne reali del DB: name_snapshot, base_price
   const created = await restPost("order_items", {
@@ -247,12 +253,13 @@ export const addItemToOrder = async (
     quantity: item.quantity,
     base_price: item.priceCents / 100,  // DB numeric in euro (es. 16.50), il codice lavora in centesimi
     customizations: item.customizations,
-  });
+  }, sessionToken);
 
   // 2. Recalculate order total (sum all items from DB — single source of truth)
   const allRows = await restGet(
     "order_items",
-    `?order_id=eq.${orderId}&select=base_price,quantity`
+    `?order_id=eq.${orderId}&select=base_price,quantity`,
+    sessionToken
   );
   // base_price nel DB è in euro → moltiplica ×100 per ottenere centesimi
   const newTotal = allRows.reduce(
@@ -263,7 +270,7 @@ export const addItemToOrder = async (
   await restPatch("orders", orderId, {
     total_cents: newTotal,
     updated_at: new Date().toISOString(),
-  });
+  }, sessionToken);
 
   return created[0]?.id ?? "";
 };
@@ -273,19 +280,21 @@ export const addItemToOrder = async (
  */
 export const removeOrderItem = async (
   orderItemId: string,
-  orderId: string
+  orderId: string,
+  sessionToken?: string
 ): Promise<void> => {
-  await restDelete("order_items", orderItemId);
+  await restDelete("order_items", orderItemId, sessionToken);
 
   const allRows = await restGet(
     "order_items",
-    `?order_id=eq.${orderId}&select=base_price,quantity`
+    `?order_id=eq.${orderId}&select=base_price,quantity`,
+    sessionToken
   );
   const newTotal = allRows.reduce(
     (sum: number, r: any) => sum + Math.round((r.base_price ?? 0) * 100) * (r.quantity ?? 1),
     0
   );
-  await restPatch("orders", orderId, { total_cents: newTotal });
+  await restPatch("orders", orderId, { total_cents: newTotal }, sessionToken);
 };
 
 /**
@@ -294,19 +303,21 @@ export const removeOrderItem = async (
 export const updateOrderItemQuantity = async (
   orderItemId: string,
   orderId: string,
-  newQuantity: number
+  newQuantity: number,
+  sessionToken?: string
 ): Promise<void> => {
-  await restPatch("order_items", orderItemId, { quantity: newQuantity });
+  await restPatch("order_items", orderItemId, { quantity: newQuantity }, sessionToken);
 
   const allRows = await restGet(
     "order_items",
-    `?order_id=eq.${orderId}&select=base_price,quantity`
+    `?order_id=eq.${orderId}&select=base_price,quantity`,
+    sessionToken
   );
   const newTotal = allRows.reduce(
     (sum: number, r: any) => sum + Math.round((r.base_price ?? 0) * 100) * (r.quantity ?? 1),
     0
   );
-  await restPatch("orders", orderId, { total_cents: newTotal });
+  await restPatch("orders", orderId, { total_cents: newTotal }, sessionToken);
 };
 
 /**
@@ -314,22 +325,23 @@ export const updateOrderItemQuantity = async (
  */
 export const updateOrderItemNote = async (
   orderItemId: string,
-  note: string
+  note: string,
+  sessionToken?: string
 ): Promise<void> => {
-  await restPatch("order_items", orderItemId, { note });
+  await restPatch("order_items", orderItemId, { note }, sessionToken);
 };
 
 /**
  * Cancella un ordine: imposta status → "cancelled" e elimina tutti gli order_items.
  */
-export const cancelOrder = async (orderId: string): Promise<void> => {
+export const cancelOrder = async (orderId: string, sessionToken?: string): Promise<void> => {
   await restPatch("orders", orderId, {
     status: "cancelled",
     updated_at: new Date().toISOString(),
-  });
+  }, sessionToken);
   // Elimina gli order_items uno per uno (REST non supporta DELETE senza filtro id)
-  const rows = await restGet("order_items", `?order_id=eq.${orderId}&select=id`);
-  await Promise.all(rows.map((r: any) => restDelete("order_items", r.id)));
+  const rows = await restGet("order_items", `?order_id=eq.${orderId}&select=id`, sessionToken);
+  await Promise.all(rows.map((r: any) => restDelete("order_items", r.id, sessionToken)));
 };
 
 // ─── SESSION ──────────────────────────────────────────────────────────────────

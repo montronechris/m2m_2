@@ -123,12 +123,12 @@ export default function OrderPage() {
   const addItem    = useCartStore((s) => s.addItem);
   const cartCount  = useCartStore((s) => s.items.reduce((a, i) => a + i.quantity, 0));
 
-  const { restaurant, tableNumber, categories, items, loading, error, tableId, restaurantId } =
+  const { restaurant, tableNumber, categories, items, loading, error, tableId, tableCode, restaurantId } =
     useOrderSession(sessionId, resolvedSlug ?? "");
 
   useEffect(() => {
     if (!tableId || !restaurantId || !resolvedSlug) return;
-    initFromDB(tableId, restaurantId, resolvedSlug, sessionId);
+    initFromDB(tableId, restaurantId, resolvedSlug, tableCode ?? null);
   }, [tableId, restaurantId, resolvedSlug, sessionId, initFromDB]);
 
   const router = useRouter();
@@ -147,6 +147,13 @@ export default function OrderPage() {
   const [filterGF,          setFilterGF]          = useState(false);
   const [searchOpen,        setSearchOpen]        = useState(false);
   const [searchAnimating,   setSearchAnimating]   = useState(false);
+  const [showReviewModal,   setShowReviewModal]   = useState(false);
+  const [reviewStars,       setReviewStars]       = useState(0);
+  const [reviewHovered,     setReviewHovered]     = useState(0);
+  const [reviewText,        setReviewText]        = useState("");
+  const [reviewSubmitting,  setReviewSubmitting]  = useState(false);
+  const [reviewSubmitted,   setReviewSubmitted]   = useState(false);
+  const [reviewError,       setReviewError]       = useState<string | null>(null);
   const searchInputRef = useRef<HTMLInputElement>(null);
 
   const { isWarning, secondsLeft } = useCartExpiry(() => setExpired(true));
@@ -246,6 +253,46 @@ const closeSearch = (keepQuery = false) => {
   const handleSuggestion = (word: string) => {
     setSearchQuery(word);
     setSearchOpen(false);
+  };
+
+  const handleReviewSubmit = async () => {
+    if (reviewStars === 0) { setReviewError("Seleziona almeno una stella."); return; }
+    if (!restaurantId) return;
+    setReviewSubmitting(true);
+    setReviewError(null);
+    try {
+      const { createBrowserClient } = await import("@supabase/ssr");
+      const supabase = createBrowserClient(
+        process.env.NEXT_PUBLIC_SUPABASE_URL!,
+        process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
+      );
+      const { error: e } = await supabase.from("reviews").insert({
+        restaurant_id: restaurantId,
+        stars: reviewStars,
+        text: reviewText.trim() || null,
+      });
+      if (e) throw e;
+      setReviewSubmitted(true);
+      if (reviewStars >= 4) {
+const url = (restaurant as any)?.google_review_url || (restaurant as any)?.tripadvisor;        if (url) {
+          setTimeout(() => {
+            window.location.href = url.startsWith("http") ? url : `https://${url}`;
+          }, 2200);
+        }
+      }
+    } catch (e: any) {
+      setReviewError(e.message || "Errore nel salvataggio. Riprova.");
+    } finally {
+      setReviewSubmitting(false);
+    }
+  };
+
+  const closeReviewModal = () => {
+    setShowReviewModal(false);
+    setTimeout(() => {
+      setReviewStars(0); setReviewHovered(0); setReviewText("");
+      setReviewSubmitted(false); setReviewError(null);
+    }, 300);
   };
 
   // ── LOADING ───────────────────────────────────────────────────────────────
@@ -453,6 +500,8 @@ const closeSearch = (keepQuery = false) => {
           0%,100% { box-shadow: 0 0 0 0 ${T.brand}4d, 0 8px 40px ${T.brand}26; }
           50%     { box-shadow: 0 0 0 6px ${T.brand}14, 0 8px 40px ${T.brand}4d; }
         }
+        @keyframes fadeUp { from { opacity: 0; transform: translateY(24px); } to { opacity: 1; transform: none; } }
+        @keyframes checkIn { from { opacity: 0; transform: scale(0.5); } to { opacity: 1; transform: scale(1); } }
       `}</style>
 
       {/* ── Griglia ── */}
@@ -945,9 +994,162 @@ const closeSearch = (keepQuery = false) => {
           tripadvisor={restaurant?.tripadvisor ?? null}
           website={restaurant?.website ?? null}
           palette={T}
+          onReview={() => setShowReviewModal(true)}
         />
 
-        <Footer palette={T} />  
+        <Footer palette={T} />
+
+      {/* ── Modal Recensione ── */}
+      {showReviewModal && (() => {
+        const [mr, mg, mb] = hexToRgb(T.brand);
+        const malpha = (a: number) => `rgba(${mr},${mg},${mb},${a})`;
+        const mdark300 = mix(T.brand, "#000000", 0.20);
+        const mbtnBg = `linear-gradient(135deg, ${T.brand}, ${mdark300})`;
+        const mbtnShadow = `0 6px 24px ${malpha(0.35)}`;
+        return (
+          <div
+            onClick={closeReviewModal}
+            style={{
+              position: "fixed", inset: 0, zIndex: 200,
+              background: "rgba(0,0,0,0.65)",
+              backdropFilter: "blur(16px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              padding: "24px 16px",
+              animation: "overlayIn 0.25s ease forwards",
+            }}
+          >
+            <div
+              onClick={e => e.stopPropagation()}
+              style={{
+                width: "100%", maxWidth: 480,
+                background: "rgba(255,255,255,0.95)",
+                backdropFilter: "blur(20px)",
+                borderRadius: 28,
+                border: `1.5px solid ${malpha(0.2)}`,
+                boxShadow: `0 24px 80px ${malpha(0.20)}, 0 2px 0 rgba(255,255,255,0.9) inset`,
+                overflow: "hidden",
+                animation: "modalSlideUp 0.35s cubic-bezier(0.34,1.56,0.64,1) forwards",
+              }}
+            >
+              {/* Header */}
+              <div style={{
+                background: mbtnBg,
+                padding: "28px 32px 24px",
+                position: "relative", overflow: "hidden",
+                textAlign: "center",
+              }}>
+                <div style={{ position: "absolute", top: -50, right: -50, width: 200, height: 200, borderRadius: "50%", background: "rgba(255,255,255,0.07)" }} />
+                <div style={{ position: "absolute", bottom: -40, left: -20, width: 140, height: 140, borderRadius: "50%", background: "rgba(255,255,255,0.05)" }} />
+                {/* Close button */}
+                <button
+                  onClick={closeReviewModal}
+                  style={{
+                    position: "absolute", top: 16, right: 16,
+                    width: 32, height: 32, borderRadius: "50%",
+                    background: "rgba(255,255,255,0.20)",
+                    border: "none", cursor: "pointer",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    color: "#fff", fontSize: 16, fontWeight: 700,
+                    zIndex: 1,
+                  }}
+                >✕</button>
+                {restaurant?.logo_url && (
+                  <img src={restaurant.logo_url} alt="logo" style={{ width: 56, height: 56, borderRadius: 16, objectFit: "contain", background: "rgba(255,255,255,0.15)", display: "block", margin: "0 auto 12px" }} />
+                )}
+                <p style={{ margin: "0 0 4px", fontSize: 11, fontWeight: 700, letterSpacing: "0.14em", textTransform: "uppercase", color: "rgba(255,255,255,0.65)" }}>Recensisci</p>
+                <h2 style={{ margin: 0, fontFamily: "'Playfair Display', serif", fontSize: "clamp(1.3rem, 5vw, 1.75rem)", fontWeight: 800, color: "#fff" }}>{restaurant?.name}</h2>
+              </div>
+
+              {/* Body */}
+              <div style={{ padding: "28px 32px 32px" }}>
+                {reviewSubmitted ? (
+                  <div style={{ textAlign: "center", animation: "fadeUp 0.5s ease" }}>
+                    <div style={{ width: 72, height: 72, borderRadius: "50%", background: malpha(0.12), display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", animation: "checkIn 0.5s cubic-bezier(0.34,1.56,0.64,1)" }}>
+                      <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={T.brand} strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M20 6L9 17l-5-5"/>
+                      </svg>
+                    </div>
+                    <h3 style={{ margin: "0 0 10px", fontSize: 22, fontWeight: 800, color: "#1c1917" }}>Grazie mille! 🙏</h3>
+                    <p style={{ margin: "0 0 6px", fontSize: 15, color: "#78716c", lineHeight: 1.6 }}>La tua recensione è stata inviata con successo.</p>
+{reviewStars >= 4 && ((restaurant as any)?.google_review_url || (restaurant as any)?.tripadvisor) && (
+                      <p style={{ margin: "16px 0 0", fontSize: 13, color: "#a8a29e" }}>
+Stai per essere reindirizzato su {(restaurant as any)?.google_review_url ? "Google" : "TripAdvisor"}…                      </p>
+                    )}
+                  </div>
+                ) : (
+                  <>
+                    {/* Stelle */}
+                    <div style={{ textAlign: "center", marginBottom: 24 }}>
+                      <p style={{ margin: "0 0 14px", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#78716c" }}>Com'è stata la tua esperienza?</p>
+                      <div style={{ display: "flex", justifyContent: "center", gap: 10 }}>
+                        {[1,2,3,4,5].map(n => {
+                          const filled = n <= (reviewHovered || reviewStars);
+                          return (
+                            <button key={n}
+                              onClick={() => setReviewStars(n)}
+                              onMouseEnter={() => setReviewHovered(n)}
+                              onMouseLeave={() => setReviewHovered(0)}
+                              style={{ background: "none", border: "none", cursor: "pointer", padding: 4, transition: "transform 0.15s", transform: filled ? "scale(1.15)" : "scale(1)" }}
+                            >
+                              <svg width="40" height="40" viewBox="0 0 24 24"
+                                fill={filled ? T.brand : "none"}
+                                stroke={filled ? T.brand : "#d4c5b0"}
+                                strokeWidth={1.5}
+                                style={{ filter: filled ? `drop-shadow(0 2px 8px ${malpha(0.4)})` : "none", transition: "all 0.15s" }}>
+                                <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                              </svg>
+                            </button>
+                          );
+                        })}
+                      </div>
+                      {reviewStars > 0 && (
+                        <p style={{ margin: "10px 0 0", fontSize: 13, fontWeight: 600, color: T.brand }}>
+                          {["","Pessima 😞","Scarsa 😕","Nella media 😐","Ottima 😊","Eccellente 🤩"][reviewStars]}
+                        </p>
+                      )}
+                    </div>
+
+                    {/* Testo */}
+                    <div style={{ marginBottom: 20 }}>
+                      <label style={{ display: "block", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: "#78716c", marginBottom: 10 }}>
+                        Raccontaci di più (opzionale)
+                      </label>
+                      <textarea rows={4} value={reviewText} onChange={e => setReviewText(e.target.value)}
+                        placeholder="Cosa ti è piaciuto? C'è qualcosa che potremmo migliorare?"
+                        style={{ width: "100%", boxSizing: "border-box", padding: "14px 16px", borderRadius: 14, border: `2px solid ${malpha(0.2)}`, background: malpha(0.04), color: "#1c1917", fontSize: 14, lineHeight: 1.6, outline: "none", resize: "none", transition: "border-color 0.2s", fontFamily: "inherit" }}
+                        onFocus={e => (e.target.style.borderColor = malpha(0.5))}
+                        onBlur={e => (e.target.style.borderColor = malpha(0.2))}
+                      />
+                    </div>
+
+                    {reviewError && <p style={{ margin: "0 0 14px", fontSize: 13, color: "#ef4444", fontWeight: 500 }}>{reviewError}</p>}
+
+                    <button onClick={handleReviewSubmit} disabled={reviewSubmitting}
+                      style={{ width: "100%", padding: "15px 0", borderRadius: 14, border: "none", background: reviewSubmitting ? malpha(0.4) : mbtnBg, color: "#fff", fontSize: 15, fontWeight: 700, cursor: reviewSubmitting ? "not-allowed" : "pointer", boxShadow: reviewSubmitting ? "none" : mbtnShadow, transition: "transform 0.15s, box-shadow 0.15s", display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}
+                      onMouseEnter={e => { if (!reviewSubmitting) (e.currentTarget as HTMLButtonElement).style.transform = "translateY(-2px)"; }}
+                      onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.transform = "none"; }}
+                    >
+                      {reviewSubmitting ? (
+                        <>
+                          <div style={{ width: 18, height: 18, borderRadius: "50%", border: "3px solid rgba(255,255,255,0.3)", borderTopColor: "#fff", animation: "spin 0.8s linear infinite" }} />
+                          Invio in corso…
+                        </>
+                      ) : (
+                        <>
+                          <svg width="17" height="17" viewBox="0 0 24 24" fill="currentColor">
+                            <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
+                          </svg>
+                          Invia la tua recensione
+                        </>
+                      )}
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }

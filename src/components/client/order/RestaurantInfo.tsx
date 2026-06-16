@@ -13,10 +13,12 @@ interface RestaurantInfoProps {
   tripadvisor?: string | null;
   website?: string | null;
   palette: Palette;
+  google_review_url?: string | null;
+  onReview?: () => void;
 }
 
 export function RestaurantInfo({
-  name, restaurantId, address, phone, instagram, facebook, tripadvisor, website, palette: T,
+  name, restaurantId, address, phone, instagram, facebook, tripadvisor, website, palette: T, onReview, google_review_url,
 }: RestaurantInfoProps) {
   const ref = useRef<HTMLDivElement>(null);
   const [visible, setVisible] = useState(false);
@@ -352,8 +354,8 @@ if (!hasContact) return null;
                 letterSpacing: "0.1em", textTransform: "uppercase",
                 color: T.textSoft,
               }}>La tua opinione conta</p>
-              <a
-                href={`/review/${restaurantId}`}
+              <button
+                onClick={() => onReview?.()}
                 style={{
                   display: "inline-flex", alignItems: "center", gap: 10,
                   padding: "13px 24px",
@@ -365,14 +367,16 @@ if (!hasContact) return null;
                   boxShadow: T.btnShadow,
                   transition: "transform 0.2s, box-shadow 0.2s",
                   whiteSpace: "nowrap",
+                  border: "none",
+                  cursor: "pointer",
                 }}
                 onMouseEnter={e => {
-                  const el = e.currentTarget as HTMLAnchorElement;
+                  const el = e.currentTarget as HTMLButtonElement;
                   el.style.transform = "translateY(-2px)";
                   el.style.boxShadow = T.glowRing;
                 }}
                 onMouseLeave={e => {
-                  const el = e.currentTarget as HTMLAnchorElement;
+                  const el = e.currentTarget as HTMLButtonElement;
                   el.style.transform = "none";
                   el.style.boxShadow = T.btnShadow;
                 }}
@@ -381,7 +385,7 @@ if (!hasContact) return null;
                   <path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/>
                 </svg>
                 Lascia una recensione
-              </a>
+              </button>
             </div>
           )}
 

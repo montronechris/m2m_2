@@ -1,7 +1,7 @@
 "use client";
 
 import { useRef } from "react";
-import { Navbar } from "@/components/layout/Navbar";
+import { KnifeNavbar } from "@/components/layout/KnifeNavbar";
 import { Footer } from "@/components/layout/Footer";
 
 import { HeroSection } from "@/components/sections/HeroSection";
@@ -22,9 +22,10 @@ export default function HomePage() {
   };
 
   return (
-    <div className="min-h-screen bg-white font-sans text-gray-900 overflow-x-hidden selection:bg-green-200 selection:text-green-900">
-      <Navbar onScrollToTop={scrollToTop} />
-      <main>
+    <div className="min-h-screen bg-white font-sans text-gray-900 selection:bg-green-200 selection:text-green-900">
+      <KnifeNavbar />
+      {/* overflow-x-hidden solo sul main, NON sul root — altrimenti clippa la navbar fixed */}
+      <main className="overflow-x-hidden">
         <HeroSection onScrollToFeatures={scrollToFeatures} />
         <div ref={featuresRef}>
           <FeaturesSection />
