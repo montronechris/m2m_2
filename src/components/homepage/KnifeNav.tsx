@@ -1,139 +1,342 @@
 "use client";
+
 import { useEffect, useRef, useState } from "react";
 import { motion, useSpring } from "framer-motion";
 import { SCAN_URL } from "@/lib/config";
 
+const ITEM_W = 96;
+
 const items = [
-  { id: "top", label: "HOME", icon: null, href: "#top" },
-  { id: "features", label: "FUNZIONI", icon: "dome", href: "#features" },
-  { id: "security", label: "SICUREZZA", icon: "shield", href: "#security" },
-  { id: "demo", label: "DEMO", icon: "utensils", href: SCAN_URL, external: true },
-  { id: "contact", label: "CONTATTI", icon: "mail", href: "#contact" },
+  { id: "top", label: "HOME", href: "#top" },
+  { id: "features", label: "FUNZIONI", href: "#features" },
+  { id: "security", label: "SICUREZZA", href: "#security" },
+  { id: "demo", label: "DEMO", href: SCAN_URL, external: true },
+  { id: "contact", label: "CONTATTI", href: "#contact" },
 ] as const;
 
+/* ---------------- ICONS ---------------- */
 function Icon({ name }: { name: string }) {
-  const s = { fill: "none", stroke: "currentColor", strokeWidth: 1.5, strokeLinecap: "round", strokeLinejoin: "round" } as const;
+  const s = {
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.45,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    width: 23,
+    height: 23,
+    viewBox: "0 0 24 24",
+  };
   switch (name) {
-    case "dome": return <svg width="22" height="22" viewBox="0 0 24 24" {...s}><path d="M4 16h16M5 16a7 7 0 0 1 14 0M12 6V9M12 6a1 1 0 1 0 0-2 1 1 0 0 0 0 2Z" /></svg>;
-    case "shield": return <svg width="22" height="22" viewBox="0 0 24 24" {...s}><path d="M12 3l7 3v5c0 4.5-3 8-7 10-4-2-7-5.5-7-10V6l7-3Z" /><path d="M9.5 12l1.8 1.8L15 10" /></svg>;
-    case "utensils": return <svg width="22" height="22" viewBox="0 0 24 24" {...s}><path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 3c-1.5 0-3 2-3 5s1 4 3 4v9" /></svg>;
-    case "mail": return <svg width="22" height="22" viewBox="0 0 24 24" {...s}><rect x="3" y="5" width="18" height="14" rx="2" /><path d="M4 7l8 6 8-6" /></svg>;
-    default: return null;
+    case "top":
+      return (
+        <svg {...s}><path d="M4 11.5 12 5l8 6.5" /><path d="M6 10.5V19h12v-8.5" /><path d="M10 19v-4.5h4V19" /></svg>
+      );
+    case "features":
+      return (
+        <svg {...s}><path d="M3.5 17h17" /><path d="M5 17a7 7 0 0 1 14 0" /><path d="M12 7V5" /><path d="M10.4 5h3.2" /></svg>
+      );
+    case "security":
+      return (
+        <svg {...s}><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z" /><path d="m9 12 2 2 4-4" /></svg>
+      );
+    case "demo":
+      return (
+        <svg {...s}><path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 3c-1.5 0-3 2-3 5s1 4 3 4v9" /></svg>
+      );
+    case "contact":
+      return (
+        <svg {...s}><rect x="3.5" y="6" width="17" height="12.5" rx="2.4" /><path d="m4 8 8 5.4L20 8" /></svg>
+      );
+    default:
+      return null;
   }
 }
 
-function ChefHat({ size = 30 }: { size?: number }) {
+function ChefHat({ size = 36 }: { size?: number }) {
   return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
-      <path d="M6 14a4 4 0 1 1 1.2-7.8 4 4 0 0 1 9.6 0A4 4 0 1 1 18 14M6 14v4h12v-4M6 14h12" />
+    <svg viewBox="0 0 24 24" width={size} height={size} fill="none" stroke="currentColor" strokeWidth="1.35" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M6.5 18.5h11M8 18.5v-3.3M16 18.5v-3.3M12 18.5v-3.3" />
+      <path d="M7.8 15.3a3.6 3.6 0 0 1-1-7 3.6 3.6 0 0 1 6.9-1.5 3.6 3.6 0 0 1 3.7 1.4 3.6 3.6 0 0 1-1.2 7.1" />
     </svg>
   );
 }
 
-/* nav item magnetico: segue il mouse + si solleva (classico) */
-function MagItem({ it, active, onClick }: { it: (typeof items)[number]; active: boolean; onClick: () => void; }) {
+/* ---------------- MAGNETIC NAV ITEM ---------------- */
+function NavItem({
+  it,
+  i,
+  on,
+  onPick,
+}: {
+  it: (typeof items)[number];
+  i: number;
+  on: boolean;
+  onPick: (i: number, ext?: boolean) => void;
+}) {
   const ref = useRef<HTMLAnchorElement>(null);
   const x = useSpring(0, { stiffness: 280, damping: 18 });
   const y = useSpring(0, { stiffness: 280, damping: 18 });
   const [hover, setHover] = useState(false);
+  const ext = "external" in it && it.external;
+
   const move = (e: React.MouseEvent) => {
     const r = ref.current!.getBoundingClientRect();
-    x.set((e.clientX - (r.left + r.width / 2)) * 0.4);
-    y.set((e.clientY - (r.top + r.height / 2)) * 0.4 - 3);
+    x.set((e.clientX - (r.left + r.width / 2)) * 0.35);
+    y.set((e.clientY - (r.top + r.height / 2)) * 0.35 - 3);
   };
-  const leave = () => { x.set(0); y.set(0); setHover(false); };
+  const leave = () => {
+    x.set(0);
+    y.set(0);
+    setHover(false);
+  };
+
   return (
-    <motion.a ref={ref} href={it.href} {...(("external" in it && it.external) ? { rel: "noopener" } : {})}
-      onClick={onClick} onMouseMove={move} onMouseEnter={() => setHover(true)} onMouseLeave={leave}
-      style={{ x, y, color: active || hover ? "#B6794C" : "#6B5B4A" }}
-      className="relative flex flex-col items-center gap-1 px-2 transition-colors will-change-transform">
-      {it.icon && (
-        <motion.span animate={{ y: hover ? -3 : 0, scale: hover ? 1.12 : 1 }} transition={{ type: "spring", stiffness: 400, damping: 14 }}>
-          <Icon name={it.icon} />
-        </motion.span>
-      )}
-      <span className="font-display text-[15px] font-semibold tracking-[0.12em]">{it.label}</span>
-      {active && <motion.span layoutId="knife-underline" className="absolute -bottom-1 h-[2px] w-6 rounded-full bg-gold" transition={{ type: "spring", stiffness: 380, damping: 30 }} />}
-      {!active && <motion.span className="absolute -bottom-1 h-[2px] rounded-full bg-gold/60" initial={false} animate={{ width: hover ? 18 : 0 }} transition={{ duration: 0.25 }} />}
+    <motion.a
+      ref={ref}
+      href={it.href}
+      {...(ext ? { rel: "noopener" } : {})}
+      onClick={() => onPick(i, ext)}
+      onMouseMove={move}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={leave}
+      style={{ x, y, width: ITEM_W, color: on || hover ? "#B6794C" : "#6f5e4c", cursor: "pointer" }}
+      className="relative z-[4] flex flex-col items-center justify-center gap-2 will-change-transform"
+    >
+      <motion.span
+        animate={{ y: hover ? -3 : 0, scale: hover ? 1.2 : 1 }}
+        transition={{ type: "spring", stiffness: 420, damping: 13 }}
+      >
+        <Icon name={it.id} />
+      </motion.span>
+      <span className="text-[11px] font-semibold tracking-[0.15em]">{it.label}</span>
     </motion.a>
   );
 }
 
+/* ---------------- NAVBAR ---------------- */
 export default function KnifeNav() {
-  const [active, setActive] = useState("top");
+  const [active, setActive] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
+  const lock = useRef(false);
 
   useEffect(() => {
     const onScroll = () => {
-      setScrolled(window.scrollY > 20);
-      const here = items.filter((i) => !("external" in i && i.external))
-        .map((i) => { const el = document.getElementById(i.id); return el ? { id: i.id, top: Math.abs(el.getBoundingClientRect().top - 120) } : null; })
-        .filter(Boolean).sort((a, b) => a!.top - b!.top)[0];
-      if (here) setActive(here!.id);
+      setScrolled(window.scrollY > 18);
+      if (lock.current) return;
+      const idx = items
+        .map((it, i) => {
+          if ("external" in it && it.external) return null;
+          const el = document.getElementById(it.id);
+          return el ? { i, top: Math.abs(el.getBoundingClientRect().top - 130) } : null;
+        })
+        .filter(Boolean)
+        .sort((a: any, b: any) => a.top - b.top)[0];
+      if (idx) setActive((idx as any).i);
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
   }, []);
 
+  const pick = (i: number, external?: boolean) => {
+    if (external) return;
+    setActive(i);
+    lock.current = true;
+    setTimeout(() => (lock.current = false), 700);
+  };
+
   return (
-    <header className="fixed inset-x-0 top-0 z-50 flex justify-center px-4 pt-4">
-      <motion.div initial={{ y: -90, opacity: 0 }} animate={{ y: 0, opacity: 1 }}
-        transition={{ duration: 0.7, ease: [0.16, 1, 0.3, 1] }}
-        className="relative hidden w-full max-w-6xl md:block"
-        style={{ filter: scrolled ? "drop-shadow(0 14px 30px rgba(43,38,32,0.18))" : "none" }}>
-        <svg viewBox="0 0 1280 116" className="w-full" style={{ display: "block" }}>
-          <defs>
-            <linearGradient id="blade" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#FCFAF5" /><stop offset="1" stopColor="#ECE3D3" /></linearGradient>
-            <linearGradient id="steel" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#EFEDE8" /><stop offset="0.45" stopColor="#C9C6C0" /><stop offset="1" stopColor="#9C988F" /></linearGradient>
-            <linearGradient id="handle" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stopColor="#9A6740" /><stop offset="0.5" stopColor="#7A4F30" /><stop offset="1" stopColor="#4E311D" /></linearGradient>
-            <linearGradient id="rivet" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stopColor="#E6E2DA" /><stop offset="1" stopColor="#8C887F" /></linearGradient>
-          </defs>
-          <path d="M95 18 L980 18 Q1045 18 1062 60 Q1052 88 1000 94 L95 100 A41 41 0 0 0 95 18 Z" fill="url(#blade)" stroke="#E0D4BE" strokeWidth="1.5" />
-          <path d="M120 24 L975 24" stroke="#FFFFFF" strokeWidth="1.5" opacity="0.7" strokeLinecap="round" />
-          <rect x="990" y="24" width="36" height="68" rx="11" fill="url(#steel)" />
-          <rect x="996" y="28" width="5" height="60" rx="2.5" fill="#FFFFFF" opacity="0.45" />
-          <rect x="1018" y="33" width="234" height="50" rx="25" fill="url(#handle)" />
-          <path d="M1040 40 Q1140 36 1238 41" stroke="#C68A5C" strokeWidth="2.2" fill="none" opacity="0.6" strokeLinecap="round" />
-          <path d="M1040 56 Q1140 52 1240 57" stroke="#3C2614" strokeWidth="1" fill="none" opacity="0.4" />
-          <path d="M1040 64 Q1140 61 1238 65" stroke="#3C2614" strokeWidth="1" fill="none" opacity="0.3" />
-          <path d="M1045 49 Q1140 47 1232 50" stroke="#5C3A22" strokeWidth="1" fill="none" opacity="0.35" />
-          <circle cx="1072" cy="58" r="6" fill="url(#rivet)" stroke="#3C2614" strokeWidth="0.8" />
-          <circle cx="1150" cy="58" r="6" fill="url(#rivet)" stroke="#3C2614" strokeWidth="0.8" />
-          <circle cx="1072" cy="58" r="2" fill="#6B655C" /><circle cx="1150" cy="58" r="2" fill="#6B655C" />
-          <circle cx="1230" cy="58" r="6" fill="none" stroke="#C9A878" strokeWidth="1.6" opacity="0.6" />
-        </svg>
+    <div
+      className="pointer-events-none fixed inset-x-0 top-0 z-[60] flex justify-center"
+      style={{ paddingTop: scrolled ? 12 : 24, transition: "padding-top .5s cubic-bezier(.22,.61,.36,1)" }}
+    >
+      {/* ── DESKTOP: knife ── */}
+      <div
+        className="pointer-events-auto hidden origin-top md:block"
+        style={{ transform: `scale(${scrolled ? 0.9 : 1})`, transition: "transform .5s cubic-bezier(.22,.61,.36,1)" }}
+      >
+        <div
+          className="relative flex items-stretch"
+          style={{
+            height: 120,
+            width: "min(960px, 94vw)",
+            filter: "drop-shadow(0 26px 38px rgba(74,48,22,.26)) drop-shadow(0 5px 9px rgba(74,48,22,.16))",
+          }}
+        >
+          {/* BLADE */}
+          <div
+            className="relative flex flex-1 items-center"
+            style={{
+              borderRadius: "60px 6px 6px 60px",
+              background: "linear-gradient(177deg,#fefdfa 0%,#f4f0e8 38%,#ece6da 60%,#ddd5c6 100%)",
+              boxShadow:
+                "inset 0 2px 0 rgba(255,255,255,.95), inset 0 -4px 9px rgba(120,90,55,.14), inset 0 0 0 1px rgba(255,255,255,.5)",
+            }}
+          >
+            {/* sheen */}
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{
+                borderRadius: "inherit",
+                opacity: 0.5,
+                background: "linear-gradient(102deg,transparent 28%,rgba(255,255,255,.6) 46%,transparent 58%)",
+              }}
+            />
 
-        <a href="#top" className="absolute left-[4.5%] top-1/2 flex -translate-y-1/2 items-center gap-2 text-ink/70 transition-colors hover:text-gold">
-          <span className="font-display text-xl font-light tracking-[0.2em]">TR</span>
-          <ChefHat size={28} />
-        </a>
+            {/* logo */}
+            <a href="#top" onClick={() => pick(0)} className="z-[2] flex items-center pl-11 pr-1.5" style={{ color: "#B6794C" }}>
+              <span className="mr-2 font-display text-2xl font-light tracking-[0.2em]">TR</span>
+              <ChefHat />
+            </a>
+            <div
+              className="z-[2] mx-1.5 h-[52px] w-px"
+              style={{ background: "linear-gradient(180deg,transparent,rgba(120,90,55,.28),transparent)" }}
+            />
 
-        <nav className="absolute inset-y-0 left-[17%] right-[23%] flex items-center justify-between">
-          {items.map((it) => {
-            const ext = "external" in it && it.external;
-            return <MagItem key={it.id} it={it} active={!ext && active === it.id} onClick={() => { if (!ext) setActive(it.id); }} />;
-          })}
-        </nav>
-      </motion.div>
+            {/* nav items */}
+            <div className="relative z-[2] flex h-full items-stretch pr-3.5">
+              {/* sliding white panel */}
+              <motion.div
+                className="absolute bottom-4 top-4 left-0 z-[1]"
+                style={{
+                  width: ITEM_W,
+                  borderRadius: 18,
+                  background: "linear-gradient(180deg,#fffefb,#f5f0e6)",
+                  boxShadow: "inset 0 1px 0 rgba(255,255,255,.95),0 8px 18px -11px rgba(120,90,50,.5)",
+                }}
+                animate={{ x: active * ITEM_W }}
+                transition={{ type: "spring", stiffness: 320, damping: 32 }}
+              />
+              {/* sliding underline */}
+              <motion.div
+                className="absolute bottom-[23px] left-[34px] z-[3] h-[2.5px] w-7 rounded"
+                style={{ background: "linear-gradient(90deg,#d8b98f,#B6794C)" }}
+                animate={{ x: active * ITEM_W }}
+                transition={{ type: "spring", stiffness: 320, damping: 32 }}
+              />
 
-      <div className="flex w-full items-center justify-between rounded-2xl border border-ink/10 bg-cream-50/90 px-4 py-3 shadow-card backdrop-blur md:hidden">
-        <a href="#top" className="flex items-center gap-1.5 font-display font-bold text-ink">
-          <span className="text-base font-light tracking-[0.18em]">TR</span><ChefHat size={24} /> TavolaRapida
-        </a>
-        <button onClick={() => setOpen((o) => !o)} aria-label="menu" className="text-ink">
-          <div className="space-y-1.5"><span className="block h-0.5 w-6 bg-ink" /><span className="block h-0.5 w-6 bg-ink" /></div>
-        </button>
+              {items.map((it, i) => {
+                const ext = "external" in it && it.external;
+                return <NavItem key={it.id} it={it} i={i} on={!ext && active === i} onPick={pick} />;
+              })}
+            </div>
+          </div>
+
+          {/* BOLSTER */}
+          <div
+            className="relative z-[5] -mx-[7px] w-[30px] self-stretch"
+            style={{
+              background: "linear-gradient(177deg,#f0f0ee,#cccdc9 48%,#a6a6a1)",
+              clipPath: "polygon(42% 0,100% 0,100% 100%,0 100%)",
+              boxShadow: "inset 0 2px 0 rgba(255,255,255,.75)",
+            }}
+          />
+
+          {/* HANDLE = demo */}
+          <a
+            href={SCAN_URL}
+            rel="noopener"
+            className="relative flex flex-col items-center justify-center gap-[7px] overflow-hidden transition-[filter,transform] duration-300 hover:-translate-y-px hover:brightness-110"
+            style={{
+              width: 184,
+              borderRadius: "6px 66px 66px 6px",
+              background: "linear-gradient(177deg,#7c5736 0%,#5d3c22 52%,#6a482c 100%)",
+              boxShadow: "inset 0 2px 0 rgba(255,221,180,.22), inset 0 -9px 17px rgba(0,0,0,.32)",
+              cursor: "pointer",
+            }}
+          >
+            <div
+              className="pointer-events-none absolute inset-0"
+              style={{ opacity: 0.55, background: "repeating-linear-gradient(94deg,rgba(20,10,0,.16) 0 1.5px,transparent 1.5px 8px)" }}
+            />
+            <div
+              className="pointer-events-none absolute inset-x-0 top-0 h-2/5"
+              style={{ background: "linear-gradient(180deg,rgba(255,225,185,.18),transparent)" }}
+            />
+            <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="#d9b67e" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="z-[2]">
+              <path d="M7 3v8M5 3v5a2 2 0 0 0 4 0V3M7 11v10M17 3c-1.5 0-3 2-3 5s1 4 3 4v9" />
+            </svg>
+            <span
+              className="z-[2] text-[10px] font-semibold tracking-[0.34em]"
+              style={{ color: "rgba(247,226,194,.72)", textShadow: "0 1px 1px rgba(0,0,0,.45),0 -1px 0 rgba(255,230,200,.12)" }}
+            >
+              AVVIA DEMO
+            </span>
+          </a>
+        </div>
       </div>
-      {open && (
-        <motion.div initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }}
-          className="absolute top-20 w-[92%] rounded-2xl border border-ink/10 bg-cream-50 p-4 shadow-soft md:hidden">
-          {items.map((it) => (
-            <a key={it.id} href={it.href} {...(("external" in it && it.external) ? { rel: "noopener" } : {})}
-               onClick={() => setOpen(false)} className="block py-2 font-display tracking-wide text-ink/80">{it.label}</a>
-          ))}
-        </motion.div>
-      )}
-    </header>
+
+      {/* ── MOBILE: glass bar ── */}
+      <div className="pointer-events-auto relative w-[min(560px,92vw)] md:hidden">
+        <div
+          className="flex items-center justify-between rounded-[22px] border border-white/60 px-[18px]"
+          style={{
+            paddingTop: scrolled ? 12 : 24,
+            paddingBottom: scrolled ? 12 : 24,
+            background: "rgba(245,240,231,.72)",
+            backdropFilter: "blur(18px) saturate(150%)",
+            boxShadow: "0 14px 32px -14px rgba(80,55,25,.4)",
+            transition: "padding .45s ease",
+          }}
+        >
+          <a href="#top" className="flex items-center gap-2.5" style={{ color: "#B6794C" }}>
+            <ChefHat size={28} />
+            <span className="font-display text-base font-semibold tracking-tight" style={{ color: "#3a2f26" }}>TavolaRapida</span>
+          </a>
+          <button
+            onClick={() => setOpen((o) => !o)}
+            aria-label="menu"
+            className="flex h-[42px] w-[42px] items-center justify-center rounded-[13px] border bg-white/50"
+            style={{ borderColor: "rgba(120,90,55,.16)", color: "#5a4a38" }}
+          >
+            <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round">
+              {open ? <path d="M6 6l12 12M18 6 6 18" /> : <path d="M4 8h16M4 16h16" />}
+            </svg>
+          </button>
+        </div>
+
+        {open && (
+          <motion.div
+            initial={{ opacity: 0, y: -12, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            className="absolute inset-x-0 top-[calc(100%+10px)] rounded-3xl border border-white/60 p-3.5"
+            style={{
+              background: "rgba(246,241,232,.9)",
+              backdropFilter: "blur(26px) saturate(150%)",
+              boxShadow: "0 24px 48px -18px rgba(80,55,25,.45)",
+            }}
+          >
+            {items.map((it, i) => {
+              const ext = "external" in it && it.external;
+              return (
+                <a
+                  key={it.id}
+                  href={it.href}
+                  {...(ext ? { rel: "noopener" } : {})}
+                  onClick={() => {
+                    pick(i, ext);
+                    setOpen(false);
+                  }}
+                  className="flex items-center gap-4 rounded-[15px] px-4 py-3.5 hover:bg-white/60"
+                  style={{ color: "#4a3d30" }}
+                >
+                  <span style={{ color: "#B6794C" }}><Icon name={it.id} /></span>
+                  <span className="text-[17px] font-medium">{it.label}</span>
+                </a>
+              );
+            })}
+            <a
+              href={SCAN_URL}
+              rel="noopener"
+              onClick={() => setOpen(false)}
+              className="mt-2 flex items-center justify-center rounded-[15px] px-4 py-4 text-base font-semibold"
+              style={{ color: "#fff8ef", background: "linear-gradient(135deg,#8a5e30,#6a482c)", boxShadow: "0 12px 26px -12px rgba(106,72,44,.7)" }}
+            >
+              Avvia Demo →
+            </a>
+          </motion.div>
+        )}
+      </div>
+    </div>
   );
 }

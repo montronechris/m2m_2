@@ -96,6 +96,7 @@ export type CartItem = {
   quantity: number;
   customizations: CartCustomization[];
   note?: string;              // nota libera sul piatto
+  portata?: number;           // numero di portata (1 = prima, 2 = seconda, ecc.)
 };
 
 /** Pending order row from the DB. */
@@ -227,6 +228,7 @@ export const getOrderItems = async (orderId: string, sessionToken?: string): Pro
     quantity: row.quantity ?? 1,
     customizations: (row.customizations ?? []) as CartCustomization[],
     note: row.note ?? "",
+    portata: row.portata ?? 1,
   }));
 };
 
@@ -242,6 +244,7 @@ export const addItemToOrder = async (
     priceCents: number;          // base + extras combined
     quantity: number;
     customizations: CartCustomization[];
+    portata?: number;            // numero di portata (default 1)
   },
   sessionToken?: string
 ): Promise<string> => {
@@ -253,6 +256,7 @@ export const addItemToOrder = async (
     quantity: item.quantity,
     base_price: item.priceCents / 100,  // DB numeric in euro (es. 16.50), il codice lavora in centesimi
     customizations: item.customizations,
+    portata: item.portata ?? 1,
   }, sessionToken);
 
   // 2. Recalculate order total (sum all items from DB — single source of truth)

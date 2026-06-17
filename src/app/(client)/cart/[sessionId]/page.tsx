@@ -79,6 +79,44 @@ function buildPalette(brand: string) {
   };
 }
 
+// ── Merge visuale dei duplicati ──────────────────────────────────────────────
+// Più CartItemPortata con stesso menuItemId + stesse customizations + stessa
+// portata vengono mostrati come una sola card con quantità somma.
+// orderItemId punta sempre al PRIMO id del gruppo (riferimento "primario"):
+// +/- agiscono sempre su quello; il delete rimuove tutti gli id del gruppo.
+type CartItemLike = ReturnType<typeof useCartStore.getState>["items"][number];
+export type MergedCartItem = CartItemLike & {
+  /** Tutti gli orderItemId confluiti in questa riga, in ordine di apparizione. */
+  orderItemIds: string[];
+  /** Somma delle quantità di tutti gli orderItemId del gruppo. */
+  totalQty: number;
+};
+
+function mergeDuplicateItems(groupItems: CartItemLike[]): MergedCartItem[] {
+  const order: string[] = [];
+  const map = new Map<string, MergedCartItem>();
+
+  for (const item of groupItems) {
+    const key = `${item.menuItemId}::${JSON.stringify(item.customizations)}`;
+    const existing = map.get(key);
+    if (existing) {
+      existing.orderItemIds.push(item.orderItemId!);
+      existing.totalQty += item.quantity;
+      // Mantiene la nota del primo item che ne ha una (i duplicati raramente avranno note diverse).
+      if (!existing.note && item.note) existing.note = item.note;
+    } else {
+      map.set(key, {
+        ...item,
+        orderItemIds: [item.orderItemId!],
+        totalQty: item.quantity,
+      });
+      order.push(key);
+    }
+  }
+
+  return order.map((key) => map.get(key)!);
+}
+
 export default function CartPage() {
   const router = useRouter();
   const items          = useCartStore((s) => s.items);
@@ -88,6 +126,7 @@ export default function CartPage() {
   const removeItem     = useCartStore((s) => s.removeItem);
   const updateQuantity = useCartStore((s) => s.updateQuantity);
   const updateNote     = useCartStore((s) => s.updateNote);
+  const updatePortata  = useCartStore((s) => s.updatePortata);
   const initFromDB     = useCartStore((s) => s.initFromDB);
   const initialized    = useCartStore((s) => s.initialized);
 
@@ -109,57 +148,36 @@ export default function CartPage() {
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [noteItem,      setNoteItem]      = useState<{ orderItemId: string; name: string; note: string } | null>(null);
 
-  // ── Coupon ────────────────────────────────────────────────────────────────
-  const [couponCode,    setCouponCode]    = useState("");
-  const [couponApplied, setCouponApplied] = useState<{ code: string; discountCents: number } | null>(null);
-  const [couponLoading, setCouponLoading] = useState(false);
-  const [couponError,   setCouponError]   = useState<string | null>(null);
-  const [showCouponInput, setShowCouponInput] = useState(false);
+  // ── Coupon & payment: gestiti nella pagina /confirm ─────────────────────
 
-  // ── Metodo di pagamento ──────────────────────────────────────────────────
-  const [paymentMethod, setPaymentMethod] = useState<"cash" | "card">("cash");
+  // ── Portate (ordine di arrivo piatti) ─────────────────────────────────────
+  const [showPortataSelector, setShowPortataSelector] = useState<string | null>(null);
+  const MAX_PORTATE = 4;
 
-  const handleApplyCoupon = async () => {
-    const code = couponCode.trim().toUpperCase();
-    if (!code) return;
-    setCouponLoading(true);
-    setCouponError(null);
-    try {
-      // TODO: collegare alla validazione reale del coupon (es. tabella `coupons`)
-      const res = await fetch(
-        `${SUPABASE_URL}/rest/v1/coupons?code=eq.${encodeURIComponent(code)}&select=*`,
-        { headers: supabaseHeaders }
-      );
-      if (!res.ok) throw new Error("Errore di rete");
-      const data = await res.json();
-      if (!Array.isArray(data) || data.length === 0) {
-        setCouponError("Codice coupon non valido");
-        setCouponApplied(null);
-        return;
-      }
-      const coupon = data[0];
-      let discountCents = 0;
-      if (coupon.discount_type === "percent") {
-        discountCents = Math.round((totalCents * coupon.discount_value) / 100);
-      } else {
-        discountCents = coupon.discount_value;
-      }
-      discountCents = Math.min(discountCents, totalCents);
-      setCouponApplied({ code, discountCents });
-    } catch {
-      setCouponError("Impossibile verificare il coupon");
-      setCouponApplied(null);
-    } finally {
-      setCouponLoading(false);
-    }
-  };
+  // Raggruppa items per portata (usa item.portata dallo store)
+  const groupedByPortata = useMemo(() => {
+    const groups: Record<number, typeof items> = {};
+    items.forEach(item => {
+      const p = item.portata ?? 1;
+      if (!groups[p]) groups[p] = [];
+      groups[p].push(item);
+    });
+    return Object.entries(groups)
+      .sort(([a], [b]) => Number(a) - Number(b))
+      .map(([p, groupItems]) => ({ portata: Number(p), items: mergeDuplicateItems(groupItems) }));
+  }, [items]);
 
-  const handleRemoveCoupon = () => {
-    setCouponApplied(null);
-    setCouponCode("");
-    setCouponError(null);
-    setShowCouponInput(false);
-  };
+  const portataLabels: Record<number, string> = { 1: "1ª Portata", 2: "2ª Portata", 3: "3ª Portata", 4: "4ª Portata" };
+
+  // Conteggio reale dei piatti: somma delle quantità, non il numero di righe/card
+  // (es. "Acqua x3" + "Agnello x1" → 4 piatti, non 2).
+  const totalDishesCount = useMemo(
+    () => items.reduce((sum, item) => sum + item.quantity, 0),
+    [items]
+  );
+
+
+
 
   // ── Swipe-delete animation ───────────────────────────────────────────────────
   // revealedId  = card spostata a sx, pannello rosso visibile, in attesa di conferma
@@ -189,6 +207,32 @@ export default function CartPage() {
     setActiveBtn(key);
     setTimeout(() => { setActiveBtn(null); cb(); }, 160);
   };
+
+  // ── Stepper quantità: animazione "slot machine" ──────────────────────────────
+  // Per ogni primaryId tiene il valore precedente e la direzione del cambio,
+  // così il numero vecchio scorre via e il nuovo arriva da sopra/sotto.
+  // Si auto-pulisce dopo la durata della transizione CSS.
+  const [qtyAnim, setQtyAnim] = useState<Record<string, { prevQty: number; direction: 1 | -1 }>>({});
+  const qtyAnimTimers = React.useRef<Record<string, ReturnType<typeof setTimeout>>>({});
+
+  const handleStepperChange = (primaryId: string, currentQty: number, delta: 1 | -1) => {
+    if (qtyAnimTimers.current[primaryId]) clearTimeout(qtyAnimTimers.current[primaryId]);
+    setQtyAnim(prev => ({ ...prev, [primaryId]: { prevQty: currentQty, direction: delta } }));
+    updateQuantity(primaryId, delta);
+    qtyAnimTimers.current[primaryId] = setTimeout(() => {
+      setQtyAnim(prev => {
+        const next = { ...prev };
+        delete next[primaryId];
+        return next;
+      });
+    }, 320);
+  };
+
+  useEffect(() => {
+    return () => {
+      Object.values(qtyAnimTimers.current).forEach(clearTimeout);
+    };
+  }, []);
 
 // ── Carica sessione + brand_color ────────────────────────────────────────────
 useEffect(() => {
@@ -305,8 +349,8 @@ initFromDB(
 
   const sessionId = useMemo(() => session?.sessionId || null, [session]);
 
-  const discountCents = couponApplied?.discountCents ?? 0;
-  const finalTotalCents = Math.max(0, totalCents - discountCents);
+
+
 
   const menuHref = useMemo(() => {
     if (!sessionId) return "/";
@@ -331,15 +375,15 @@ initFromDB(
     }
   };
 
-  // Fase 2: tap su "Elimina" → conferma rimozione
-  const handleConfirmDelete = (orderItemId: string, itemName: string, e: React.MouseEvent) => {
+  // Fase 2: tap su "Elimina" → conferma rimozione (rimuove tutti gli orderItemIds del gruppo unito)
+  const handleConfirmDelete = (orderItemIds: string[], itemName: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    const isLast = items.length === 1;
+    const isLast = items.length === orderItemIds.length;
     setRevealedId(null);
-    setConfirmingId(orderItemId);
+    setConfirmingId(orderItemIds[0]);
     setDeletedName(itemName);
     setTimeout(() => {
-      removeItem(orderItemId);
+      orderItemIds.forEach((id) => removeItem(id));
       setConfirmingId(null);
       if (isLast) {
         setShowEmptyAnim(true);
@@ -352,6 +396,7 @@ initFromDB(
   // Tap fuori = annulla la rivelazione
   const handleDismissReveal = () => {
     if (revealedId) setRevealedId(null);
+    if (showPortataSelector) setShowPortataSelector(null);
   };
 
   const handleOpenNote = (orderItemId: string, name: string, currentNote: string) => {
@@ -397,44 +442,7 @@ initFromDB(
     setItemOptions([]);
   };
 
-  const handleCheckout = async () => {
-    if (items.length === 0) return;
-    const currentSessionId = session?.sessionId;
-    if (!currentSessionId) { setError("Sessione tavolo mancante. Scansiona di nuovo il QR."); return; }
-    const activeOrderId = useCartStore.getState().orderId;
-    if (!activeOrderId) { setError("Ordine non trovato. Ricarica la pagina e riprova."); return; }
-    setLoading(true);
-    setError(null);
-    try {
-      const patchRes = await fetch(`${SUPABASE_URL}/rest/v1/orders?id=eq.${activeOrderId}`, {
-        method: "PATCH",
-        headers: { ...supabaseHeaders, Prefer: "return=minimal" },
-        body: JSON.stringify({
-          status:        "confirmed",
-          total_cents:   finalTotalCents,
-          discount_cents: discountCents,
-          coupon_code:   couponApplied?.code ?? null,
-          payment_method: paymentMethod,
-          ordine:        items.map((i) => `${i.quantity}x ${i.name}`).join(", "),
-          confirmed_at:  new Date().toISOString(),
-          updated_at:    new Date().toISOString(),
-        }),
-      });
-      if (!patchRes.ok) {
-        const errText = await patchRes.text();
-        throw new Error(`Errore conferma ordine: ${errText}`);
-      }
-      setSuccess(true);
-      submitted.current = true;
-      clearCart();
-      useCartStore.setState({ orderId: null });
-      setTimeout(() => router.push(`/status/${currentSessionId}`), 2500);
-    } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "Errore durante l'invio.");
-    } finally {
-      setLoading(false);
-    }
-  };
+  
 
   // ── STATI ────────────────────────────────────────────────────────────────────
 
@@ -737,6 +745,79 @@ initFromDB(
         .payment-card.selected {
           animation: paymentPop 0.32s cubic-bezier(0.34,1.3,0.64,1);
         }
+
+        /* ── Portata badge ── */
+        @keyframes portataPop {
+          0%   { transform: scale(1); }
+          40%  { transform: scale(0.85); }
+          70%  { transform: scale(1.15); }
+          100% { transform: scale(1); }
+        }
+        @keyframes portataSelectorIn {
+          0%   { opacity: 0; transform: translateY(6px) scale(0.92); }
+          100% { opacity: 1; transform: translateY(0) scale(1); }
+        }
+        .portata-badge {
+          transition: transform 0.15s cubic-bezier(0.34,1.56,0.64,1),
+                      background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .portata-badge:active {
+          transform: scale(0.88) !important;
+        }
+        .portata-badge.popped {
+          animation: portataPop 0.35s cubic-bezier(0.34,1.3,0.64,1);
+        }
+        .portata-selector {
+          animation: portataSelectorIn 0.25s cubic-bezier(0.16,1,0.3,1) forwards;
+        }
+        .portata-option {
+          transition: transform 0.12s ease, background 0.15s ease;
+          -webkit-tap-highlight-color: transparent;
+        }
+        .portata-option:active {
+          transform: scale(0.9) !important;
+        }
+
+        /* ── Portata section header ── */
+        @keyframes sectionHeaderIn {
+          0%   { opacity: 0; transform: translateX(-10px); }
+          100% { opacity: 1; transform: translateX(0); }
+        }
+
+        /* ── Stepper quantità: effetto slot machine ── */
+        /* Aumento (+): il numero attuale scorre verso il basso e uscendo,
+           il nuovo arriva da sopra. Diminuzione (-): l'opposto. */
+        @keyframes slotOutDown {
+          0%   { transform: translateY(0);      opacity: 1; }
+          100% { transform: translateY(110%);   opacity: 0; }
+        }
+        @keyframes slotInFromTop {
+          0%   { transform: translateY(-110%);  opacity: 0; }
+          100% { transform: translateY(0);      opacity: 1; }
+        }
+        @keyframes slotOutUp {
+          0%   { transform: translateY(0);      opacity: 1; }
+          100% { transform: translateY(-110%);  opacity: 0; }
+        }
+        @keyframes slotInFromBottom {
+          0%   { transform: translateY(110%);   opacity: 0; }
+          100% { transform: translateY(0);      opacity: 1; }
+        }
+        .qty-slot-viewport {
+          position: relative;
+          display: inline-block;
+          overflow: hidden;
+          line-height: 19px;
+        }
+        .qty-slot-digit {
+          display: block;
+          line-height: 19px;
+        }
+        .qty-slot-digit.slot-out-down  { animation: slotOutDown 0.28s cubic-bezier(0.4,0,0.2,1) forwards; }
+        .qty-slot-digit.slot-in-top    { animation: slotInFromTop 0.28s cubic-bezier(0.16,1,0.3,1) forwards; }
+        .qty-slot-digit.slot-out-up    { animation: slotOutUp 0.28s cubic-bezier(0.4,0,0.2,1) forwards; }
+        .qty-slot-digit.slot-in-bottom { animation: slotInFromBottom 0.28s cubic-bezier(0.16,1,0.3,1) forwards; }
       `}</style>
 
       {/* Header sticky */}
@@ -813,32 +894,63 @@ initFromDB(
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 18 }}>
           <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
             <div style={{ width: 22, height: 22, borderRadius: "50%", background: T.accent, display: "flex", alignItems: "center", justifyContent: "center" }}>
-              <span style={{ fontSize: 11, fontWeight: 800, color: "#fff" }}>{items.length}</span>
+              <span style={{ fontSize: 11, fontWeight: 800, color: "#fff" }}>{totalDishesCount}</span>
             </div>
             <p style={{ color: T.textMuted, fontSize: 12, fontWeight: 700, margin: 0, letterSpacing: "0.07em", textTransform: "uppercase" }}>
-              {items.length === 1 ? "piatto selezionato" : "piatti selezionati"}
+              {totalDishesCount === 1 ? "piatto" : "piatti"} · {groupedByPortata.length} {groupedByPortata.length === 1 ? "portata" : "portate"}
             </p>
           </div>
         </div>
 
-        {/* Lista items */}
+        {/* Lista items raggruppati per portata */}
         <div onClick={handleDismissReveal} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-          {items.map((item, idx) => {
+          {groupedByPortata.map(({ portata, items: portataItems }, groupIdx) => (
+            <React.Fragment key={portata}>
+              {/* Section header portata */}
+              <div style={{
+                display: "flex", alignItems: "center", gap: 10,
+                marginTop: groupIdx > 0 ? 14 : 0,
+                marginBottom: 4,
+                animation: `sectionHeaderIn 0.35s ${groupIdx * 0.08}s cubic-bezier(0.16,1,0.3,1) both`,
+              }}>
+                <div style={{
+                  width: 28, height: 28, borderRadius: 9,
+                  background: T.accentBg,
+                  border: `1.5px solid ${T.borderSoft}`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 13, fontWeight: 800, color: T.accent,
+                }}>
+                  {portata}
+                </div>
+                <span style={{ fontSize: 13, fontWeight: 700, color: T.textMuted, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                  {portataLabels[portata] || `${portata}ª Portata`}
+                </span>
+                <div style={{ flex: 1, height: 1, background: T.borderSoft }} />
+                <span style={{ fontSize: 11, color: T.textMuted, opacity: 0.6, fontWeight: 600 }}>
+                  {(() => {
+                    const portataQty = portataItems.reduce((sum, it) => sum + it.totalQty, 0);
+                    return `${portataQty} ${portataQty === 1 ? "piatto" : "piatti"}`;
+                  })()}
+                </span>
+              </div>
+
+              {portataItems.map((item, idx) => {
             const price    = typeof item.priceCents === "number" ? item.priceCents : 0;
-            const qty      = typeof item.quantity   === "number" ? item.quantity   : 1;
+            const qty      = typeof item.totalQty   === "number" ? item.totalQty   : 1;
             const lineTotal = price * qty;
             const customizationsKey = JSON.stringify(item.customizations);
+            const primaryId = item.orderItemIds[0];
 
-            const isRevealed   = revealedId   === item.orderItemId;
-            const isConfirming = confirmingId === item.orderItemId;
+            const isRevealed   = revealedId   === primaryId;
+            const isConfirming = confirmingId === primaryId;
             // larghezza pannello rosso: icona (20) + gap (8) + testo ~70px + padding 24*2 ≈ 120px
             const REVEAL_OFFSET = "-112px";
-            const isInitialItem = initialItemIdsRef.current.has(item.orderItemId ?? "");
+            const isInitialItem = initialItemIdsRef.current.has(primaryId ?? "");
             const staggerDelay = (isInitialItem && !mounted) ? `${idx * 70}ms` : "0ms";
 
             return (
               <div
-                key={`${item.orderItemId ?? item.menuItemId}-${customizationsKey}`}
+                key={`${primaryId ?? item.menuItemId}-${customizationsKey}`}
                 style={{
                   position: "relative",
                   borderRadius: 18,
@@ -862,7 +974,7 @@ initFromDB(
                   zIndex: 0,
                 }}>
                   <button
-                    onClick={(e) => handleConfirmDelete(item.orderItemId!, item.name, e)}
+                    onClick={(e) => handleConfirmDelete(item.orderItemIds, item.name, e)}
                     style={{
                       background: "transparent", border: "none", cursor: "pointer",
                       display: "flex", alignItems: "center", gap: 7,
@@ -915,7 +1027,7 @@ initFromDB(
                       {formatPrice(lineTotal)} €
                     </span>
                     <button
-                      onClick={(e) => handleRevealDelete(item.orderItemId!, e)}
+                      onClick={(e) => handleRevealDelete(primaryId, e)}
                       disabled={!!confirmingId}
                       style={{
                         background: isRevealed ? "rgba(239,68,68,0.10)" : T.accentBg,
@@ -954,41 +1066,145 @@ initFromDB(
 
                 {/* Azioni */}
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap", marginTop: 2 }}>
-                  {/* Stepper */}
+                  {/* Portata badge + Stepper */}
+                  <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                    {/* Portata selector */}
+                    <div style={{ position: "relative" }}>
+                      <button
+                        className="portata-badge"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowPortataSelector(
+                            showPortataSelector === primaryId ? null : primaryId
+                          );
+                        }}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 4,
+                          padding: "6px 10px", borderRadius: 9,
+                          background: T.accentBg,
+                          border: `1.5px solid ${showPortataSelector === primaryId ? T.accent : T.borderSoft}`,
+                          cursor: "pointer",
+                          fontSize: 11, fontWeight: 700, color: T.accent,
+                          letterSpacing: "0.01em",
+                          boxShadow: showPortataSelector === primaryId ? `0 0 0 3px ${T.accentBg}` : "none",
+                        }}
+                      >
+                        <span style={{ fontSize: 13, fontWeight: 800 }}>{item.portata ?? 1}</span>
+                        <span>ª</span>
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{
+                          transform: showPortataSelector === primaryId ? "rotate(180deg)" : "rotate(0deg)",
+                          transition: "transform 0.2s ease",
+                        }}>
+                          <path d="M2 3.5L5 6.5L8 3.5" stroke={T.accent} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      </button>
+                      {/* Portata dropdown */}
+                      {showPortataSelector === primaryId && (
+                        <div
+                          className="portata-selector"
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            position: "absolute",
+                            bottom: "calc(100% + 6px)", left: 0,
+                            background: "#fff",
+                            border: `1px solid ${T.borderSoft}`,
+                            borderRadius: 12,
+                            padding: 4,
+                            boxShadow: "0 8px 32px rgba(0,0,0,0.12)",
+                            zIndex: 100,
+                            display: "flex", gap: 3,
+                            minWidth: "max-content",
+                          }}
+                        >
+                          {Array.from({ length: MAX_PORTATE }, (_, i) => i + 1).map((p) => (
+                            <button
+                              key={p}
+                              className="portata-option"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                updatePortata(primaryId, p);
+                                setShowPortataSelector(null);
+                              }}
+                              style={{
+                                width: 36, height: 36, borderRadius: 9,
+                                display: "flex", alignItems: "center", justifyContent: "center",
+                                border: (item.portata ?? 1) === p ? `2px solid ${T.accent}` : `1px solid ${T.borderSoft}`,
+                                background: (item.portata ?? 1) === p ? T.accentBg : "transparent",
+                                cursor: "pointer",
+                                fontSize: 14, fontWeight: 800,
+                                color: (item.portata ?? 1) === p ? T.accent : T.textMuted,
+                              }}
+                            >
+                              {p}
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+
+                    {/* Stepper */}
                   <div style={{ display: "flex", alignItems: "center", background: T.accentBg, border: `1px solid ${T.borderSoft}`, borderRadius: 11, overflow: "hidden" }}>
                     <button
                       className="btn-stepper"
-                      onClick={() => updateQuantity(item.orderItemId!, -1)}
+                      onClick={() => handleStepperChange(primaryId, qty, -1)}
                       disabled={qty <= 1}
                       style={{ padding: "8px 13px", background: "transparent", border: "none", cursor: qty <= 1 ? "not-allowed" : "pointer", color: qty <= 1 ? T.border : T.accent, display: "flex" }}
                     >
                       <Minus size={13} strokeWidth={2.5} />
                     </button>
-                    <span style={{ padding: "0 2px", minWidth: 30, textAlign: "center", fontWeight: 800, fontSize: 15, color: T.text, letterSpacing: "-0.01em" }}>
-                      {qty}
+                    <span
+                      className="qty-slot-viewport"
+                      style={{ padding: "0 2px", minWidth: 30, height: 19, textAlign: "center", fontWeight: 800, fontSize: 15, color: T.text, letterSpacing: "-0.01em" }}
+                    >
+                      {(() => {
+                        const anim = qtyAnim[primaryId];
+                        if (!anim) {
+                          return <span className="qty-slot-digit">{qty}</span>;
+                        }
+                        // direction 1 = è stato premuto "+": il vecchio numero esce verso il basso,
+                        //               il nuovo entra da sopra.
+                        // direction -1 = è stato premuto "-": il vecchio numero esce verso l'alto,
+                        //                il nuovo entra da sotto.
+                        const outClass = anim.direction === 1 ? "slot-out-down" : "slot-out-up";
+                        const inClass  = anim.direction === 1 ? "slot-in-top"   : "slot-in-bottom";
+                        return (
+                          <>
+                            <span
+                              className={`qty-slot-digit ${outClass}`}
+                              style={{ position: "absolute", left: 0, right: 0 }}
+                            >
+                              {anim.prevQty}
+                            </span>
+                            <span className={`qty-slot-digit ${inClass}`}>
+                              {qty}
+                            </span>
+                          </>
+                        );
+                      })()}
                     </span>
                     <button
                       className="btn-stepper"
-                      onClick={() => updateQuantity(item.orderItemId!, 1)}
+                      onClick={() => handleStepperChange(primaryId, qty, 1)}
                       style={{ padding: "8px 13px", background: "transparent", border: "none", cursor: "pointer", color: T.accent, display: "flex" }}
                     >
                       <Plus size={13} strokeWidth={2.5} />
                     </button>
                   </div>
+                  </div>{/* fine portata + stepper wrapper */}
 
                   {/* Personalizza + Nota */}
                   <div style={{ display: "flex", gap: 6 }}>
                     <button
-                      className={`btn-action${activeBtn === `${item.orderItemId}-personalizza` ? " btn-pressed" : ""}`}
-                      onClick={() => pressBtn(`${item.orderItemId}-personalizza`, () => handleOpenCustomization(item.menuItemId, customizationsKey))}
+                      className={`btn-action${activeBtn === `${primaryId}-personalizza` ? " btn-pressed" : ""}`}
+                      onClick={() => pressBtn(`${primaryId}-personalizza`, () => handleOpenCustomization(item.menuItemId, customizationsKey))}
                       style={{ display: "flex", alignItems: "center", gap: 4, padding: "7px 11px", background: "transparent", border: `1px solid ${T.border}`, borderRadius: 10, color: T.textMuted, fontSize: 12, fontWeight: 600, cursor: "pointer", letterSpacing: "-0.01em" }}
                     >
                       <Settings size={12} className="btn-icon" strokeWidth={2.2} /> Personalizza
                     </button>
 
                     <button
-                      className={`btn-action${activeBtn === `${item.orderItemId}-nota` ? " btn-pressed" : ""}`}
-                      onClick={() => pressBtn(`${item.orderItemId}-nota`, () => handleOpenNote(item.orderItemId!, item.name, item.note ?? ""))}
+                      className={`btn-action${activeBtn === `${primaryId}-nota` ? " btn-pressed" : ""}`}
+                      onClick={() => pressBtn(`${primaryId}-nota`, () => handleOpenNote(primaryId, item.name, item.note ?? ""))}
                       style={{
                         display: "flex", alignItems: "center", gap: 4,
                         padding: "7px 11px",
@@ -1008,162 +1224,12 @@ initFromDB(
               </div>
             );
           })}
+            </React.Fragment>
+          ))}
         </div>
 
-        {/* ── Coupon ─────────────────────────────────────────────────────── */}
-        <div style={{ marginTop: 20, animation: "sectionEnter 0.4s cubic-bezier(0.25,0.46,0.45,0.94) forwards" }}>
-          {!couponApplied ? (
-            <>
-              {!showCouponInput ? (
-                <button
-                  className="coupon-trigger"
-                  onClick={() => setShowCouponInput(true)}
-                  style={{
-                    display: "flex", alignItems: "center", gap: 8,
-                    width: "100%", padding: "13px 16px",
-                    background: T.bgCard, border: `1px solid ${T.borderSoft}`,
-                    borderRadius: 14, cursor: "pointer",
-                    color: T.textMuted, fontSize: 13, fontWeight: 700,
-                    letterSpacing: "-0.01em",
-                  }}
-                >
-                  <Tag size={15} color={T.accent} />
-                  Hai un codice coupon?
-                </button>
-              ) : (
-                <div style={{
-                  background: T.bgCard, border: `1px solid ${T.borderSoft}`,
-                  borderRadius: 14, padding: 12,
-                  display: "flex", flexDirection: "column", gap: 8,
-                  animation: "sectionEnter 0.3s cubic-bezier(0.25,0.46,0.45,0.94) forwards",
-                }}>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <div style={{ position: "relative", flex: 1 }}>
-                      <Tag size={14} color={T.accent} style={{ position: "absolute", left: 12, top: "50%", transform: "translateY(-50%)" }} />
-                      <input
-                        value={couponCode}
-                        onChange={(e) => { setCouponCode(e.target.value); setCouponError(null); }}
-                        placeholder="Codice coupon"
-                        autoFocus
-                        style={{
-                          width: "100%", padding: "11px 12px 11px 34px",
-                          borderRadius: 10, border: `1px solid ${T.border}`,
-                          fontSize: 14, fontWeight: 600, color: T.text,
-                          background: "#fff", outline: "none",
-                          letterSpacing: "0.04em", textTransform: "uppercase",
-                          boxSizing: "border-box",
-                        }}
-                      />
-                    </div>
-                    <button
-                      className="coupon-apply-btn"
-                      onClick={handleApplyCoupon}
-                      disabled={couponLoading || !couponCode.trim()}
-                      style={{
-                        padding: "0 18px", borderRadius: 10, border: "none",
-                        background: T.btnBg, color: "#fff", fontWeight: 700, fontSize: 13,
-                        cursor: couponLoading || !couponCode.trim() ? "not-allowed" : "pointer",
-                        opacity: !couponCode.trim() ? 0.5 : 1,
-                        display: "flex", alignItems: "center", justifyContent: "center",
-                        minWidth: 76,
-                      }}
-                    >
-                      {couponLoading ? <Loader2 size={15} className="spin-icon" /> : "Applica"}
-                    </button>
-                  </div>
-                  {couponError && (
-                    <div style={{ display: "flex", alignItems: "center", gap: 6, color: T.danger, fontSize: 12, fontWeight: 600, animation: "sectionEnter 0.25s ease forwards" }}>
-                      <AlertCircle size={13} />
-                      {couponError}
-                    </div>
-                  )}
-                </div>
-              )}
-            </>
-          ) : (
-            <div style={{
-              display: "flex", alignItems: "center", justifyContent: "space-between",
-              background: "rgba(34,197,94,0.08)", border: "1px solid rgba(34,197,94,0.25)",
-              borderRadius: 14, padding: "12px 14px",
-              animation: "couponSuccessIn 0.4s cubic-bezier(0.34,1.3,0.64,1) forwards",
-            }}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                <Tag size={15} color="#16a34a" />
-                <div>
-                  <div style={{ fontSize: 13, fontWeight: 800, color: "#15803d", letterSpacing: "0.02em" }}>
-                    {couponApplied.code}
-                  </div>
-                  <div style={{ fontSize: 11, color: "#16a34a", fontWeight: 600 }}>
-                    Sconto di {formatPrice(couponApplied.discountCents)} € applicato
-                  </div>
-                </div>
-              </div>
-              <button
-                onClick={handleRemoveCoupon}
-                style={{ background: "transparent", border: "none", cursor: "pointer", color: "#16a34a", padding: 4, display: "flex" }}
-              >
-                <X size={16} />
-              </button>
-            </div>
-          )}
+        {/* ── fine lista portate ─────────────────────────────────────────── */}
         </div>
-
-        {/* ── Metodo di pagamento ───────────────────────────────────────── */}
-        <div style={{ marginTop: 18, animation: "sectionEnter 0.4s 0.05s cubic-bezier(0.25,0.46,0.45,0.94) forwards" }}>
-          <p style={{ color: T.textMuted, fontSize: 12, fontWeight: 700, letterSpacing: "0.07em", textTransform: "uppercase", margin: "0 0 10px" }}>
-            Come vuoi pagare?
-          </p>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button
-              className={`payment-card${paymentMethod === "cash" ? " selected" : ""}`}
-              onClick={() => setPaymentMethod("cash")}
-              style={{
-                flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-                padding: "14px 10px", borderRadius: 14,
-                border: paymentMethod === "cash" ? `2px solid ${T.accent}` : `1px solid ${T.borderSoft}`,
-                background: paymentMethod === "cash" ? T.accentBg : T.bgCard,
-                boxShadow: paymentMethod === "cash" ? `0 4px 14px ${T.accentBg}` : "none",
-                cursor: "pointer",
-              }}
-            >
-              <Banknote size={20} color={paymentMethod === "cash" ? T.accent : T.textMuted} />
-              <span style={{ fontSize: 13, fontWeight: 700, color: paymentMethod === "cash" ? T.text : T.textMuted, letterSpacing: "-0.01em" }}>
-                Contanti
-              </span>
-              <span style={{ fontSize: 11, color: T.textMuted, opacity: 0.7, textAlign: "center" }}>
-                Paghi dopo aver mangiato
-              </span>
-            </button>
-
-            <button
-              className={`payment-card${paymentMethod === "card" ? " selected" : ""}`}
-              onClick={() => setPaymentMethod("card")}
-              style={{
-                flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 6,
-                padding: "14px 10px", borderRadius: 14,
-                border: paymentMethod === "card" ? `2px solid ${T.accent}` : `1px solid ${T.borderSoft}`,
-                background: paymentMethod === "card" ? T.accentBg : T.bgCard,
-                boxShadow: paymentMethod === "card" ? `0 4px 14px ${T.accentBg}` : "none",
-                cursor: "pointer",
-              }}
-            >
-              <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-                <CreditCard size={20} color={paymentMethod === "card" ? T.accent : T.textMuted} />
-              </div>
-              <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 13, fontWeight: 700, color: paymentMethod === "card" ? T.text : T.textMuted, letterSpacing: "-0.01em" }}>
-                Paga con carta
-                <svg viewBox="0 0 24 24" width="15" height="15" fill={paymentMethod === "card" ? T.text : T.textMuted} aria-label="Apple Pay">
-                  <path d="M16.5 3.5c-.9.1-1.95.65-2.55 1.35-.55.65-1 1.6-.85 2.55.95.05 1.95-.5 2.55-1.2.6-.65 1-1.55.85-2.7zM19.4 8.85c-1.4-.05-2.55.8-3.2.8-.7 0-1.7-.75-2.85-.75-1.45 0-2.8.85-3.55 2.15-1.5 2.6-.4 6.6 1.05 8.8.7 1.05 1.55 2.2 2.65 2.15 1.05-.05 1.45-.7 2.75-.7 1.3 0 1.65.7 2.8.65 1.15-.05 1.9-1.05 2.6-2.1.8-1.2 1.15-2.35 1.15-2.45-.05 0-2.25-.85-2.25-3.4 0-2.15 1.7-3.15 1.8-3.2-.95-1.4-2.45-1.6-2.95-1.95z"/>
-                  <text x="11" y="20" fontSize="9" fontWeight="700" fontFamily="system-ui" fill="currentColor" textAnchor="middle">Pay</text>
-                </svg>
-              </span>
-              <span style={{ fontSize: 11, color: T.textMuted, opacity: 0.7, textAlign: "center" }}>
-                Apple Pay / Carta
-              </span>
-            </button>
-          </div>
-        </div>
-      </div>
 
       {/* Toast "Piatto eliminato" */}
       {deletedName && !showEmptyAnim && (
@@ -1200,56 +1266,35 @@ initFromDB(
         paddingBottom: "max(14px, env(safe-area-inset-bottom))",
       }}>
         <div style={{ maxWidth: 560, margin: "0 auto", display: "flex", flexDirection: "column", gap: 10 }}>
-          {couponApplied && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: T.textMuted }}>
-              <span>Subtotale</span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>{formatPrice(totalCents)} €</span>
-            </div>
-          )}
-          {couponApplied && (
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 12, color: "#16a34a", fontWeight: 700 }}>
-              <span>Sconto ({couponApplied.code})</span>
-              <span style={{ fontVariantNumeric: "tabular-nums" }}>-{formatPrice(discountCents)} €</span>
-            </div>
-          )}
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "2px 0" }}>
             <div>
               <span style={{ color: T.textMuted, fontSize: 12, fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", display: "block", marginBottom: 2 }}>Totale ordine</span>
-              <span style={{ fontSize: 11, color: T.textMuted, opacity: 0.6 }}>{items.length} {items.length === 1 ? "piatto" : "piatti"} · {paymentMethod === "cash" ? "Contanti" : "Carta"}</span>
+              <span style={{ fontSize: 11, color: T.textMuted, opacity: 0.6 }}>{totalDishesCount} {totalDishesCount === 1 ? "piatto" : "piatti"}</span>
             </div>
             <span style={{ fontWeight: 900, fontSize: 26, color: T.text, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums" }}>
-              {formatPrice(finalTotalCents)} €
+              {formatPrice(totalCents)} €
             </span>
           </div>
-          <button
-            onClick={handleCheckout}
-            disabled={loading || items.length === 0}
+          <Link
+            href={sessionId ? `/confirm/${sessionId}` : "#"}
             style={{
               width: "100%", padding: "15px",
               borderRadius: 14,
-              background: loading ? `${T.accent}4d` : T.btnBg,
+              background: items.length === 0 ? `${T.accent}4d` : T.btnBg,
               border: "none",
               color: "#fff",
               fontSize: 16, fontWeight: 800, letterSpacing: "-0.01em",
-              cursor: loading || items.length === 0 ? "not-allowed" : "pointer",
+              pointerEvents: items.length === 0 ? "none" : "auto",
               opacity: items.length === 0 ? 0.5 : 1,
-              boxShadow: loading ? "none" : T.btnShadow,
+              boxShadow: items.length === 0 ? "none" : T.btnShadow,
               transition: "all 0.2s",
               display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+              textDecoration: "none",
             }}
           >
-            {loading ? (
-              <>
-                <span style={{ width: 18, height: 18, border: "2px solid rgba(255,255,255,0.4)", borderTopColor: "#fff", borderRadius: "50%", display: "inline-block", animation: "spin 0.7s linear infinite" }} />
-                Invio in corso…
-              </>
-            ) : (
-              <>
-                <ChefHat size={18} />
-                Invia alla cucina
-              </>
-            )}
-          </button>
+            <ShoppingBag size={18} />
+            Riepilogo ordine
+          </Link>
         </div>
       </div>
 

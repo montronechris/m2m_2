@@ -824,8 +824,7 @@ export default function StatusPage() {
         .fab-btn:active { transform: scale(0.93) !important; transition: transform 0.1s !important; }
       `}</style>
 
-      <Navbar tableNumber={tableNumber} sessionId={sessionId} palette={makePalette(brandColor)} />
-
+<Navbar tableNumber={tableNumber} sessionId={sessionId} brandColor={brandColor} />
       {orders.length === 0 ? (
         <div style={{
           display: "flex", flexDirection: "column", alignItems: "center",

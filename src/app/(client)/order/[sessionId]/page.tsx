@@ -533,7 +533,7 @@ const url = (restaurant as any)?.google_review_url || (restaurant as any)?.tripa
       ))}
 
       {/* ── NAVBAR ── */}
-      <Navbar tableNumber={tableNumber} sessionId={sessionId} cartCount={cartCount} cartHref={cartHref} palette={T} />
+      <Navbar tableNumber={tableNumber} sessionId={sessionId} cartCount={cartCount} cartHref={cartHref} brandColor={T.brand} />
 
       {/* ── CONTENUTO ── */}
       <div style={{ position: "relative", zIndex: 10, paddingTop: 80 }}>

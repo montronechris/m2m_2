@@ -14,8 +14,11 @@ import {
 
 export type { CartItem, CartCustomization };
 
+/** CartItem esteso con numero di portata */
+export type CartItemPortata = CartItem & { portata: number };
+
 type CartState = {
-  items:          CartItem[];
+  items:          CartItemPortata[];
   orderId:        string | null;
   tableId:        string | null;
   restaurantId:   string | null;
@@ -27,14 +30,16 @@ type CartState = {
   /** Epoch ms dell'ultima mutazione. null = nessuna attività ancora. */
   lastActivityAt: number | null;
 
-  totalCents:   () => number;
-  initFromDB:   (tableId: string | null, restaurantId: string | null, restaurantSlug: string, sessionId: string | null) => Promise<void>;
-  addItem:      (item: { menuItemId: string; name: string; basePriceCents: number; customizations: CartCustomization[] }) => Promise<void>;
-  removeItem:   (orderItemId: string) => Promise<void>;
-  updateQuantity:(orderItemId: string, delta: number) => Promise<void>;
-  expireCart:    () => Promise<void>;
-  updateNote:    (orderItemId: string, note: string) => Promise<void>;
-  clearCart:     () => void;
+  totalCents:     () => number;
+  initFromDB:     (tableId: string | null, restaurantId: string | null, restaurantSlug: string, sessionId: string | null) => Promise<void>;
+  addItem:        (item: { menuItemId: string; name: string; basePriceCents: number; customizations: CartCustomization[]; portata?: number }) => Promise<void>;
+  removeItem:     (orderItemId: string) => Promise<void>;
+  updateQuantity: (orderItemId: string, delta: number) => Promise<void>;
+  /** Cambia portata di un item. Se qty > 1, splitta: 1 unità va nella nuova portata, il resto rimane. */
+  updatePortata:  (orderItemId: string, newPortata: number) => Promise<void>;
+  expireCart:     () => Promise<void>;
+  updateNote:     (orderItemId: string, note: string) => Promise<void>;
+  clearCart:      () => void;
 };
 
 /** Aggiorna lastActivityAt ad ogni mutazione del carrello */
@@ -66,7 +71,8 @@ export const useCartStore = create<CartState>()((set, get) => ({
   restaurantId,
   sessionId ?? undefined  // ✅ converte null → undefined
 );
-      const items: CartItem[]   = await getOrderItems(order.id, sessionId ?? undefined);
+      const rawItems: CartItem[] = await getOrderItems(order.id, sessionId ?? undefined);
+      const items: CartItemPortata[] = rawItems.map(i => ({ ...i, portata: i.portata ?? 1 }));
       // lastActivityAt rimane null finché l'utente non aggiunge/rimuove
       // un piatto nella sessione corrente. NON usiamo updated_at del DB
       // perché verrebbe toccato da altre operazioni e farebbe scadere
@@ -79,7 +85,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
   },
 
   // ── ADD ───────────────────────────────────────────────────────────────────
-  addItem: async ({ menuItemId, name, basePriceCents, customizations }) => {
+  addItem: async ({ menuItemId, name, basePriceCents, customizations, portata = 1 }) => {
     const { orderId, tableId, restaurantId } = get();
     const extraCents     = customizations.reduce((sum, c) => sum + (c.priceModifierCents ?? 0), 0);
     const totalItemCents = basePriceCents + extraCents;
@@ -99,18 +105,20 @@ export const useCartStore = create<CartState>()((set, get) => ({
     try {
         console.log("[addItem] orderId:", activeOrderId, "sessionId:", get().sessionId); // ← aggiungi
       const newOrderItemId = await addItemToOrder(activeOrderId, {
-        menuItemId, name, priceCents: totalItemCents, quantity: 1, customizations,
+        menuItemId, name, priceCents: totalItemCents, quantity: 1, customizations, portata,
       }, get().sessionId ?? undefined);
 
-      const newItem: CartItem = {
+      const newItem: CartItemPortata = {
         orderItemId: newOrderItemId, menuItemId, name,
         priceCents: totalItemCents, quantity: 1, customizations,
+        portata,
       };
 
       set((state) => {
         const existingIdx = state.items.findIndex(
           (i) => i.menuItemId === menuItemId &&
-                 JSON.stringify(i.customizations) === JSON.stringify(customizations)
+                 JSON.stringify(i.customizations) === JSON.stringify(customizations) &&
+                 i.portata === portata
         );
         if (existingIdx >= 0) {
           const updated = [...state.items];
@@ -134,7 +142,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
       } catch (err) {
         console.error("[CartStore] removeItem failed:", err);
         const restored = await getOrderItems(orderId);
-        set({ items: restored });
+        set({ items: restored.map(i => ({ ...i, portata: (i as CartItemPortata).portata ?? 1 })) });
       }
     }
   },
@@ -159,7 +167,95 @@ export const useCartStore = create<CartState>()((set, get) => ({
       } catch (err) {
         console.error("[CartStore] updateQuantity failed:", err);
         const restored = await getOrderItems(orderId);
-        set({ items: restored });
+        set({ items: restored.map(i => ({ ...i, portata: (i as CartItemPortata).portata ?? 1 })) });
+      }
+    }
+  },
+
+  // ── UPDATE PORTATA ────────────────────────────────────────────────────────
+  // Se qty === 1 → cambia portata direttamente (merge se esiste già un item uguale nella portata target)
+  // Se qty > 1  → splitta: 1 unità va nella nuova portata, il resto rimane
+  updatePortata: async (orderItemId: string, newPortata: number) => {
+    const { items, orderId } = get();
+    const item = items.find((i) => i.orderItemId === orderItemId);
+    if (!item || item.portata === newPortata) return;
+
+    const customKey = JSON.stringify(item.customizations);
+
+    // Cerca se nella portata target esiste già lo stesso piatto+customizations
+    const targetIdx = items.findIndex(
+      (i) => i.orderItemId !== orderItemId &&
+             i.menuItemId === item.menuItemId &&
+             JSON.stringify(i.customizations) === customKey &&
+             i.portata === newPortata
+    );
+
+    if (item.quantity === 1) {
+      // Qty 1: sposta intero
+      if (targetIdx >= 0) {
+        // Merge nel target: +1 qty al target, rimuovi il corrente
+        const updated = items
+          .filter((i) => i.orderItemId !== orderItemId)
+          .map((i, idx) =>
+            // idx nel nuovo array non corrisponde, usiamo orderItemId
+            i.orderItemId === items[targetIdx].orderItemId
+              ? { ...i, quantity: i.quantity + 1 }
+              : i
+          );
+        set({ items: updated, ...touch() });
+        // Sync DB: aggiorna qty target + rimuovi vecchio
+        if (orderId) {
+          try {
+            await updateOrderItemQuantity(items[targetIdx].orderItemId!, orderId, items[targetIdx].quantity + 1, get().sessionId ?? undefined);
+            await removeOrderItem(orderItemId, orderId, get().sessionId ?? undefined);
+          } catch (err) { console.error("[CartStore] updatePortata merge failed:", err); }
+        }
+      } else {
+        // Nessun merge: cambia solo portata
+        set({
+          items: items.map((i) => i.orderItemId === orderItemId ? { ...i, portata: newPortata } : i),
+          ...touch(),
+        });
+      }
+    } else {
+      // Qty > 1: splitta — decrementa corrente di 1, crea/incrementa nella target portata
+      const decremented = items.map((i) =>
+        i.orderItemId === orderItemId ? { ...i, quantity: i.quantity - 1 } : i
+      );
+
+      if (targetIdx >= 0) {
+        // Merge split nel target esistente
+        const updated = decremented.map((i) =>
+          i.orderItemId === items[targetIdx].orderItemId
+            ? { ...i, quantity: i.quantity + 1 }
+            : i
+        );
+        set({ items: updated, ...touch() });
+        if (orderId) {
+          try {
+            await updateOrderItemQuantity(orderItemId, orderId, item.quantity - 1, get().sessionId ?? undefined);
+            await updateOrderItemQuantity(items[targetIdx].orderItemId!, orderId, items[targetIdx].quantity + 1, get().sessionId ?? undefined);
+          } catch (err) { console.error("[CartStore] updatePortata split-merge failed:", err); }
+        }
+      } else {
+        // Crea nuova entry nella portata target
+        try {
+          const newOrderItemId = await addItemToOrder(orderId!, {
+            menuItemId: item.menuItemId, name: item.name,
+            priceCents: item.priceCents, quantity: 1,
+            customizations: item.customizations,
+            portata: newPortata,
+          }, get().sessionId ?? undefined);
+
+          const newEntry: CartItemPortata = {
+            ...item, orderItemId: newOrderItemId, quantity: 1, portata: newPortata,
+          };
+          set({ items: [...decremented, newEntry], ...touch() });
+
+          if (orderId) {
+            await updateOrderItemQuantity(orderItemId, orderId, item.quantity - 1, get().sessionId ?? undefined);
+          }
+        } catch (err) { console.error("[CartStore] updatePortata split-new failed:", err); }
       }
     }
   },
