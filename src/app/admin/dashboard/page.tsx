@@ -23,9 +23,13 @@ import { createBrowserClient } from "@supabase/ssr";
 import {
   ChefHat, ChevronLeft, ChevronRight,
   LayoutDashboard, ShoppingCart, Utensils, QrCode,
-  BarChart3, Users, Palette, Settings,
-  Sun, Moon, Bell,
+  BarChart3, Users, Palette, Settings, UtensilsCrossed,
+  Sun, Moon, Bell, BellOff,
 } from "lucide-react";
+import {
+  isNotificationSoundMuted,
+  setNotificationSoundMuted,
+} from "@/lib/notificationSound";
 
 // ── Sezioni ──────────────────────────────────────────────────────────────────
 import { DashboardSection }  from "./sections/DashboardSection";
@@ -38,6 +42,7 @@ import { BrandingSection } from "./sections/BrandingSection";
 import { AnalyticsSection } from "./sections/AnalyticsSection";
 import { AIAnalyticsSection } from "./sections/AIAnalyticsSection";
 import { SettingsSection } from "./sections/SettingsSection";
+import { WaiterSection } from "./sections/WaiterSection";
 import { AIAssistantOverlay } from "./components/AIAssistantOverlay";
 
 
@@ -52,6 +57,7 @@ export type SectionId =
   | "analytics"
   | "staff"
   | "branding"
+  | "waiter"
   | "settings";
 
 export type ThemeMode = "dark" | "light";
@@ -74,6 +80,7 @@ const NAV_ITEMS: { id: SectionId; label: string; icon: React.ComponentType<{ cla
   { id: "menu",      label: "Menu",         icon: Utensils        },
   { id: "orders",    label: "Ordini",       icon: ShoppingCart    },
   { id: "tables",    label: "Tavoli",       icon: QrCode          },
+  { id: "waiter",    label: "Cameriere",   icon: UtensilsCrossed },
   { id: "analytics", label: "Analytics",   icon: BarChart3       },
   { id: "staff",     label: "Staff",        icon: Users           },
   { id: "branding",  label: "Branding",    icon: Palette         },
@@ -110,6 +117,8 @@ function SectionRenderer({
       return <MenuSection ctx={ctx} theme={theme} />;
     case "orders":
       return <OrdersSection ctx={ctx} theme={theme} />;
+    case "waiter":
+      return <WaiterSection ctx={ctx} theme={theme} />;
     case "tables":
       return <TablesSection ctx={ctx} theme={theme} />;
     case "qr":
@@ -132,11 +141,25 @@ export default function AdminDashboardPage() {
   const [isLoading,           setIsLoading]           = useState(true);
   const [ctx,                 setCtx]                 = useState<RestaurantCtx | null>(null);
   const [activeOrdersCount,   setActiveOrdersCount]   = useState(0);
+  const [soundMuted,          setSoundMuted]          = useState(false);
 
   // ── Tema persistente ────────────────────────────────────────────────────────
   useEffect(() => {
     const saved = localStorage.getItem("tavolarapida_theme");
     if (saved === "light" || saved === "dark") setTheme(saved);
+  }, []);
+
+  // ── Mute notifiche persistente ──────────────────────────────────────────────
+  useEffect(() => {
+    setSoundMuted(isNotificationSoundMuted());
+  }, []);
+
+  const toggleSoundMuted = useCallback(() => {
+    setSoundMuted(prev => {
+      const next = !prev;
+      setNotificationSoundMuted(next);
+      return next;
+    });
   }, []);
 
   const toggleTheme = useCallback(() => {
@@ -362,10 +385,14 @@ export default function AdminDashboardPage() {
               {dark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
             </button>
 
-            {/* Badge notifiche ordini attivi */}
-            <button className={`p-2 ${hover} rounded-xl transition-all relative ${muted}`}>
-              <Bell className="w-4 h-4" />
-              {activeOrdersCount > 0 && (
+            {/* Badge notifiche ordini attivi + toggle suono */}
+            <button
+              onClick={toggleSoundMuted}
+              title={soundMuted ? "Attiva suono notifiche" : "Disattiva suono notifiche"}
+              className={`p-2 ${hover} rounded-xl transition-all relative ${muted}`}
+            >
+              {soundMuted ? <BellOff className="w-4 h-4" /> : <Bell className="w-4 h-4" />}
+              {activeOrdersCount > 0 && !soundMuted && (
                 <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
               )}
             </button>

@@ -31,6 +31,7 @@ const LABELS: Record<SectionId, string> = {
   analytics: "Analytics",
   staff:     "Staff",
   branding:  "Branding",
+  waiter:    "Cameriere",
   settings:  "Impostazioni",
 };
 

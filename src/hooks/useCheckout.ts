@@ -67,6 +67,7 @@ export function useCheckout() {
             priceCents: item.priceCents ?? 0,
             quantity: item.quantity ?? 1,
             customizations: item.customizations ?? [],
+            portata: item.portata ?? 1,
           })
         )
       );

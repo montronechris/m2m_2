@@ -216,13 +216,15 @@ export default function OrderPage() {
       setLoadingOptionsId(null);
     }
     // Nessuna opzione → aggiungi direttamente e lancia il dot subito
-    await addItem({ menuItemId: item.id, name: item.name, basePriceCents: item.price_cents, customizations: [] });
+    const isDrink = categories.find(c => c.id === item.category_id)?.is_drink ?? false;
+    await addItem({ menuItemId: item.id, name: item.name, basePriceCents: item.price_cents, customizations: [], is_drink: isDrink });
     triggerFlyingDot(originRect);
   };
 
   const handleCustomizationConfirm = async (customizations: CartCustomization[]) => {
     if (!currentItem) return;
-    await addItem({ menuItemId: currentItem.id, name: currentItem.name, basePriceCents: currentItem.price_cents, customizations });
+    const isDrink = categories.find(c => c.id === currentItem.category_id)?.is_drink ?? false;
+    await addItem({ menuItemId: currentItem.id, name: currentItem.name, basePriceCents: currentItem.price_cents, customizations, is_drink: isDrink });
     // Dot parte solo alla conferma del modal
     triggerFlyingDot(pendingOriginRect);
     setPendingOriginRect(null);

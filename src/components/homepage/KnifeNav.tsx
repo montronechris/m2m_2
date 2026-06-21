@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { usePathname } from "next/navigation";
 import { motion, useSpring } from "framer-motion";
 import { SCAN_URL } from "@/lib/config";
 
@@ -64,11 +65,13 @@ function ChefHat({ size = 36 }: { size?: number }) {
 /* ---------------- MAGNETIC NAV ITEM ---------------- */
 function NavItem({
   it,
+  href,
   i,
   on,
   onPick,
 }: {
   it: (typeof items)[number];
+  href: string;
   i: number;
   on: boolean;
   onPick: (i: number, ext?: boolean) => void;
@@ -93,7 +96,7 @@ function NavItem({
   return (
     <motion.a
       ref={ref}
-      href={it.href}
+      href={href}
       {...(ext ? { rel: "noopener" } : {})}
       onClick={() => onPick(i, ext)}
       onMouseMove={move}
@@ -115,12 +118,18 @@ function NavItem({
 
 /* ---------------- NAVBAR ---------------- */
 export default function KnifeNav() {
+  const pathname = usePathname();
+  const isHome = pathname === "/";
+  const toHref = (hash: string) => (isHome ? hash : `/${hash}`);
+  const logoHref = isHome ? "#top" : "/";
+
   const [active, setActive] = useState(0);
   const [scrolled, setScrolled] = useState(false);
   const [open, setOpen] = useState(false);
   const lock = useRef(false);
 
   useEffect(() => {
+    if (!isHome) return;
     const onScroll = () => {
       setScrolled(window.scrollY > 18);
       if (lock.current) return;
@@ -136,7 +145,7 @@ export default function KnifeNav() {
     };
     window.addEventListener("scroll", onScroll, { passive: true });
     return () => window.removeEventListener("scroll", onScroll);
-  }, []);
+  }, [isHome]);
 
   const pick = (i: number, external?: boolean) => {
     if (external) return;
@@ -184,7 +193,7 @@ export default function KnifeNav() {
             />
 
             {/* logo */}
-            <a href="#top" onClick={() => pick(0)} className="z-[2] flex items-center pl-11 pr-1.5" style={{ color: "#B6794C" }}>
+            <a href={logoHref} onClick={() => pick(0)} className="z-[2] flex items-center pl-11 pr-1.5" style={{ color: "#B6794C" }}>
               <span className="mr-2 font-display text-2xl font-light tracking-[0.2em]">TR</span>
               <ChefHat />
             </a>
@@ -217,7 +226,8 @@ export default function KnifeNav() {
 
               {items.map((it, i) => {
                 const ext = "external" in it && it.external;
-                return <NavItem key={it.id} it={it} i={i} on={!ext && active === i} onPick={pick} />;
+                const href = ext ? it.href : toHref(it.href);
+                return <NavItem key={it.id} it={it} href={href} i={i} on={!ext && active === i} onPick={pick} />;
               })}
             </div>
           </div>
@@ -279,7 +289,7 @@ export default function KnifeNav() {
             transition: "padding .45s ease",
           }}
         >
-          <a href="#top" className="flex items-center gap-2.5" style={{ color: "#B6794C" }}>
+          <a href={logoHref} className="flex items-center gap-2.5" style={{ color: "#B6794C" }}>
             <ChefHat size={28} />
             <span className="font-display text-base font-semibold tracking-tight" style={{ color: "#3a2f26" }}>TavolaRapida</span>
           </a>
@@ -308,10 +318,11 @@ export default function KnifeNav() {
           >
             {items.map((it, i) => {
               const ext = "external" in it && it.external;
+              const href = ext ? it.href : toHref(it.href);
               return (
                 <a
                   key={it.id}
-                  href={it.href}
+                  href={href}
                   {...(ext ? { rel: "noopener" } : {})}
                   onClick={() => {
                     pick(i, ext);

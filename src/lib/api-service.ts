@@ -245,6 +245,7 @@ export const addItemToOrder = async (
     quantity: number;
     customizations: CartCustomization[];
     portata?: number;            // numero di portata (default 1)
+    is_drink?: boolean;          // true se è una bevanda
   },
   sessionToken?: string
 ): Promise<string> => {
@@ -257,6 +258,7 @@ export const addItemToOrder = async (
     base_price: item.priceCents / 100,  // DB numeric in euro (es. 16.50), il codice lavora in centesimi
     customizations: item.customizations,
     portata: item.portata ?? 1,
+    is_drink: item.is_drink ?? false,
   }, sessionToken);
 
   // 2. Recalculate order total (sum all items from DB — single source of truth)
@@ -333,6 +335,17 @@ export const updateOrderItemNote = async (
   sessionToken?: string
 ): Promise<void> => {
   await restPatch("order_items", orderItemId, { note }, sessionToken);
+};
+
+/**
+ * Aggiorna la portata di un order_item.
+ */
+export const updateOrderItemPortata = async (
+  orderItemId: string,
+  portata: number,
+  sessionToken?: string
+): Promise<void> => {
+  await restPatch("order_items", orderItemId, { portata }, sessionToken);
 };
 
 /**

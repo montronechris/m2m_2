@@ -9,6 +9,7 @@ import {
   Filter, LayoutGrid, AlertTriangle, Printer, History, X,
 } from "lucide-react";
 import type { RestaurantCtx, ThemeMode } from "../page";
+import { isNotificationSoundMuted } from "@/lib/notificationSound";
 
 // ─── TYPES ────────────────────────────────────────────────────────────────────
 
@@ -26,6 +27,8 @@ type OrderItem = {
   quantity:       number;
   note:           string;
   customizations: CartCustomization[];
+  portata:        number;
+  portata_completed: boolean;
 };
 
 type Order = {
@@ -155,6 +158,7 @@ export function OrdersSection({ ctx, theme }: Props) {
   const [tick,          setTick]         = useState(0);
   const [viewMode,      setViewMode]     = useState<ViewMode>("kanban");
   const [tableFilter,   setTableFilter]  = useState<string | null>(null);
+  const [portataFilter, setPortataFilter] = useState<number | null>(null);
 
   // ── CRONOLOGIA ──────────────────────────────────────────────────────────────
   const [showHistory,        setShowHistory]        = useState(false);
@@ -170,6 +174,7 @@ export function OrdersSection({ ctx, theme }: Props) {
 
   // ── SUONO NOTIFICA ──────────────────────────────────────────────────────────
   const playNotification = useCallback(() => {
+    if (isNotificationSoundMuted()) return;
     try {
       if (!audioCtx.current) {
         audioCtx.current = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -244,6 +249,8 @@ export function OrdersSection({ ctx, theme }: Props) {
             quantity: i.quantity ?? 1,
             note:     i.note ?? "",
             customizations: Array.isArray(i.customizations) ? i.customizations : [],
+            portata:  i.portata ?? 1,
+            portata_completed: i.portata_completed ?? false,
           })),
         };
       });
@@ -319,6 +326,8 @@ export function OrdersSection({ ctx, theme }: Props) {
               quantity: i.quantity ?? 1,
               note:     i.note ?? "",
               customizations: Array.isArray(i.customizations) ? i.customizations : [],
+              portata:  i.portata ?? 1,
+              portata_completed: i.portata_completed ?? false,
             })),
           };
         });
@@ -378,6 +387,56 @@ export function OrdersSection({ ctx, theme }: Props) {
     setOrders((prev) => prev.filter((o) => o.id !== orderId));
   };
 
+  // ── COMPLETA PORTATA CORRENTE E AVANZA ───────────────────────────────────────
+  const completeCurrentPortata = async (orderId: string) => {
+    setUpdating(orderId);
+    const order = orders.find(o => o.id === orderId);
+    if (!order) { setUpdating(null); return; }
+
+    const activeItems = order.items.filter(i => !i.portata_completed);
+    const currentPortata = Math.min(...activeItems.map(i => i.portata));
+    const remainingPortate = [...new Set(activeItems.map(i => i.portata))].filter(p => p > currentPortata);
+
+    const { error: err } = await supabase
+      .from("order_items")
+      .update({ portata_completed: true })
+      .eq("order_id", orderId)
+      .eq("portata", currentPortata);
+    if (err) {
+      setError(`Errore completamento portata: ${err.message}`);
+      setUpdating(null);
+      return;
+    }
+
+    if (remainingPortate.length > 0) {
+      await supabase.from("orders")
+        .update({ status: "confirmed", updated_at: new Date().toISOString() })
+        .eq("id", orderId);
+    } else {
+      await supabase.from("orders")
+        .update({ status: "served", updated_at: new Date().toISOString() })
+        .eq("id", orderId);
+    }
+
+    await fetchOrders();
+    setUpdating(null);
+  };
+
+  // ── AUTO-COMPLETE PORTATA DOPO 5 MIN READY ────────────────────────────────
+  useEffect(() => {
+    const autoComplete = async () => {
+      const readyOrders = orders.filter(o => o.status === "ready");
+      for (const order of readyOrders) {
+        const readyMinutes = formatElapsedNum(order.updated_at);
+        if (readyMinutes >= 5) {
+          await completeCurrentPortata(order.id);
+        }
+      }
+    };
+    autoComplete();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tick, orders]);
+
   // ── TEMA ────────────────────────────────────────────────────────────────────
   const isDark      = theme === "dark";
   const bg          = isDark ? "bg-gray-950"     : "bg-gray-50";
@@ -389,8 +448,24 @@ export function OrdersSection({ ctx, theme }: Props) {
   // ── FILTRI ──────────────────────────────────────────────────────────────────
   const allTableNumbers = [...new Set(orders.map(o => o.table_number).filter(Boolean) as string[])].sort();
 
+  // Per ogni ordine, calcola la portata corrente (la più bassa non completata)
+  const getCurrentPortata = (order: Order) => {
+    const active = order.items.filter(i => !i.portata_completed);
+    if (active.length === 0) return null;
+    return Math.min(...active.map(i => i.portata));
+  };
+
+  // Portate correnti attive per i pallini rossi del filtro
+  const activePortate = new Set<number>();
+  orders.forEach(o => {
+    const cp = getCurrentPortata(o);
+    if (cp !== null) activePortate.add(cp);
+  });
+
   const visibleOrders = orders.filter(o => {
     if (tableFilter && o.table_number !== tableFilter) return false;
+    const cp = getCurrentPortata(o);
+    if (portataFilter && cp !== portataFilter) return false;
     if (viewMode === "urgent") return formatElapsedNum(o._displayTime || o.created_at) >= 10;
     return true;
   });
@@ -403,7 +478,8 @@ export function OrdersSection({ ctx, theme }: Props) {
   const aggregatedDishes: AggregatedDish[] = (() => {
     const map: Record<string, AggregatedDish> = {};
     visibleOrders.forEach(order => {
-      order.items.forEach(item => {
+      const cp = getCurrentPortata(order);
+      order.items.filter(i => !i.portata_completed && i.portata === cp).forEach(item => {
         if (!map[item.name]) map[item.name] = { name: item.name, totalQty: 0, tables: [] };
         map[item.name].totalQty += item.quantity;
         map[item.name].tables.push({
@@ -521,6 +597,32 @@ export function OrdersSection({ ctx, theme }: Props) {
                       ? "bg-blue-500/15 text-blue-400 border-blue-500/25"
                       : isDark ? "bg-white/4 border-white/8 text-gray-500 hover:bg-white/8" : "bg-transparent border-gray-200 text-gray-400 hover:bg-gray-100"}`}>
                   {tn}
+                </button>
+              ))}
+            </div>
+
+            <div className={`w-px h-4 ${isDark ? "bg-white/10" : "bg-gray-200"} mx-0.5`} />
+
+            {/* Filtro portata */}
+            <div className="flex items-center gap-1.5">
+              <Utensils className="w-3 h-3 text-gray-500" />
+              <button onClick={() => setPortataFilter(null)}
+                className={`px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all
+                  ${portataFilter === null
+                    ? "bg-orange-500/15 text-orange-400 border-orange-500/25"
+                    : isDark ? "bg-white/4 border-white/8 text-gray-500 hover:bg-white/8" : "bg-transparent border-gray-200 text-gray-400 hover:bg-gray-100"}`}>
+                Tutte
+              </button>
+              {Array.from({ length: 10 }, (_, i) => i + 1).map(n => (
+                <button key={n} onClick={() => setPortataFilter(portataFilter === n ? null : n)}
+                  className={`relative px-2.5 py-1.5 rounded-xl text-xs font-bold border transition-all
+                    ${portataFilter === n
+                      ? "bg-orange-500/15 text-orange-400 border-orange-500/25"
+                      : isDark ? "bg-white/4 border-white/8 text-gray-500 hover:bg-white/8" : "bg-transparent border-gray-200 text-gray-400 hover:bg-gray-100"}`}>
+                  P{n}
+                  {activePortate.has(n) && (
+                    <span className="absolute -top-1 -right-1 w-2 h-2 rounded-full bg-red-500" />
+                  )}
                 </button>
               ))}
             </div>
@@ -737,7 +839,7 @@ export function OrdersSection({ ctx, theme }: Props) {
                 bgAccent="border-yellow-500/25 bg-yellow-500/10" accentBg={isDark ? "bg-yellow-500/5" : "bg-yellow-50/60"}>
                 {pending.map(o => (
                   <OrderCard key={o.id} order={o} isUpdating={updating === o.id}
-                    onUpdate={updateStatus} onDelete={deleteOrder} onPrint={printOrder} tick={tick} isDark={isDark} />
+                    onUpdate={updateStatus} onDelete={deleteOrder} onPrint={printOrder} onCompletePortata={completeCurrentPortata} tick={tick} isDark={isDark} />
                 ))}
               </Column>
               <Column title="In Cucina" count={cooking.length} colorClass="text-blue-400"
@@ -745,7 +847,7 @@ export function OrdersSection({ ctx, theme }: Props) {
                 bgAccent="border-blue-500/25 bg-blue-500/10" accentBg={isDark ? "bg-blue-500/5" : "bg-blue-50/60"}>
                 {cooking.map(o => (
                   <OrderCard key={o.id} order={o} isUpdating={updating === o.id}
-                    onUpdate={updateStatus} onDelete={deleteOrder} onPrint={printOrder} tick={tick} isDark={isDark} />
+                    onUpdate={updateStatus} onDelete={deleteOrder} onPrint={printOrder} onCompletePortata={completeCurrentPortata} tick={tick} isDark={isDark} />
                 ))}
               </Column>
               <Column title="Pronti" count={ready.length} colorClass="text-green-400"
@@ -753,7 +855,7 @@ export function OrdersSection({ ctx, theme }: Props) {
                 bgAccent="border-green-500/25 bg-green-500/10" accentBg={isDark ? "bg-green-500/5" : "bg-green-50/60"}>
                 {ready.map(o => (
                   <OrderCard key={o.id} order={o} isUpdating={updating === o.id}
-                    onUpdate={updateStatus} onDelete={deleteOrder} onPrint={printOrder} tick={tick} isDark={isDark} />
+                    onUpdate={updateStatus} onDelete={deleteOrder} onPrint={printOrder} onCompletePortata={completeCurrentPortata} tick={tick} isDark={isDark} />
                 ))}
               </Column>
             </div>
@@ -806,11 +908,12 @@ function Column({ title, count, colorClass, icon, emptyText, bgAccent, accentBg,
   );
 }
 
-function OrderCard({ order, isUpdating, onUpdate, onDelete, onPrint, tick, isDark }: {
+function OrderCard({ order, isUpdating, onUpdate, onDelete, onPrint, onCompletePortata, tick, isDark }: {
   order: Order; isUpdating: boolean;
   onUpdate: (id: string, status: string) => void;
   onDelete: (id: string) => void;
   onPrint:  (order: Order) => void;
+  onCompletePortata: (orderId: string) => void;
   tick: number;
   isDark: boolean;
 }) {
@@ -829,17 +932,30 @@ function OrderCard({ order, isUpdating, onUpdate, onDelete, onPrint, tick, isDar
       ? isDark ? "bg-blue-500/8"   : "bg-blue-50/80"
       : isDark ? "bg-green-500/8"  : "bg-green-50/80";
 
+  // Solo la portata corrente (la più bassa non completata)
+  const activeItems = order.items.filter(i => !i.portata_completed);
+  const currentPortata = activeItems.length > 0 ? Math.min(...activeItems.map(i => i.portata)) : null;
+  const currentItems = activeItems.filter(i => i.portata === currentPortata);
+  const allPortateNums = [...new Set(order.items.map(i => i.portata))].sort((a, b) => a - b);
+  const totalPortate = allPortateNums.length;
+  const hasMorePortate = activeItems.some(i => i.portata !== currentPortata);
+
   return (
     <div className={`rounded-2xl border overflow-hidden transition-shadow ${cardBg} ${cardBorder} ${isUrgent ? "shadow-lg shadow-red-500/10" : ""}`}>
 
       {/* ── Card header ── */}
       <div className={`flex items-center gap-2.5 px-4 py-3 ${headerBg} border-b ${isDark ? "border-white/6" : "border-black/5"}`}>
-        {/* Tavolo badge */}
         <span className={`font-black text-sm tracking-tight px-2.5 py-1 rounded-lg ${isDark ? "bg-white/12 text-white" : "bg-black/8 text-gray-900"}`}>
           {order.table_number ? `T${order.table_number}` : "T—"}
         </span>
 
-        {/* Timer */}
+        {/* Badge portata corrente */}
+        {currentPortata !== null && totalPortate > 1 && (
+          <span className={`text-[11px] font-black px-2 py-0.5 rounded-lg ${isDark ? "bg-orange-500/15 text-orange-400 border border-orange-500/25" : "bg-orange-50 text-orange-600 border border-orange-200"}`}>
+            P{currentPortata}/{totalPortate}
+          </span>
+        )}
+
         <span className={`flex items-center gap-1 text-xs font-bold tabular-nums ${isUrgent ? "text-red-400" : isDark ? "text-gray-500" : "text-gray-400"}`}>
           <Clock className="w-3 h-3" />
           {formatElapsed(displayTime)}
@@ -857,41 +973,62 @@ function OrderCard({ order, isUpdating, onUpdate, onDelete, onPrint, tick, isDar
         </div>
       </div>
 
-      {/* ── Items ── */}
-      <div className="px-4 pt-3 pb-2 space-y-3">
-        {order.items.length === 0 ? (
+      {/* ── Items della portata corrente ── */}
+      <div className="px-4 pt-3 pb-2">
+        {currentItems.length === 0 ? (
           <p className="text-xs text-gray-500 italic py-2">Nessun prodotto</p>
-        ) : order.items.map(item => (
-          <div key={item.id}>
-            <div className="flex items-baseline gap-2">
-              <span className={`font-black text-sm tabular-nums min-w-[22px] ${isDark ? "text-green-400" : "text-green-600"}`}>
-                {item.quantity}×
+        ) : (
+          <>
+            {/* Intestazione portata */}
+            <div className={`flex items-center gap-2 mb-2 pb-1.5 border-b ${isDark ? "border-white/6" : "border-gray-100"}`}>
+              <span className={`text-[11px] font-black uppercase tracking-widest ${isDark ? "text-orange-400" : "text-orange-500"}`}>
+                Portata {currentPortata}
               </span>
-              <span className={`font-semibold text-sm leading-tight ${isDark ? "text-white" : "text-gray-900"}`}>
-                {item.name}
+              <span className={`text-[10px] font-medium ${isDark ? "text-gray-600" : "text-gray-400"}`}>
+                {currentItems.length} {currentItems.length === 1 ? "piatto" : "piatti"}
               </span>
+              {hasMorePortate && (
+                <span className={`ml-auto text-[10px] font-medium ${isDark ? "text-gray-600" : "text-gray-400"}`}>
+                  +{[...new Set(activeItems.filter(i => i.portata !== currentPortata).map(i => i.portata))].length} portate in attesa
+                </span>
+              )}
             </div>
-            {item.customizations.length > 0 && (
-              <div className="mt-1.5 ml-6 flex flex-wrap gap-1">
-                {item.customizations.map((c, i) => (
-                  <span key={i} className="inline-flex items-center gap-1 text-[11px] bg-orange-500/12 border border-orange-500/20 text-orange-300 px-2 py-0.5 rounded-md font-medium">
-                    <span className="opacity-60">{c.optionName}:</span> {c.choiceName}
-                    {c.priceModifierCents > 0 && <span className="opacity-60 ml-0.5">+€{formatPrice(c.priceModifierCents)}</span>}
-                  </span>
-                ))}
-              </div>
-            )}
-            {item.note && (
-              <div className="mt-1.5 ml-6 flex items-start gap-1.5 text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/18 rounded-lg px-2.5 py-1.5 font-medium italic">
-                <StickyNote className="w-3 h-3 shrink-0 mt-0.5 opacity-70" />
-                {item.note}
-              </div>
-            )}
-          </div>
-        ))}
+
+            <div className="space-y-2.5">
+              {currentItems.map(item => (
+                <div key={item.id}>
+                  <div className="flex items-baseline gap-2">
+                    <span className={`font-black text-sm tabular-nums min-w-[22px] ${isDark ? "text-green-400" : "text-green-600"}`}>
+                      {item.quantity}×
+                    </span>
+                    <span className={`font-semibold text-sm leading-tight ${isDark ? "text-white" : "text-gray-900"}`}>
+                      {item.name}
+                    </span>
+                  </div>
+                  {item.customizations.length > 0 && (
+                    <div className="mt-1.5 ml-6 flex flex-wrap gap-1">
+                      {item.customizations.map((c, i) => (
+                        <span key={i} className="inline-flex items-center gap-1 text-[11px] bg-orange-500/12 border border-orange-500/20 text-orange-300 px-2 py-0.5 rounded-md font-medium">
+                          <span className="opacity-60">{c.optionName}:</span> {c.choiceName}
+                          {c.priceModifierCents > 0 && <span className="opacity-60 ml-0.5">+€{formatPrice(c.priceModifierCents)}</span>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                  {item.note && (
+                    <div className="mt-1.5 ml-6 flex items-start gap-1.5 text-[11px] text-amber-300 bg-amber-500/10 border border-amber-500/18 rounded-lg px-2.5 py-1.5 font-medium italic">
+                      <StickyNote className="w-3 h-3 shrink-0 mt-0.5 opacity-70" />
+                      {item.note}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
 
         {order.notes && (
-          <div className={`flex items-start gap-1.5 text-[11px] rounded-xl px-3 py-2 border mt-1 ${isDark ? "text-gray-400 bg-white/4 border-white/8" : "text-gray-500 bg-gray-50 border-gray-100"}`}>
+          <div className={`flex items-start gap-1.5 text-[11px] rounded-xl px-3 py-2 border mt-2 ${isDark ? "text-gray-400 bg-white/4 border-white/8" : "text-gray-500 bg-gray-50 border-gray-100"}`}>
             <Bell className="w-3 h-3 shrink-0 mt-0.5 opacity-60" />
             <span className="italic">{order.notes}</span>
           </div>
@@ -927,13 +1064,31 @@ function OrderCard({ order, isUpdating, onUpdate, onDelete, onPrint, tick, isDar
           </>
         )}
         {order.status === "ready" && (
-          <button onClick={() => onUpdate(order.id, "served")} disabled={isUpdating}
-            className={`flex-1 disabled:opacity-40 py-2.5 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5 ${isDark ? "bg-white/8 hover:bg-white/14 text-gray-300" : "bg-gray-100 hover:bg-gray-200 text-gray-600"}`}>
+          <button onClick={() => onCompletePortata(order.id)} disabled={isUpdating}
+            className={`flex-1 disabled:opacity-40 py-2.5 rounded-xl font-bold text-xs tracking-wide transition-all flex items-center justify-center gap-1.5
+              ${hasMorePortate
+                ? isDark ? "bg-orange-500/15 hover:bg-orange-500/25 text-orange-400 border border-orange-500/25" : "bg-orange-50 hover:bg-orange-100 text-orange-600 border border-orange-200"
+                : isDark ? "bg-white/8 hover:bg-white/14 text-gray-300" : "bg-gray-100 hover:bg-gray-200 text-gray-600"
+              }`}>
             {isUpdating ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle className="w-3.5 h-3.5" />}
-            Consegnato
+            {hasMorePortate ? `Completa portata ${currentPortata}` : "Consegnato"}
           </button>
         )}
       </div>
+
+      {/* ── Auto-complete countdown ── */}
+      {order.status === "ready" && (() => {
+        const readyMins = formatElapsedNum(order.updated_at);
+        const remaining = 5 - readyMins;
+        if (remaining > 0) return (
+          <div className={`px-4 pb-3 -mt-1`}>
+            <p className={`text-[10px] text-center font-medium ${isDark ? "text-gray-600" : "text-gray-400"}`}>
+              Auto-completamento in {remaining} min
+            </p>
+          </div>
+        );
+        return null;
+      })()}
     </div>
   );
 }

@@ -27,6 +27,7 @@ type Category = {
   id: string;
   name: string;
   sort_order: number;
+  is_drink: boolean;
 };
 
 type MenuItem = {

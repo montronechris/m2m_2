@@ -8,6 +8,7 @@ import {
   removeOrderItem,
   updateOrderItemQuantity,
   updateOrderItemNote,
+  updateOrderItemPortata,
   cancelOrder,
   type PendingOrder,
 } from "@/lib/api-service";
@@ -32,7 +33,7 @@ type CartState = {
 
   totalCents:     () => number;
   initFromDB:     (tableId: string | null, restaurantId: string | null, restaurantSlug: string, sessionId: string | null) => Promise<void>;
-  addItem:        (item: { menuItemId: string; name: string; basePriceCents: number; customizations: CartCustomization[]; portata?: number }) => Promise<void>;
+  addItem:        (item: { menuItemId: string; name: string; basePriceCents: number; customizations: CartCustomization[]; portata?: number; is_drink?: boolean }) => Promise<void>;
   removeItem:     (orderItemId: string) => Promise<void>;
   updateQuantity: (orderItemId: string, delta: number) => Promise<void>;
   /** Cambia portata di un item. Se qty > 1, splitta: 1 unità va nella nuova portata, il resto rimane. */
@@ -85,7 +86,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
   },
 
   // ── ADD ───────────────────────────────────────────────────────────────────
-  addItem: async ({ menuItemId, name, basePriceCents, customizations, portata = 1 }) => {
+  addItem: async ({ menuItemId, name, basePriceCents, customizations, portata = 1, is_drink = false }) => {
     const { orderId, tableId, restaurantId } = get();
     const extraCents     = customizations.reduce((sum, c) => sum + (c.priceModifierCents ?? 0), 0);
     const totalItemCents = basePriceCents + extraCents;
@@ -105,7 +106,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
     try {
         console.log("[addItem] orderId:", activeOrderId, "sessionId:", get().sessionId); // ← aggiungi
       const newOrderItemId = await addItemToOrder(activeOrderId, {
-        menuItemId, name, priceCents: totalItemCents, quantity: 1, customizations, portata,
+        menuItemId, name, priceCents: totalItemCents, quantity: 1, customizations, portata, is_drink,
       }, get().sessionId ?? undefined);
 
       const newItem: CartItemPortata = {
@@ -216,6 +217,11 @@ export const useCartStore = create<CartState>()((set, get) => ({
           items: items.map((i) => i.orderItemId === orderItemId ? { ...i, portata: newPortata } : i),
           ...touch(),
         });
+        if (orderId) {
+          try {
+            await updateOrderItemPortata(orderItemId, newPortata, get().sessionId ?? undefined);
+          } catch (err) { console.error("[CartStore] updatePortata DB sync failed:", err); }
+        }
       }
     } else {
       // Qty > 1: splitta — decrementa corrente di 1, crea/incrementa nella target portata

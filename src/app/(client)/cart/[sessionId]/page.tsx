@@ -1,6 +1,6 @@
 // src/app/(client)/cart/[sessionId]/page.tsx
 "use client";
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { useCartStore } from "@/stores/useCartStore";
 import { getTableSession } from "@/lib/table-session";
@@ -148,11 +148,44 @@ export default function CartPage() {
   const [showNoteModal, setShowNoteModal] = useState(false);
   const [noteItem,      setNoteItem]      = useState<{ orderItemId: string; name: string; note: string } | null>(null);
 
+  // Mappa menuItemId → true se ha almeno un'opzione di personalizzazione nel DB
+  const [hasOptions,    setHasOptions]    = useState<Record<string, boolean>>({});
+
   // ── Coupon & payment: gestiti nella pagina /confirm ─────────────────────
 
   // ── Portate (ordine di arrivo piatti) ─────────────────────────────────────
   const [showPortataSelector, setShowPortataSelector] = useState<string | null>(null);
-  const MAX_PORTATE = 4;
+  const [portataError, setPortataError] = useState<string | null>(null);
+  const portataErrorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const maxExistingPortata = useMemo(() => Math.max(...items.map(i => i.portata ?? 1), 1), [items]);
+  const selectablePortate = maxExistingPortata + 1;
+
+  const showPortataError = (msg: string) => {
+    setPortataError(msg);
+    if (portataErrorTimeout.current) clearTimeout(portataErrorTimeout.current);
+    portataErrorTimeout.current = setTimeout(() => setPortataError(null), 3000);
+  };
+
+  const handlePortataChange = (orderItemId: string, newPortata: number, currentItem: { portata?: number; menuItemId: string }) => {
+    const currentPortata = currentItem.portata ?? 1;
+    if (newPortata === currentPortata) return;
+
+    // Simula lo spostamento e verifica che non si creino buchi
+    const simulatedItems = items.map(i =>
+      i.orderItemId === orderItemId ? { ...i, portata: newPortata } : i
+    );
+    const portateAfterMove = new Set(simulatedItems.map(i => i.portata ?? 1));
+    const maxAfter = Math.max(...portateAfterMove);
+    for (let p = 1; p < maxAfter; p++) {
+      if (!portateAfterMove.has(p)) {
+        showPortataError(`Non puoi spostare: la portata ${p} resterebbe vuota`);
+        return;
+      }
+    }
+
+    updatePortata(orderItemId, newPortata);
+    setShowPortataSelector(null);
+  };
 
   // Raggruppa items per portata (usa item.portata dallo store)
   const groupedByPortata = useMemo(() => {
@@ -187,6 +220,32 @@ export default function CartPage() {
   const [deletedName,   setDeletedName]   = useState<string | null>(null);
   const [showEmptyAnim, setShowEmptyAnim] = useState(false);
 
+  // ── Pre-fetch: quali piatti hanno personalizzazioni disponibili ──────────────
+  useEffect(() => {
+    const ids = [...new Set(items.map((i) => i.menuItemId))];
+    if (ids.length === 0) return;
+    const unchecked = ids.filter((id) => !(id in hasOptions));
+    if (unchecked.length === 0) return;
+
+    (async () => {
+      const inList = `(${unchecked.join(",")})`;
+      try {
+        const res = await fetch(
+          `${SUPABASE_URL}/rest/v1/menu_item_options?item_id=in.${inList}&select=item_id`,
+          { headers: supabaseHeaders },
+        );
+        const rows: { item_id: string }[] = res.ok ? await res.json() : [];
+        const withOptions = new Set(rows.map((r) => r.item_id));
+        setHasOptions((prev) => {
+          const next = { ...prev };
+          unchecked.forEach((id) => { next[id] = withOptions.has(id); });
+          return next;
+        });
+      } catch { /* silently fallback — button stays hidden */ }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [items]);
+
   // ── Stagger entrance animation ───────────────────────────────────────────────
   const [mounted, setMounted] = useState(false);
   const initialItemIdsRef = React.useRef<Set<string>>(new Set());
@@ -205,7 +264,7 @@ export default function CartPage() {
 
   const pressBtn = (key: string, cb: () => void) => {
     setActiveBtn(key);
-    setTimeout(() => { setActiveBtn(null); cb(); }, 160);
+    setTimeout(() => { setActiveBtn(null); cb(); }, 340);
   };
 
   // ── Stepper quantità: animazione "slot machine" ──────────────────────────────
@@ -613,9 +672,16 @@ initFromDB(
                       box-shadow 0.15s ease;
           -webkit-tap-highlight-color: transparent;
           user-select: none;
+          touch-action: manipulation;
         }
         .btn-action:active {
           transform: scale(0.92) !important;
+        }
+        @media (hover: none) {
+          .btn-action:active {
+            transform: scale(0.88) !important;
+            opacity: 0.85;
+          }
         }
         .btn-stepper {
           transition: transform 0.1s ease, color 0.15s ease;
@@ -627,23 +693,24 @@ initFromDB(
 
         /* ── Press animato via JS (Personalizza / Aggiungi nota) ── */
         @keyframes btnPress {
-          0%   { transform: scale(1);    box-shadow: none; }
-          35%  { transform: scale(0.90); box-shadow: none; }
-          70%  { transform: scale(1.04); }
-          100% { transform: scale(1);    }
+          0%   { transform: scale(1);    box-shadow: none; filter: brightness(1);   }
+          25%  { transform: scale(0.86); box-shadow: none; filter: brightness(0.92); }
+          55%  { transform: scale(1.06);                   filter: brightness(1.05); }
+          100% { transform: scale(1);                      filter: brightness(1);   }
         }
         @keyframes btnPressIcon {
           0%   { transform: rotate(0deg)   scale(1); }
-          40%  { transform: rotate(-12deg) scale(0.85); }
-          75%  { transform: rotate(6deg)   scale(1.1); }
+          30%  { transform: rotate(-16deg) scale(0.8); }
+          65%  { transform: rotate(8deg)   scale(1.15); }
           100% { transform: rotate(0deg)   scale(1); }
         }
         .btn-pressed {
-          animation: btnPress 0.32s cubic-bezier(0.34,1.3,0.64,1) forwards !important;
+          animation: btnPress 0.34s cubic-bezier(0.34,1.3,0.64,1) forwards !important;
           pointer-events: none;
+          background: rgba(0,0,0,0.04) !important;
         }
         .btn-pressed .btn-icon {
-          animation: btnPressIcon 0.32s cubic-bezier(0.34,1.3,0.64,1) forwards;
+          animation: btnPressIcon 0.34s cubic-bezier(0.34,1.3,0.64,1) forwards;
         }
 
         /* ── Navigazione carrello vuoto ── */
@@ -744,6 +811,11 @@ initFromDB(
         }
         .payment-card.selected {
           animation: paymentPop 0.32s cubic-bezier(0.34,1.3,0.64,1);
+        }
+
+        @keyframes portataErrorIn {
+          0%   { opacity: 0; transform: translateX(-50%) translateY(8px) scale(0.95); }
+          100% { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
         }
 
         /* ── Portata badge ── */
@@ -1116,14 +1188,13 @@ initFromDB(
                             minWidth: "max-content",
                           }}
                         >
-                          {Array.from({ length: MAX_PORTATE }, (_, i) => i + 1).map((p) => (
+                          {Array.from({ length: selectablePortate }, (_, i) => i + 1).map((p) => (
                             <button
                               key={p}
                               className="portata-option"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                updatePortata(primaryId, p);
-                                setShowPortataSelector(null);
+                                handlePortataChange(primaryId, p, item);
                               }}
                               style={{
                                 width: 36, height: 36, borderRadius: 9,
@@ -1194,6 +1265,7 @@ initFromDB(
 
                   {/* Personalizza + Nota */}
                   <div style={{ display: "flex", gap: 6 }}>
+                    {hasOptions[item.menuItemId] && (
                     <button
                       className={`btn-action${activeBtn === `${primaryId}-personalizza` ? " btn-pressed" : ""}`}
                       onClick={() => pressBtn(`${primaryId}-personalizza`, () => handleOpenCustomization(item.menuItemId, customizationsKey))}
@@ -1201,6 +1273,7 @@ initFromDB(
                     >
                       <Settings size={12} className="btn-icon" strokeWidth={2.2} /> Personalizza
                     </button>
+                    )}
 
                     <button
                       className={`btn-action${activeBtn === `${primaryId}-nota` ? " btn-pressed" : ""}`}
@@ -1252,6 +1325,24 @@ initFromDB(
         }}>
           <Trash2 size={14} color="#f87171" />
           <span><span style={{ color: "#f87171" }}>{deletedName}</span> eliminato</span>
+        </div>
+      )}
+
+      {/* Toast errore portata */}
+      {portataError && (
+        <div style={{
+          position: "fixed", bottom: 140, left: "50%", transform: "translateX(-50%)",
+          zIndex: 200,
+          background: "#1c1917", color: "#fbbf24",
+          padding: "10px 18px", borderRadius: 12,
+          fontSize: 13, fontWeight: 700,
+          boxShadow: "0 8px 32px rgba(0,0,0,0.25)",
+          display: "flex", alignItems: "center", gap: 8,
+          animation: "portataErrorIn 0.25s ease",
+          maxWidth: "calc(100vw - 40px)",
+        }}>
+          <span style={{ fontSize: 16 }}>⚠️</span>
+          {portataError}
         </div>
       )}
 

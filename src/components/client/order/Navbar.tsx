@@ -22,24 +22,38 @@ interface NavbarProps {
 
 // ─── Icons ────────────────────────────────────────────────────────────────────
 
-function BackIcon() {
+function BackIcon({ color }: { color: string }) {
   return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-      stroke="#d9b67e" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+      stroke={color} strokeWidth="1.9" strokeLinecap="round" strokeLinejoin="round">
       <path d="M15 18l-6-6 6-6" />
     </svg>
   );
 }
 
-function CartIcon() {
+function CartIcon({ color }: { color: string }) {
   return (
-    <svg viewBox="0 0 24 24" width="20" height="20" fill="none"
-      stroke="#d9b67e" strokeWidth="1.55" strokeLinecap="round" strokeLinejoin="round">
+    <svg viewBox="0 0 24 24" width="16" height="16" fill="none"
+      stroke={color} strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
       <path d="M6 2L3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z" />
       <line x1="3" y1="6" x2="21" y2="6" />
       <path d="M16 10a4 4 0 0 1-8 0" />
     </svg>
   );
+}
+
+// Sceglie testo scuro o chiaro in base alla luminanza del colore brand,
+// così le etichette restano leggibili su qualsiasi colore scelto dal ristoratore.
+function getReadableTextColor(hex: string): string {
+  const h = hex.replace("#", "");
+  const full = h.length === 3 ? h.split("").map((c) => c + c).join("") : h;
+  const n = parseInt(full, 16);
+  if (Number.isNaN(n)) return "#3a2f26";
+  const r = (n >> 16) & 255;
+  const g = (n >> 8) & 255;
+  const b = n & 255;
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+  return luminance > 0.6 ? "#2a2118" : "#fdf6ea";
 }
 
 // ─── Main component ───────────────────────────────────────────────────────────
@@ -54,12 +68,15 @@ export function Navbar({
   const router = useRouter();
 
   const handleBg = `linear-gradient(177deg, ${brandColor}cc 0%, ${brandColor} 52%, ${brandColor}dd 100%)`;
+  const handleText = getReadableTextColor(brandColor);
+  const handleTextShadow =
+    handleText === "#fdf6ea" ? "0 1px 1px rgba(0,0,0,.4)" : "0 1px 1px rgba(255,255,255,.35)";
 
   return (
     <div
       className="pointer-events-none fixed inset-x-0 top-0 z-[60] flex justify-center"
       style={{
-        paddingTop: scrolled ? 12 : 24,
+        paddingTop: scrolled ? 8 : 14,
         transition: "padding-top .5s cubic-bezier(.22,.61,.36,1)",
       }}
     >
@@ -67,17 +84,17 @@ export function Navbar({
       <div
         className="pointer-events-auto hidden origin-top md:block"
         style={{
-          transform: `scale(${scrolled ? 0.9 : 1})`,
+          transform: `scale(${scrolled ? 0.88 : 1})`,
           transition: "transform .5s cubic-bezier(.22,.61,.36,1)",
         }}
       >
         <div
           className="relative flex items-stretch"
           style={{
-            height: 88,
-            width: "min(820px, 92vw)",
+            height: 68,
+            width: "min(680px, 92vw)",
             filter:
-              "drop-shadow(0 26px 38px rgba(74,48,22,.24)) drop-shadow(0 5px 9px rgba(74,48,22,.14))",
+              "drop-shadow(0 20px 28px rgba(74,48,22,.22)) drop-shadow(0 4px 7px rgba(74,48,22,.13))",
           }}
         >
           {/* ── MANICO SINISTRO = tasto back ── */}
@@ -86,10 +103,10 @@ export function Navbar({
             whileHover={{ scale: 1.03, filter: "brightness(1.08)" }}
             whileTap={{ scale: 0.97 }}
             transition={{ type: "spring", stiffness: 420, damping: 18 }}
-            className="relative flex flex-col items-center justify-center gap-[6px] overflow-hidden"
+            className="relative flex flex-col items-center justify-center gap-[4px] overflow-hidden"
             style={{
-              width: 120,
-              borderRadius: "66px 6px 6px 66px",
+              width: 96,
+              borderRadius: "52px 6px 6px 52px",
               background: handleBg,
               boxShadow:
                 "inset 0 2px 0 rgba(255,221,180,.18), inset 0 -9px 17px rgba(0,0,0,.28)",
@@ -113,13 +130,13 @@ export function Navbar({
               style={{ background: "linear-gradient(180deg,rgba(255,225,185,.14),transparent)" }}
             />
             <div className="relative z-[2]">
-              <BackIcon />
+              <BackIcon color={handleText} />
             </div>
             <span
-              className="z-[2] text-[10px] font-semibold tracking-[0.3em]"
+              className="z-[2] text-[9px] font-bold tracking-[0.26em]"
               style={{
-                color: "rgba(247,226,194,.72)",
-                textShadow: "0 1px 1px rgba(0,0,0,.4)",
+                color: handleText,
+                textShadow: handleTextShadow,
               }}
             >
               HOME
@@ -128,7 +145,7 @@ export function Navbar({
 
           {/* ── BOLSTER sinistro ── */}
           <div
-            className="relative z-[5] -mx-[7px] w-[30px] self-stretch flex-shrink-0"
+            className="relative z-[5] -mx-[6px] w-[24px] self-stretch flex-shrink-0"
             style={{
               background: "linear-gradient(177deg,#f0f0ee,#cccdc9 48%,#a6a6a1)",
               clipPath: "polygon(0 0,58% 0,100% 100%,0 100%)",
@@ -156,15 +173,15 @@ export function Navbar({
               }}
             />
 
-            <div className="relative z-[2] flex flex-col items-center gap-[5px]">
+            <div className="relative z-[2] flex flex-col items-center gap-[3px]">
               {/* Tre rivetti */}
-              <div className="flex gap-[7px] mb-[4px]">
+              <div className="flex gap-[6px] mb-[2px]">
                 {[0, 1, 2].map((i) => (
                   <div
                     key={i}
                     style={{
-                      width: 5,
-                      height: 5,
+                      width: 4,
+                      height: 4,
                       borderRadius: "50%",
                       background: `radial-gradient(circle at 35% 35%, rgba(255,255,255,.9), ${brandColor}88)`,
                       boxShadow: "0 1px 2px rgba(0,0,0,.22)",
@@ -176,7 +193,7 @@ export function Navbar({
               <span
                 style={{
                   fontFamily: "'Playfair Display', Georgia, serif",
-                  fontSize: "clamp(1.1rem, 2.8vw, 1.45rem)",
+                  fontSize: "clamp(1rem, 2.2vw, 1.2rem)",
                   fontWeight: 700,
                   color: "#3a2f26",
                   letterSpacing: "-0.01em",
@@ -189,9 +206,9 @@ export function Navbar({
               {/* underline decorativa */}
               <div
                 style={{
-                  marginTop: 5,
+                  marginTop: 4,
                   height: 2,
-                  width: 32,
+                  width: 28,
                   borderRadius: 9,
                   background: `linear-gradient(90deg, ${brandColor}44, ${brandColor}, ${brandColor}44)`,
                 }}
@@ -201,7 +218,7 @@ export function Navbar({
 
           {/* ── BOLSTER destro ── */}
           <div
-            className="relative z-[5] -mx-[7px] w-[30px] self-stretch flex-shrink-0"
+            className="relative z-[5] -mx-[6px] w-[24px] self-stretch flex-shrink-0"
             style={{
               background: "linear-gradient(177deg,#f0f0ee,#cccdc9 48%,#a6a6a1)",
               clipPath: "polygon(42% 0,100% 0,100% 100%,0 100%)",
@@ -213,10 +230,10 @@ export function Navbar({
           <Link
             id="cart-icon"
             href={cartHref}
-            className="relative flex flex-col items-center justify-center gap-[7px] overflow-hidden transition-[filter,transform] duration-300 hover:-translate-y-px hover:brightness-110"
+            className="relative flex flex-col items-center justify-center gap-[5px] overflow-hidden transition-[filter,transform] duration-300 hover:-translate-y-px hover:brightness-110"
             style={{
-              width: 120,
-              borderRadius: "6px 66px 66px 6px",
+              width: 96,
+              borderRadius: "6px 52px 52px 6px",
               background: handleBg,
               boxShadow:
                 "inset 0 2px 0 rgba(255,221,180,.18), inset 0 -9px 17px rgba(0,0,0,.28)",
@@ -239,7 +256,7 @@ export function Navbar({
               style={{ background: "linear-gradient(180deg,rgba(255,225,185,.14),transparent)" }}
             />
             <div className="relative z-[2]">
-              <CartIcon />
+              <CartIcon color={handleText} />
               {cartCount > 0 && (
                 <span
                   style={{
@@ -266,10 +283,10 @@ export function Navbar({
               )}
             </div>
             <span
-              className="z-[2] text-[10px] font-semibold tracking-[0.3em]"
+              className="z-[2] text-[9px] font-bold tracking-[0.26em]"
               style={{
-                color: "rgba(247,226,194,.72)",
-                textShadow: "0 1px 1px rgba(0,0,0,.4)",
+                color: handleText,
+                textShadow: handleTextShadow,
               }}
             >
               CARRELLO
@@ -281,10 +298,10 @@ export function Navbar({
       {/* ══ MOBILE ═══════════════════════════════════════════════════════════ */}
       <div className="pointer-events-auto relative w-[min(560px,92vw)] md:hidden">
         <div
-          className="flex items-center justify-between rounded-[22px] border border-white/60 px-4"
+          className="flex items-center justify-between rounded-[20px] border border-white/60 px-3.5"
           style={{
-            paddingTop: scrolled ? 11 : 18,
-            paddingBottom: scrolled ? 11 : 18,
+            paddingTop: scrolled ? 8 : 12,
+            paddingBottom: scrolled ? 8 : 12,
             background: "rgba(245,240,231,.82)",
             backdropFilter: "blur(18px) saturate(150%)",
             boxShadow: "0 14px 32px -14px rgba(80,55,25,.35)",
@@ -295,8 +312,8 @@ export function Navbar({
           <button
             onClick={() => router.push("/")}
             style={{
-              width: 40,
-              height: 40,
+              width: 34,
+              height: 34,
               borderRadius: 12,
               border: `1.5px solid ${brandColor}33`,
               background: `${brandColor}18`,
@@ -350,8 +367,8 @@ export function Navbar({
             href={cartHref}
             style={{
               position: "relative",
-              width: 40,
-              height: 40,
+              width: 34,
+              height: 34,
               borderRadius: 12,
               border: `1.5px solid ${brandColor}33`,
               background: `${brandColor}18`,

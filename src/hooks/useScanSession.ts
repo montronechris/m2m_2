@@ -52,14 +52,14 @@ export function useScanSession(tableCode: string): ScanSessionResult {
           supabase.rpc("start_table_session", { p_table_id: data.tableId }),
           supabase
             .from("restaurants")
-            .select("name, primary_color, logo_url")
+            .select("name, brand_color, logo_url")
             .eq("id", data.restaurantId)
             .single(),
         ]);
 
         if (brandingResult.data) {
           setRestaurantName(brandingResult.data.name ?? undefined);
-          setPrimaryColor(brandingResult.data.primary_color ?? undefined);
+          setPrimaryColor(brandingResult.data.brand_color ?? undefined);
           setLogoUrl(brandingResult.data.logo_url ?? undefined);
         }
 
