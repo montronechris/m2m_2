@@ -1,0 +1,433 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,800;0,900;1,500;1,600&display=swap');
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --color-sidebar-ring: var(--sidebar-ring);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-primary-foreground: var(--sidebar-primary-foreground);
+  --color-sidebar-primary: var(--sidebar-primary);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar: var(--sidebar);
+  --color-chart-5: var(--chart-5);
+  --color-chart-4: var(--chart-4);
+  --color-chart-3: var(--chart-3);
+  --color-chart-2: var(--chart-2);
+  --color-chart-1: var(--chart-1);
+  --color-ring: var(--ring);
+  --color-input: var(--input);
+  --color-border: var(--border);
+  --color-destructive: var(--destructive);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-accent: var(--accent);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-muted: var(--muted);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-secondary: var(--secondary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-primary: var(--primary);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-popover: var(--popover);
+  --color-card-foreground: var(--card-foreground);
+  --color-card: var(--card);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.145 0 0);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.145 0 0);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.145 0 0);
+  --primary: oklch(0.205 0 0);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.97 0 0);
+  --secondary-foreground: oklch(0.205 0 0);
+  --muted: oklch(0.97 0 0);
+  --muted-foreground: oklch(0.556 0 0);
+  --accent: oklch(0.97 0 0);
+  --accent-foreground: oklch(0.205 0 0);
+  --destructive: oklch(0.577 0.245 27.325);
+  --border: oklch(0.922 0 0);
+  --input: oklch(0.922 0 0);
+  --ring: oklch(0.708 0 0);
+  --chart-1: oklch(0.646 0.222 41.116);
+  --chart-2: oklch(0.6 0.118 184.704);
+  --chart-3: oklch(0.398 0.07 227.392);
+  --chart-4: oklch(0.828 0.189 84.429);
+  --chart-5: oklch(0.769 0.188 70.08);
+  --sidebar: oklch(0.985 0 0);
+  --sidebar-foreground: oklch(0.145 0 0);
+  --sidebar-primary: oklch(0.205 0 0);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.97 0 0);
+  --sidebar-accent-foreground: oklch(0.205 0 0);
+  --sidebar-border: oklch(0.922 0 0);
+  --sidebar-ring: oklch(0.708 0 0);
+}
+
+.dark {
+  --background: oklch(0.145 0 0);
+  --foreground: oklch(0.985 0 0);
+  --card: oklch(0.205 0 0);
+  --card-foreground: oklch(0.985 0 0);
+  --popover: oklch(0.205 0 0);
+  --popover-foreground: oklch(0.985 0 0);
+  --primary: oklch(0.922 0 0);
+  --primary-foreground: oklch(0.205 0 0);
+  --secondary: oklch(0.269 0 0);
+  --secondary-foreground: oklch(0.985 0 0);
+  --muted: oklch(0.269 0 0);
+  --muted-foreground: oklch(0.708 0 0);
+  --accent: oklch(0.269 0 0);
+  --accent-foreground: oklch(0.985 0 0);
+  --destructive: oklch(0.704 0.191 22.216);
+  --border: oklch(1 0 0 / 10%);
+  --input: oklch(1 0 0 / 15%);
+  --ring: oklch(0.556 0 0);
+  --chart-1: oklch(0.488 0.243 264.376);
+  --chart-2: oklch(0.696 0.17 162.48);
+  --chart-3: oklch(0.769 0.188 70.08);
+  --chart-4: oklch(0.627 0.265 303.9);
+  --chart-5: oklch(0.645 0.246 16.439);
+  --sidebar: oklch(0.205 0 0);
+  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar-primary: oklch(0.488 0.243 264.376);
+  --sidebar-primary-foreground: oklch(0.985 0 0);
+  --sidebar-accent: oklch(0.269 0 0);
+  --sidebar-accent-foreground: oklch(0.985 0 0);
+  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-ring: oklch(0.556 0 0);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ── Slot machine qty animation (shared across /cart and /order) ─────── */
+@keyframes slotOutDown  { from { transform: translateY(0);    opacity: 1; } to { transform: translateY(110%);  opacity: 0; } }
+@keyframes slotOutUp    { from { transform: translateY(0);    opacity: 1; } to { transform: translateY(-110%); opacity: 0; } }
+@keyframes slotInTop    { from { transform: translateY(-110%); opacity: 0; } to { transform: translateY(0);    opacity: 1; } }
+@keyframes slotInBottom { from { transform: translateY(110%);  opacity: 0; } to { transform: translateY(0);    opacity: 1; } }
+
+.qty-slot-digit        { display: block; animation-duration: 220ms; animation-timing-function: cubic-bezier(0.22,1,0.36,1); animation-fill-mode: both; }
+.slot-out-down         { animation-name: slotOutDown; }
+.slot-out-up           { animation-name: slotOutUp; }
+.slot-in-top           { animation-name: slotInTop; }
+.slot-in-bottom        { animation-name: slotInBottom; }
+
+/* ============================================================
+   m2m — Vibrant Bistro brand palette & animations
+   Moving away from plain light yellow toward a rich, appetizing,
+   multi-color system.
+   ============================================================ */
+@theme inline {
+  /* Brand accents */
+  --color-brand-amber: oklch(0.72 0.19 60);      /* warm amber (not light yellow) */
+  --color-brand-terra: oklch(0.64 0.21 38);      /* burnt terracotta */
+  --color-brand-emerald: oklch(0.62 0.15 160);   /* fresh emerald */
+  --color-brand-rose: oklch(0.62 0.22 18);       /* coral rose */
+  --color-brand-violet: oklch(0.55 0.2 295);     /* premium violet */
+  --color-brand-sky: oklch(0.6 0.15 235);        /* trust sky */
+  --color-ink: oklch(0.22 0.03 50);              /* warm charcoal */
+  --font-serif: "Playfair Display", "Georgia", "Times New Roman", serif;
+}
+
+/* Custom keyframes */
+@keyframes blob-float {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -40px) scale(1.1); }
+  66% { transform: translate(-20px, 20px) scale(0.95); }
+}
+@keyframes blob-float-alt {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-40px, 30px) scale(1.15); }
+}
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+@keyframes marquee {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+@keyframes marquee-reverse {
+  0% { transform: translateX(-50%); }
+  100% { transform: translateX(0); }
+}
+@keyframes float-soft {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-12px); }
+}
+@keyframes gradient-pan {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes pulse-ring {
+  0% { transform: scale(0.8); opacity: 0.7; }
+  100% { transform: scale(2.2); opacity: 0; }
+}
+@keyframes shimmer-line {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(200%); }
+}
+
+@layer utilities {
+  .glass-card {
+    background: rgba(255, 255, 255, 0.82);
+    backdrop-filter: blur(18px) saturate(140%);
+    -webkit-backdrop-filter: blur(18px) saturate(140%);
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 10px 40px -12px rgba(28, 25, 23, 0.18),
+      0 1px 0 rgba(255, 255, 255, 0.7) inset;
+  }
+  .safe-bottom {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  @keyframes qro-float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-8px); }
+  }
+  .animate-float {
+    animation: qro-float 6s ease-in-out infinite;
+  }
+  .animate-blob { animation: blob-float 18s ease-in-out infinite; }
+  .animate-blob-alt { animation: blob-float-alt 22s ease-in-out infinite; }
+  .animate-float-soft { animation: float-soft 6s ease-in-out infinite; }
+  .animate-marquee { animation: marquee 40s linear infinite; }
+  .animate-marquee-rev { animation: marquee-reverse 40s linear infinite; }
+  .animate-gradient-pan {
+    background-size: 200% 200%;
+    animation: gradient-pan 8s ease infinite;
+  }
+  .text-gradient-warm {
+    background: linear-gradient(110deg, oklch(0.55 0.21 55), oklch(0.48 0.23 38), oklch(0.46 0.24 20));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .text-gradient-vivid {
+    background: linear-gradient(110deg, oklch(0.62 0.15 160), oklch(0.55 0.2 295), oklch(0.6 0.15 235));
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+  .bg-grid-soft {
+    background-image:
+      linear-gradient(to right, oklch(0.22 0.03 50 / 0.04) 1px, transparent 1px),
+      linear-gradient(to bottom, oklch(0.22 0.03 50 / 0.04) 1px, transparent 1px);
+    background-size: 44px 44px;
+  }
+  .glass {
+    background: oklch(1 0 0 / 0.7);
+    backdrop-filter: blur(14px);
+    -webkit-backdrop-filter: blur(14px);
+  }
+  .shadow-glow-amber { box-shadow: 0 20px 60px -15px oklch(0.72 0.19 60 / 0.45); }
+  .shadow-glow-emerald { box-shadow: 0 20px 60px -15px oklch(0.62 0.15 160 / 0.4); }
+  .shadow-glow-rose { box-shadow: 0 20px 60px -15px oklch(0.62 0.22 18 / 0.4); }
+  .shadow-glow-violet { box-shadow: 0 20px 60px -15px oklch(0.55 0.2 295 / 0.4); }
+  /* Lift dark text off the animated gradient-mesh background so the
+     headline stays crisp and legible in every animation frame. */
+  .text-lift {
+    text-shadow: 0 1px 2px oklch(0.99 0.01 70 / 0.85), 0 2px 8px oklch(0.99 0.01 70 / 0.6);
+  }
+  .text-lift-strong {
+    text-shadow: 0 1px 1px oklch(1 0 0 / 0.9), 0 0 18px oklch(1 0 0 / 0.55);
+  }
+  /* Soft radial veil placed behind a text column to guarantee contrast. */
+  .hero-veil {
+    background: radial-gradient(60% 70% at 30% 40%, oklch(1 0 0 / 0.55) 0%, oklch(1 0 0 / 0) 70%);
+  }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
+  .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-track { background: oklch(0.97 0.01 50); }
+::-webkit-scrollbar-thumb {
+  background: linear-gradient(oklch(0.72 0.19 60), oklch(0.64 0.21 38));
+  border-radius: 999px;
+}
+::-webkit-scrollbar-thumb:hover { background: oklch(0.64 0.21 38); }
+
+/* ============================================================
+   m2m Admin Dashboard — tt-* design system
+   Remapped to the LANDING palette (amber/terracotta/rose) with
+   orange-yellow buttons, instead of the original TikTok pink/cyan.
+   Preserves the exact class names used by the dashboard reference
+   (tt-card, tt-skeleton, tt-section-title, shadow-tt, etc.) so the
+   "drawing" of the admin pages is unchanged — only the colors move.
+   ============================================================ */
+@theme inline {
+  /* Brand accents (landing-aligned) */
+  --color-tt-pink: oklch(0.55 0.21 55);        /* was TikTok red → warm amber-burnt */
+  --color-tt-pinkSoft: oklch(0.62 0.22 18);    /* coral rose */
+  --color-tt-cyan: oklch(0.62 0.15 160);       /* emerald (for secondary accents) */
+  --color-tt-gradient: linear-gradient(135deg, oklch(0.72 0.19 60), oklch(0.64 0.21 38));
+
+  /* Functional */
+  --color-tt-success: oklch(0.62 0.15 160);    /* emerald */
+  --color-tt-warning: oklch(0.75 0.18 75);     /* warm yellow */
+  --color-tt-danger: oklch(0.6 0.22 25);       /* red-orange */
+
+  /* Neutrals — surfaceAlt tuned darker so white cards always stand out */
+  --color-tt-ink: oklch(0.22 0.03 50);         /* warm charcoal (same as landing --ink) */
+  --color-tt-muted: oklch(0.52 0.02 50);
+  --color-tt-line: oklch(0.9 0.01 60);
+  --color-tt-surfaceAlt: oklch(0.94 0.015 65);   /* page bg — clearly darker than cards */
+  --color-tt-surfaceAlt2: oklch(0.91 0.015 65); /* hover bg */
+  --color-tt-dark: oklch(0.22 0.02 50);
+}
+
+@keyframes ttFadeUp {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@layer utilities {
+  .tt-card {
+    background: oklch(1 0 0);
+    border: 1px solid oklch(0.9 0.01 60);
+  }
+  .tt-card-pink {
+    background: linear-gradient(135deg, oklch(0.99 0.02 65), oklch(0.97 0.04 60));
+    border: 1px solid oklch(0.72 0.19 60 / 0.25);
+  }
+  .tt-skeleton {
+    background: linear-gradient(90deg, oklch(0.96 0.01 65) 25%, oklch(0.92 0.015 65) 50%, oklch(0.96 0.01 65) 75%);
+    background-size: 200% 100%;
+    animation: shimmer 1.5s infinite;
+  }
+  .tt-section-title {
+    font-size: 0.75rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: oklch(0.55 0.02 50);
+    margin-bottom: 0.5rem;
+  }
+  .tt-avatar {
+    background: linear-gradient(135deg, oklch(0.72 0.19 60), oklch(0.64 0.21 38));
+    color: #fff;
+    border-radius: 9999px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 700;
+  }
+  .tt-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+    border-radius: 9999px;
+    padding: 0.125rem 0.5rem;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+  .tt-pill-success { background: oklch(0.62 0.15 160 / 0.15); color: oklch(0.45 0.15 160); }
+  .tt-pill-danger { background: oklch(0.6 0.22 25 / 0.15); color: oklch(0.5 0.22 25); }
+  .tt-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+  .tt-scroll::-webkit-scrollbar-thumb { background: oklch(0.85 0.02 60); border-radius: 9999px; }
+  .shadow-tt { box-shadow: 0 1px 3px oklch(0.22 0.03 50 / 0.08), 0 1px 2px oklch(0.22 0.03 50 / 0.04); }
+  .shadow-ttHover { box-shadow: 0 8px 24px oklch(0.55 0.21 55 / 0.15); }
+  .animate-ttFadeUp { animation: ttFadeUp 0.3s ease-out; }
+}
+
+
+/*aggiunto ora ultimo*/
+
+/* ============================================================
+   m2m Landing — utility classes usate dai componenti Hero / landing
+   ============================================================ */
+@layer utilities {
+  /* Eyebrow pill (badge sopra il titolo) */
+.eyebrow {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  border-radius: 9999px;
+  padding: 0.6rem 1.5rem;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+  /* Sheen — shimmer highlight su bottoni/badge */
+  .sheen {
+    position: relative;
+    overflow: hidden;
+  }
+  .sheen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      105deg,
+      transparent 40%,
+      oklch(1 0 0 / 0.18) 50%,
+      transparent 60%
+    );
+    background-size: 200% 100%;
+    animation: shimmer-line 2.8s ease-in-out infinite;
+  }
+
+  /* Lift hover — carta/bottone che si solleva al hover */
+  .lift-hover {
+    transition: transform 0.2s ease, box-shadow 0.2s ease;
+  }
+  .lift-hover:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px oklch(0.22 0.03 50 / 0.12);
+  }
+
+  /* Status dot — pallino verde animato */
+  .status-dot {
+    display: inline-block;
+    width: 0.5rem;
+    height: 0.5rem;
+    border-radius: 9999px;
+    flex-shrink: 0;
+    animation: pulse 2s ease-in-out infinite;
+  }
+
+  /* Divider gradient (linea orizzontale decorativa) */
+  .divider-gradient {
+    background: linear-gradient(
+      to right,
+      transparent,
+      oklch(0.72 0.19 60 / 0.5) 30%,
+      oklch(0.62 0.22 18 / 0.4) 70%,
+      transparent
+    );
+  }
+
+  /* Sparkle spin — icona Sparkles che ruota lentamente */
+  @keyframes sparkle-spin {
+    0%   { transform: rotate(0deg) scale(1); }
+    50%  { transform: rotate(20deg) scale(1.15); }
+    100% { transform: rotate(0deg) scale(1); }
+  }
+  .animate-sparkle-spin {
+    animation: sparkle-spin 3s ease-in-out infinite;
+  }
+}

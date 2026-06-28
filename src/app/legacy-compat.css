@@ -1,0 +1,146 @@
+/* ═══════════════════════════════════════════════════════════════════════════
+   LEGACY COMPAT LAYER — Glass/Lucid warm aliases
+   ─────────────────────────────────────────────────────────────────────────────
+   Classi ereditate dal vecchio globals.css (usate in /security, /perche-sceglierci,
+   /rinnova-abbonamento, etc.) ridefinite con il nuovo glass/lucid warm style.
+   ───────────────────────────────────────────────────────────────────────────── */
+
+@source inline(".card");
+@source inline(".label");
+@source inline(".btn-primary");
+@source inline(".btn-ghost");
+@source inline(".text-gradient");
+
+/* ── Card — frosted glass warm ──────────────────────────────────────────────── */
+.card {
+  background: rgba(255, 255, 255, 0.55);
+  backdrop-filter: blur(20px) saturate(180%);
+  -webkit-backdrop-filter: blur(20px) saturate(180%);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  border-radius: 1.5rem;
+  box-shadow:
+    0 8px 32px -8px rgba(43, 38, 32, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.7);
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.card:hover {
+  box-shadow:
+    0 16px 48px -12px rgba(182, 121, 76, 0.25),
+    inset 0 1px 0 rgba(255, 255, 255, 0.8);
+  transform: translateY(-2px);
+}
+
+/* ── Label pill — golden accent ─────────────────────────────────────────────── */
+.label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(182, 121, 76, 0.3);
+  background: rgba(182, 121, 76, 0.07);
+  padding: 0.375rem 1rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+  color: #B6794C;
+}
+
+/* ── Text gradient — warm gold ──────────────────────────────────────────────── */
+.text-gradient {
+  background: linear-gradient(135deg, #B6794C 0%, #E0A020 60%, #CDA277 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
+}
+
+/* ── Primary button — gold gradient glass ───────────────────────────────────── */
+.btn-primary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #B6794C 0%, #E0A020 100%);
+  color: #FBF8F1;
+  padding: 1rem 2rem;
+  font-weight: 600;
+  box-shadow:
+    0 8px 24px -4px rgba(182, 121, 76, 0.45),
+    inset 0 1px 0 rgba(255, 255, 255, 0.25);
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  cursor: pointer;
+  border: none;
+  outline: none;
+}
+.btn-primary:hover {
+  transform: scale(1.03);
+  box-shadow:
+    0 12px 32px -6px rgba(182, 121, 76, 0.55),
+    inset 0 1px 0 rgba(255, 255, 255, 0.3);
+}
+.btn-primary:active {
+  transform: scale(0.98);
+}
+
+/* ── Ghost button — frosted glass outline ───────────────────────────────────── */
+.btn-ghost {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(230, 215, 191, 0.8);
+  color: #2B2620;
+  padding: 1rem 2rem;
+  font-weight: 600;
+  transition: all 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+  cursor: pointer;
+  outline: none;
+}
+.btn-ghost:hover {
+  border-color: rgba(182, 121, 76, 0.5);
+  color: #B6794C;
+  background: rgba(255, 255, 255, 0.9);
+}
+
+/* ── Body text helpers (legacy color tokens used in subpages) ───────────────── */
+.text-ink { color: #2B2620; }
+.text-ink\/60 { color: rgba(43, 38, 32, 0.6); }
+.text-ink\/70 { color: rgba(43, 38, 32, 0.7); }
+.text-ink\/45 { color: rgba(43, 38, 32, 0.45); }
+.text-ink\/50 { color: rgba(43, 38, 32, 0.5); }
+.text-gold { color: #B6794C; }
+.text-gold-soft { color: #CDA277; }
+.text-sage { color: #5E7355; }
+.text-sage-soft { color: #7E9472; }
+.text-wood { color: #7A4F30; }
+.text-cream-50 { color: #FBF8F1; }
+.text-cream-200\/70 { color: rgba(241, 232, 216, 0.7); }
+.text-cream-200\/40 { color: rgba(241, 232, 216, 0.4); }
+.bg-gold\/10 { background-color: rgba(182, 121, 76, 0.1); }
+.bg-gold\/20 { background-color: rgba(182, 121, 76, 0.2); }
+.bg-sage\/15 { background-color: rgba(94, 115, 85, 0.15); }
+.bg-sage\/20 { background-color: rgba(94, 115, 85, 0.2); }
+.bg-wood\/10 { background-color: rgba(122, 79, 48, 0.1); }
+.bg-espresso { background-color: #1B1714; }
+.bg-cream-100 { background-color: #F1E8D8; }
+.bg-cream-50 { background-color: #FBF8F1; }
+.bg-black\/30 { background-color: rgba(0, 0, 0, 0.3); }
+.border-ink\/15 { border-color: rgba(43, 38, 32, 0.15); }
+.border-l-wood\/60 { border-left-color: rgba(122, 79, 48, 0.6); }
+.border-ink\/30 { border-color: rgba(43, 38, 32, 0.3); }
+.ring-white\/5 { box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.05) inset; }
+.shadow-soft { box-shadow: 0 10px 40px -12px rgba(43, 38, 32, 0.25); }
+.shadow-card { box-shadow: 0 2px 24px -8px rgba(43, 38, 32, 0.18); }
+.font-display { font-family: var(--font-geist-sans), system-ui, sans-serif; letter-spacing: -0.02em; }
+
+/* ── KnifeNav compat (legacy nav used in /security, /perche-sceglierci) ──────── */
+.knife-nav {
+  background: rgba(251, 248, 241, 0.7);
+  backdrop-filter: blur(24px) saturate(180%);
+  -webkit-backdrop-filter: blur(24px) saturate(180%);
+  border-bottom: 1px solid rgba(230, 215, 191, 0.5);
+}

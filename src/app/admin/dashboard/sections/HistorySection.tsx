@@ -1,0 +1,192 @@
+'use client'
+
+import { useEffect, useState, useMemo } from 'react'
+import { History, CheckCircle2, XCircle, AlertCircle, Filter, TrendingUp } from 'lucide-react'
+import type { RestaurantCtx, ThemeMode } from '../types'
+import { getHistoryOrders, type Order } from '@/lib/admin-service'
+
+interface Props {
+  ctx: RestaurantCtx
+  theme: ThemeMode
+}
+
+const statusMeta: Record<string, { label: string; cls: string; icon: typeof CheckCircle2 }> = {
+  served: { label: 'Servito', cls: 'bg-tt-success/15 text-tt-success', icon: CheckCircle2 },
+  delivered: { label: 'Consegnato', cls: 'bg-tt-success/15 text-tt-success', icon: CheckCircle2 },
+  cancelled: { label: 'Annullato', cls: 'bg-tt-danger/15 text-tt-danger', icon: XCircle },
+}
+
+const filters: { id: string; label: string }[] = [
+  { id: 'all', label: 'Tutti' },
+  { id: 'served', label: 'Serviti' },
+  { id: 'cancelled', label: 'Annullati' },
+]
+
+export function HistorySection({ ctx }: Props) {
+  const [filter, setFilter] = useState('all')
+  const [orders, setOrders] = useState<Order[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    getHistoryOrders(ctx.restaurantId)
+      .then((data) => {
+        if (active) setOrders(data)
+      })
+      .catch((e) => {
+        if (active) setError(e.message ?? 'Errore nel caricamento')
+      })
+      .finally(() => {
+        if (active) setLoading(false)
+      })
+    return () => {
+      active = false
+    }
+  }, [ctx.restaurantId])
+
+  const visible = filter === 'all' ? orders : orders.filter((o) => o.status === filter)
+
+  const stats = useMemo(() => {
+    const delivered = orders.filter((o) => o.status === 'served' || o.status === 'delivered')
+    const cancelled = orders.filter((o) => o.status === 'cancelled')
+    const revenue = delivered.reduce((s, o) => s + (o.total_cents ?? 0), 0)
+    return {
+      total: orders.length,
+      delivered: delivered.length,
+      cancelled: cancelled.length,
+      revenue: revenue / 100,
+    }
+  }, [orders])
+
+  if (loading) {
+    return (
+      <div className="space-y-4">
+        <div className="h-7 w-40 tt-skeleton rounded-full" />
+        <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <div key={i} className="tt-card h-20 rounded-2xl border border-tt-line shadow-tt" />
+          ))}
+        </div>
+        {Array.from({ length: 4 }).map((_, i) => (
+          <div key={i} className="tt-card h-16 rounded-2xl border border-tt-line shadow-tt" />
+        ))}
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="grid place-items-center py-16 text-center">
+        <AlertCircle className="mb-3 h-10 w-10 text-tt-danger" />
+        <p className="text-sm font-bold text-tt-ink">Errore</p>
+        <p className="mt-1 max-w-xs text-xs text-tt-muted">{error}</p>
+      </div>
+    )
+  }
+
+  return (
+    <div className="space-y-4">
+      <div>
+        <h2 className="font-serif text-xl font-extrabold text-tt-ink">Cronologia</h2>
+        <p className="text-xs text-tt-muted">Storico ordini serviti e annullati</p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+        <div className="tt-card rounded-2xl border border-tt-line p-4 shadow-tt">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-tt-pink/15 text-tt-pink">
+              <History className="h-4 w-4" />
+            </span>
+          </div>
+          <p className="text-lg font-extrabold text-tt-ink">{stats.total}</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">Totale</p>
+        </div>
+        <div className="tt-card rounded-2xl border border-tt-line p-4 shadow-tt">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-tt-success/15 text-tt-success">
+              <CheckCircle2 className="h-4 w-4" />
+            </span>
+          </div>
+          <p className="text-lg font-extrabold text-tt-ink">{stats.delivered}</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">Serviti</p>
+        </div>
+        <div className="tt-card rounded-2xl border border-tt-line p-4 shadow-tt">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-tt-danger/15 text-tt-danger">
+              <XCircle className="h-4 w-4" />
+            </span>
+          </div>
+          <p className="text-lg font-extrabold text-tt-ink">{stats.cancelled}</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">Annullati</p>
+        </div>
+        <div className="tt-card rounded-2xl border border-tt-line p-4 shadow-tt">
+          <div className="mb-2 flex items-center justify-between">
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-tt-success/15 text-tt-success">
+              <TrendingUp className="h-4 w-4" />
+            </span>
+          </div>
+          <p className="text-lg font-extrabold text-tt-ink">€{stats.revenue.toFixed(0)}</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">Ricavo</p>
+        </div>
+      </div>
+
+      {/* Filters */}
+      <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
+        {filters.map((f) => (
+          <button
+            key={f.id}
+            onClick={() => setFilter(f.id)}
+            className={`shrink-0 rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${
+              filter === f.id
+                ? 'bg-gradient-to-r from-brand-amber to-brand-terra text-white shadow-glow-amber'
+                : 'border border-tt-line bg-white text-tt-muted hover:text-tt-ink'
+            }`}
+          >
+            {f.label}
+          </button>
+        ))}
+      </div>
+
+      {/* List */}
+      {visible.length === 0 ? (
+        <div className="tt-card rounded-2xl border border-tt-line p-8 text-center shadow-tt">
+          <Filter className="mx-auto mb-2 h-8 w-8 text-tt-muted opacity-40" />
+          <p className="text-sm text-tt-muted">Nessun ordine nello storico.</p>
+        </div>
+      ) : (
+        <div className="tt-card overflow-hidden rounded-2xl border border-tt-line shadow-tt">
+          {visible.map((o, i) => {
+            const st = statusMeta[o.status] ?? statusMeta['served']
+            const StatusIcon = st.icon
+            const total = (o.total_cents / 100).toFixed(2)
+            const date = new Date(o.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })
+            const time = new Date(o.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+            return (
+              <div
+                key={o.id}
+                className={`flex items-center gap-3 p-3.5 transition-colors hover:bg-tt-surfaceAlt2 ${i > 0 ? 'border-t border-tt-line' : ''}`}
+              >
+                <div className={`grid h-10 w-10 shrink-0 place-items-center rounded-xl ${st.cls}`}>
+                  <StatusIcon className="h-4 w-4" />
+                </div>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold text-tt-ink">#{o.ordine ?? o.id.slice(-6)}</p>
+                    <span className={`tt-pill ${st.cls}`}>{st.label}</span>
+                  </div>
+                  <p className="text-xs text-tt-muted">
+                    {date} · {time} · {(o as any).payment_method ?? '—'}
+
+                  </p>
+                </div>
+                <p className="text-sm font-bold text-tt-ink">€{total}</p>
+              </div>
+            )
+          })}
+        </div>
+      )}
+    </div>
+  )
+}

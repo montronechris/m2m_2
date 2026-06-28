@@ -1,0 +1,410 @@
+// src/components/client/scan/ScanInstructions.tsx
+"use client";
+
+import { useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
+import { Bell, Sparkles, ShoppingCart, Layers2, Star } from "lucide-react";
+
+interface ScanInstructionsProps {
+  primaryColor?: string;
+  restaurantName?: string;
+  logoUrl?: string;
+  ready: boolean;
+  onContinue: () => void;
+}
+
+const STEPS = [
+  {
+    number: "1",
+    title: "Scegli i piatti",
+    description: "Sfoglia il menu e aggiungi al carrello tutto quello che vuoi ordinare.",
+    icon: <ShoppingCart size={22} color="#1A3D2B" strokeWidth={1.8} />,
+  },
+  {
+    number: "2",
+    title: "Dividili in portate",
+    description:
+      "Organizza i piatti scelti in portate per decidere in che ordine arriveranno al tavolo.",
+    icon: <Layers2 size={22} color="#1A3D2B" strokeWidth={1.8} />,
+  },
+  {
+    number: "3",
+    title: "Lascia una recensione (opzionale)",
+    description:
+      "A fine pasto puoi lasciare un feedback al ristorante e al sito per aiutarci a migliorare.",
+    icon: <Star size={22} color="#1A3D2B" strokeWidth={1.8} />,
+  },
+];
+
+const ACTIONS = [
+  {
+    icon: <Bell size={18} color="#fff" />,
+    title: "Chiama il cameriere",
+    description: "Invia una notifica al personale — arriverà al tuo tavolo il prima possibile.",
+    bg: "#1A3D2B",
+  },
+  {
+    icon: <Sparkles size={18} color="#fff" />,
+    title: "Assistente AI",
+    description: "Chiedi ingredienti, allergeni, consigli sui piatti o qualsiasi altra domanda sul menu.",
+    bg: "#1A3D2B",
+  },
+];
+
+export function ScanInstructions({
+  primaryColor,
+  restaurantName,
+  logoUrl,
+  ready,
+  onContinue,
+}: ScanInstructionsProps) {
+  const [confirmed, setConfirmed] = useState(false);
+  const [ticked, setTicked] = useState(false);
+
+  const brand = primaryColor ?? "#1A3D2B";
+  const canContinue = ready && confirmed;
+
+  function handleContinue() {
+    if (!canContinue) return;
+    setTicked(true);
+    setTimeout(onContinue, 600);
+  }
+
+  return (
+    <div
+      style={{
+        minHeight: "100dvh",
+        backgroundImage: "url('/food-bg.jpg')",
+        backgroundSize: "cover",
+        backgroundPosition: "center top",
+        backgroundRepeat: "no-repeat",
+        fontFamily: "'Inter', system-ui, sans-serif",
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap');
+      `}</style>
+
+      {/* Scrollable content area */}
+      <div
+        style={{
+          flex: 1,
+          overflowY: "auto",
+          padding: "28px 24px 0",
+          maxWidth: 480,
+          width: "100%",
+          margin: "0 auto",
+        }}
+      >
+        {/* Restaurant header */}
+        {restaurantName && (
+          <motion.div
+            initial={{ opacity: 0, y: -8 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4 }}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              marginBottom: 28,
+            }}
+          >
+            {logoUrl && (
+              <img
+                src={logoUrl}
+                alt={restaurantName}
+                style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }}
+              />
+            )}
+            <span style={{ fontSize: 13, fontWeight: 700, color: "#1C1C1E", letterSpacing: "0.04em" }}>
+              {restaurantName}
+            </span>
+          </motion.div>
+        )}
+
+        {/* Eyebrow */}
+        <motion.p
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.4, delay: 0.05 }}
+          style={{
+            textAlign: "center",
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.18em",
+            textTransform: "uppercase",
+            color: brand,
+            marginBottom: 8,
+          }}
+        >
+          Come funziona
+        </motion.p>
+
+        {/* Title */}
+        <motion.h1
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.45, delay: 0.1 }}
+          style={{
+            fontFamily: "'Playfair Display', Georgia, serif",
+            fontSize: 32,
+            fontWeight: 700,
+            color: "#1C1C1E",
+            textAlign: "center",
+            letterSpacing: "-0.02em",
+            lineHeight: 1.15,
+            margin: "0 0 32px",
+          }}
+        >
+          Prima di ordinare
+        </motion.h1>
+
+        {/* Steps card */}
+        <div style={{
+          background: "#fff",
+          borderRadius: 20,
+          padding: "20px 18px",
+          marginBottom: 16,
+          boxShadow: "0 2px 16px rgba(0,0,0,0.07)",
+        }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 20 }}>
+          {STEPS.map((step, i) => (
+            <motion.div
+              key={step.number}
+              initial={{ opacity: 0, x: -14 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.15 + i * 0.1 }}
+              style={{ display: "flex", alignItems: "flex-start", gap: 16 }}
+            >
+              {/* Icon tile */}
+              <div
+                style={{
+                  width: 48,
+                  height: 48,
+                  borderRadius: 14,
+                  background: "#EDE5D8",
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  }}
+              >
+                {step.icon}
+              </div>
+              <div style={{ paddingTop: 2 }}>
+                <p style={{ fontSize: 14, fontWeight: 700, color: "#1C1C1E", marginBottom: 3 }}>
+                  {step.number}. {step.title}
+                </p>
+                <p style={{ fontSize: 13, color: "#6B6560", lineHeight: 1.55 }}>
+                  {step.description}
+                </p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+        </div>
+
+        {/* Tasti disponibili card */}
+        <div style={{
+          background: "#fff",
+          borderRadius: 20,
+          padding: "18px 18px",
+          marginBottom: 16,
+          boxShadow: "0 2px 16px rgba(0,0,0,0.07)",
+        }}>
+        <p style={{
+            fontSize: 11,
+            fontWeight: 700,
+            letterSpacing: "0.16em",
+            textTransform: "uppercase",
+            color: "#9C9188",
+            marginBottom: 14,
+          }}
+        >
+          Tasti disponibili
+        </p>
+
+        {/* Action buttons */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+          {ACTIONS.map((action, i) => (
+            <motion.div
+              key={action.title}
+              initial={{ opacity: 0, x: -14 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.65 + i * 0.1 }}
+              style={{
+                background: "#1A3D2B",
+                borderRadius: 50,
+                padding: "14px 18px",
+                display: "flex",
+                alignItems: "center",
+                gap: 14,
+              }}
+            >
+              {/* Circle icon */}
+              <div
+                style={{
+                  width: 38,
+                  height: 38,
+                  borderRadius: "50%",
+                  background: "rgba(255,255,255,0.15)",
+                  flexShrink: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
+              >
+                {action.icon}
+              </div>
+              <div>
+                <p style={{ fontSize: 14, fontWeight: 700, color: "#fff", marginBottom: 2 }}>
+                  {action.title}
+                </p>
+                <p style={{ fontSize: 12, color: "rgba(255,255,255,0.65)", lineHeight: 1.5 }}>
+                  {action.description}
+                </p>
+              </div>
+            </motion.div>
+          ))}
+        </div>
+        </div>
+
+        {/* Checkbox card */}
+        <motion.label
+          initial={{ opacity: 0, x: -12 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.4, delay: 0.85 }}
+          style={{
+            display: "flex",
+            alignItems: "flex-start",
+            gap: 12,
+            cursor: "pointer",
+            userSelect: "none",
+            background: "#fff",
+            borderRadius: 20,
+            padding: "14px 18px",
+            marginBottom: 20,
+            boxShadow: "0 2px 16px rgba(0,0,0,0.07)",
+          }}
+        >
+          <div
+            style={{
+              width: 20,
+              height: 20,
+              borderRadius: 6,
+              border: `2px solid ${confirmed ? brand : "#B5A898"}`,
+              background: confirmed ? brand : "transparent",
+              flexShrink: 0,
+              marginTop: 1,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              transition: "background 0.2s, border-color 0.2s",
+            }}
+            onClick={() => setConfirmed(v => !v)}
+          >
+            {confirmed && (
+              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
+                <path d="M2 6l3 3 5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            )}
+          </div>
+          <span style={{ fontSize: 14, color: "#3D3530", lineHeight: 1.5 }}>
+            Ho letto le istruzioni e sono pronto a ordinare
+          </span>
+        </motion.label>
+      </div>
+
+      {/* Sticky CTA */}
+      <motion.div
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.45, delay: 0.95 }}
+        style={{
+          padding: "0 24px max(28px, env(safe-area-inset-bottom))",
+          maxWidth: 480,
+          width: "100%",
+          margin: "0 auto",
+          paddingTop: 12,
+        }}
+      >
+        <motion.button
+          type="button"
+          onClick={handleContinue}
+          disabled={!canContinue || ticked}
+          whileTap={canContinue && !ticked ? { scale: 0.97 } : undefined}
+          style={{
+            width: "100%",
+            background: ticked
+              ? "#2D6A4F"
+              : canContinue
+              ? "#1A3D2B"
+              : "#8FA899",
+            color: "#fff",
+            border: "none",
+            borderRadius: 50,
+            padding: "18px 24px",
+            fontSize: 15,
+            fontWeight: 700,
+            letterSpacing: "0.1em",
+            textTransform: "uppercase",
+            cursor: canContinue && !ticked ? "pointer" : "default",
+            transition: "background 0.25s",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: 10,
+            boxShadow: canContinue ? "0 6px 24px rgba(26,61,43,0.35)" : "none",
+          }}
+        >
+          <AnimatePresence mode="wait">
+            {ticked ? (
+              <motion.span
+                key="tick"
+                initial={{ scale: 0, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ type: "spring", stiffness: 400, damping: 20 }}
+                style={{ display: "flex", alignItems: "center", gap: 8 }}
+              >
+                <svg width="20" height="20" viewBox="0 0 20 20" fill="none">
+                  <motion.path
+                    d="M4 10.5l4.5 4.5 7.5-9"
+                    stroke="#fff"
+                    strokeWidth="2.2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    initial={{ pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: 0.4, ease: "easeOut" }}
+                  />
+                </svg>
+              </motion.span>
+            ) : !ready ? (
+              <motion.span key="loading" style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span
+                  style={{
+                    width: 14,
+                    height: 14,
+                    borderRadius: "50%",
+                    border: "2px solid rgba(255,255,255,0.3)",
+                    borderTopColor: "#fff",
+                    animation: "spin 0.7s linear infinite",
+                  }}
+                />
+                Verifica in corso…
+              </motion.span>
+            ) : (
+              <motion.span key="label" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
+                Vai al menu
+              </motion.span>
+            )}
+          </AnimatePresence>
+        </motion.button>
+        <style>{`@keyframes spin { to { transform: rotate(360deg); } }`}</style>
+      </motion.div>
+    </div>
+  );
+}
