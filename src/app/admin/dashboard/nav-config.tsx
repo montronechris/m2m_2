@@ -10,6 +10,7 @@ import {
   TwoUsers,
   EditSquare,
   Calendar,
+  Wallet,
 } from 'react-iconly'
 import type { SectionId } from './types'
 
@@ -35,6 +36,7 @@ export const NAV_ITEMS: {
   { id: 'orders', label: 'Ordini', icon: makeIcon(Buy) },
   { id: 'tables', label: 'Tavoli', icon: makeIcon(Scan) },
   { id: 'waiter', label: 'Camerieri', icon: makeIcon(Work) },
+  { id: 'payment', label: 'Pagamenti', icon: makeIcon(Wallet) },
   { id: 'analytics', label: 'Analytics', icon: makeIcon(Graph) },
   { id: 'history', label: 'Cronologia', icon: makeIcon(TimeCircle) },
   { id: 'staff', label: 'Staff', icon: makeIcon(TwoUsers) },
@@ -54,7 +56,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<
   string,
   { sections: SectionId[]; ai: boolean }
 > = {
-  cameriere: { sections: ['waiter'], ai: false },
+  cameriere: { sections: ['waiter', 'payment'], ai: false },
   cucina: { sections: ['orders'], ai: false },
 }
 
@@ -62,6 +64,7 @@ export const OPERATIONS_GROUP_IDS: SectionId[] = [
   'menu',
   'orders',
   'waiter',
+  'payment',
   'history',
 ]
 export const MANAGEMENT_GROUP_IDS: SectionId[] = [

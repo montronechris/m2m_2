@@ -70,7 +70,8 @@ export const useCartStore = create<CartState>()((set, get) => ({
       const order: PendingOrder = await getOrCreatePendingOrder(
   tableId,
   restaurantId,
-  sessionId ?? undefined  // ✅ converte null → undefined
+  undefined,
+  sessionId
 );
       const rawItems: CartItem[] = await getOrderItems(order.id, sessionId ?? undefined);
       const items: CartItemPortata[] = rawItems.map(i => ({ ...i, portata: i.portata ?? 1 }));
@@ -94,7 +95,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
     let activeOrderId = orderId;
     if (!activeOrderId) {
       try {
-        const order  = await getOrCreatePendingOrder(tableId, restaurantId, get().sessionId ?? undefined);
+        const order  = await getOrCreatePendingOrder(tableId, restaurantId, get().sessionId ?? undefined, get().sessionId);
         activeOrderId = order.id;
         set({ orderId: activeOrderId });
       } catch (err) {
@@ -116,6 +117,10 @@ export const useCartStore = create<CartState>()((set, get) => ({
       };
 
       set((state) => {
+        // Il realtime WebSocket può arrivare prima della HTTP response e aggiungere
+        // l'item prima di noi — in quel caso lo saltiamo per evitare duplicati.
+        if (state.items.some((i) => i.orderItemId === newOrderItemId)) return state;
+
         const existingIdx = state.items.findIndex(
           (i) => i.menuItemId === menuItemId &&
                  JSON.stringify(i.customizations) === JSON.stringify(customizations) &&
@@ -301,5 +306,5 @@ export const useCartStore = create<CartState>()((set, get) => ({
   },
 
   // ── CLEAR (locale, senza toccare il DB) ──────────────────────────────────
-  clearCart: () => set({ items: [], orderId: null, lastActivityAt: null }),
+  clearCart: () => set({ items: [], orderId: null, lastActivityAt: null, initialized: false }),
 }));

@@ -5,7 +5,6 @@ import React, { useEffect, useState, useCallback, useRef } from "react";
 import { useParams, useRouter } from "next/navigation";
 import { createBrowserClient } from "@supabase/ssr";
 import {
-  Loader2,
   ShoppingBag,
   CreditCard,
   Banknote,
@@ -18,6 +17,7 @@ import {
   StickyNote,
 } from "lucide-react";
 import { useCartStore } from "@/stores/useCartStore";
+import { useCartRealtime } from "@/hooks/useCartRealtime";
 
 // ─── MORPH BUTTON ─────────────────────────────────────────────────────────────
 
@@ -190,29 +190,49 @@ function PaymentModal({
   total,
   isDark,
   accent,
+  restaurantId,
 }: {
   open: boolean;
   onClose: () => void;
-  onConfirm: (method: "cash" | "card") => void;
+  onConfirm: (method: "cash" | "card", discountedTotal: number | null, discountCents: number, couponCode: string) => void;
   total: number;
   isDark: boolean;
   accent: string;
+  restaurantId?: string | null;
 }) {
   const [selected, setSelected] = useState<"cash" | "card" | null>(null);
   const [coupon, setCoupon] = useState("");
   const [couponOpen, setCouponOpen] = useState(false);
-  const [couponStatus, setCouponStatus] = useState<"idle" | "valid" | "invalid">("idle");
+  const [couponStatus, setCouponStatus] = useState<"idle" | "valid" | "invalid" | "checking">("idle");
+  const [discount, setDiscount] = useState<{ type: "percent" | "fixed"; value: number } | null>(null);
 
-  const VALID_COUPONS: Record<string, number> = {
-    "SCONTO10": 10,
-    "PROMO5": 5,
-  };
+  const discountedTotal = discount
+    ? discount.type === "percent"
+      ? Math.round(total * (1 - discount.value / 100))
+      : Math.max(0, total - discount.value * 100)
+    : null;
 
-  const applyCoupon = () => {
+  const applyCoupon = async () => {
     const trimmed = coupon.trim().toUpperCase();
-    if (VALID_COUPONS[trimmed] !== undefined) {
-      setCouponStatus("valid");
-    } else {
+    if (!trimmed) return;
+    setCouponStatus("checking");
+    try {
+      const { data } = await supabase
+        .from("coupons")
+        .select("discount_type, discount_value")
+        .eq("code", trimmed)
+        .eq("active", true)
+        .or(restaurantId ? `restaurant_id.eq.${restaurantId},restaurant_id.is.null` : "restaurant_id.is.null")
+        .maybeSingle();
+      if (data) {
+        setDiscount({ type: data.discount_type as "percent" | "fixed", value: data.discount_value });
+        setCouponStatus("valid");
+      } else {
+        setDiscount(null);
+        setCouponStatus("invalid");
+      }
+    } catch {
+      setDiscount(null);
       setCouponStatus("invalid");
     }
   };
@@ -266,8 +286,20 @@ function PaymentModal({
   if (!open) return null;
 
   return (
+    <>
+    <style>{`
+      @keyframes strikeIn {
+        from { transform: translateY(-50%) scaleX(0); }
+        to   { transform: translateY(-50%) scaleX(1); }
+      }
+      @keyframes discountIn {
+        from { opacity: 0; transform: translateX(-8px) scale(0.85); }
+        to   { opacity: 1; transform: translateX(0) scale(1); }
+      }
+    `}</style>
     <div
       onClick={triggerClose}
+      onMouseDown={(e) => e.stopPropagation()}
       style={{
         position: "fixed",
         inset: 0,
@@ -334,9 +366,33 @@ function PaymentModal({
           }}
         >
           <span style={{ fontSize: 13, color: textSec, fontWeight: 500 }}>Totale ordine</span>
-          <span style={{ fontSize: 20, fontWeight: 800, color: textPri, letterSpacing: "-0.02em" }}>
-            € {formatPrice(total)}
-          </span>
+          <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+            {discountedTotal !== null && (
+              <span style={{
+                fontSize: 20, fontWeight: 800, color: accent, letterSpacing: "-0.02em",
+                animation: "discountIn 0.4s cubic-bezier(0.34,1.56,0.64,1) forwards",
+              }}>
+                € {formatPrice(discountedTotal)}
+              </span>
+            )}
+            <span style={{
+              fontSize: 20, fontWeight: 800, color: discountedTotal !== null ? textSec : textPri,
+              letterSpacing: "-0.02em",
+              position: "relative",
+              transition: "color 0.3s ease",
+            }}>
+              {discountedTotal !== null && (
+                <span style={{
+                  position: "absolute", left: 0, right: 0, top: "50%",
+                  height: 2, background: "#ef4444", borderRadius: 1,
+                  transform: "translateY(-50%)",
+                  animation: "strikeIn 0.35s 0.15s ease forwards",
+                  transformOrigin: "left center",
+                }} />
+              )}
+              € {formatPrice(total)}
+            </span>
+          </div>
         </div>
 
         {/* Coupon */}
@@ -381,7 +437,7 @@ function PaymentModal({
                 border: `1px solid ${couponStatus === "valid" ? "#22c55e" : couponStatus === "invalid" ? "#ef4444" : border}`,
                 borderRadius: 8,
                 padding: "10px 14px",
-                fontSize: 14,
+                fontSize: 16,
                 fontFamily: "'Space Grotesk', sans-serif",
                 color: textPri,
                 outline: "none",
@@ -390,6 +446,7 @@ function PaymentModal({
             />
             <button
               onClick={applyCoupon}
+              disabled={couponStatus === "checking"}
               style={{
                 background: accent,
                 color: "#fff",
@@ -398,11 +455,13 @@ function PaymentModal({
                 padding: "10px 16px",
                 fontSize: 13,
                 fontWeight: 700,
-                cursor: "pointer",
+                cursor: couponStatus === "checking" ? "default" : "pointer",
                 fontFamily: "'Space Grotesk', sans-serif",
+                opacity: couponStatus === "checking" ? 0.7 : 1,
+                minWidth: 72,
               }}
             >
-              Applica
+              {couponStatus === "checking" ? "…" : "Applica"}
             </button>
           </div>
         )}
@@ -413,7 +472,11 @@ function PaymentModal({
             color: couponStatus === "valid" ? "#22c55e" : "#ef4444",
             margin: "-8px 0 12px",
           }}>
-            {couponStatus === "valid" ? "✓ Coupon applicato!" : "✗ Coupon non valido"}
+            {couponStatus === "valid" && discount
+            ? discount.type === "percent"
+              ? `✓ Sconto del ${discount.value}% applicato`
+              : `✓ Sconto di €${discount.value} applicato`
+            : "✗ Coupon non valido"}
           </p>
         )}
 
@@ -451,7 +514,6 @@ function PaymentModal({
           >
             <Banknote size={26} color="#22c55e" />
             <span style={{ fontSize: 14, fontWeight: 700, color: selected === "cash" ? accent : textPri }}>Contanti</span>
-            <span style={{ fontSize: 11, color: textSec, textAlign: "center" }}>Paghi dopo aver mangiato</span>
           </button>
 
           {/* Carta */}
@@ -481,12 +543,16 @@ function PaymentModal({
           </button>
         </div>
 
+        <p style={{ textAlign: "center", fontSize: 12, color: textSec, margin: "10px 0 0" }}>
+          (Paghi dopo aver mangiato)
+        </p>
+
         {/* CTA */}
         {selected ? (
           <MorphButton
             label="Conferma ordine →"
             accent={accent}
-            onClick={async () => { onConfirm(selected); }}
+            onClick={async () => { onConfirm(selected, discountedTotal ?? null, discountedTotal !== null ? (total - discountedTotal) : 0, coupon.trim().toUpperCase()); }}
           />
         ) : (
           <button disabled style={{ width: "100%", padding: "15px", borderRadius: 12, border: "none", background: isDark ? "#2a2623" : "#e8e4d8", color: isDark ? "#4a4642" : "#b0ac9e", fontSize: 15, fontWeight: 800, cursor: "not-allowed", fontFamily: "'Space Grotesk', sans-serif" }}>
@@ -495,6 +561,7 @@ function PaymentModal({
         )}
       </div>
     </div>
+    </>
   );
 }
 
@@ -1078,14 +1145,17 @@ export default function ConfirmPage() {
   const clearCart = useCartStore((s) => s.clearCart);
   const orderId = useCartStore((s) => s.orderId);
 
+  useCartRealtime();
+
   const [tableNumber, setTableNumber] = useState<string | null>(null);
   const [brandColor, setBrandColor] = useState<string>(() => {
     if (typeof window === "undefined") return "#d97706";
     try {
-      const keys = Object.keys(localStorage).filter(k => k.startsWith("brand_color_"));
-      if (keys.length === 1) return localStorage.getItem(keys[0]) || "#d97706";
-      const sess = JSON.parse(localStorage.getItem("tableSession") || "null");
-      if (sess?.restaurantId) return localStorage.getItem(`brand_color_${sess.restaurantId}`) || "#d97706";
+      // Fast path: brand color cached by sessionId (available synchronously)
+      const sid = (typeof window !== "undefined")
+        ? window.location.pathname.split("/").pop()
+        : null;
+      if (sid) { const v = localStorage.getItem(`brand_color_session_${sid}`); if (v) return v; }
     } catch {}
     return "#d97706";
   });
@@ -1111,8 +1181,14 @@ export default function ConfirmPage() {
   });
   const [theme, setTheme] = useState<"dark" | "light">("light");
   const [modalOpen, setModalOpen] = useState(false);
+  const [modalKey, setModalKey] = useState(0);
+  const openPaymentModal = () => {
+    setModalOpen(false);
+    setTimeout(() => { setModalKey(k => k + 1); setModalOpen(true); }, 0);
+  };
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
+  const [activeOrderBlocked, setActiveOrderBlocked] = useState(false);
   const [loading, setLoading] = useState(false);
   const [hydrated, setHydrated] = useState(false);
   const [compact, setCompact] = useState(false);
@@ -1205,6 +1281,7 @@ export default function ConfirmPage() {
               if (r?.brand_color) {
                 setBrandColor(r.brand_color);
                 if (data.restaurant_id) try { localStorage.setItem(`brand_color_${data.restaurant_id}`, r.brand_color); } catch {}
+                try { localStorage.setItem(`brand_color_session_${sessionId}`, r.brand_color); } catch {}
               }
               if (r?.background_type) {
                 setBackgroundType(r.background_type);
@@ -1243,6 +1320,17 @@ export default function ConfirmPage() {
         resolveTable();
       });
   }, [sessionId]);
+
+  // ── Blocco ordine attivo: controlla se c'è già un ordine confermato per questo tavolo ──
+  useEffect(() => {
+    if (!tableId) return;
+    supabase.from("orders").select("id")
+      .eq("table_id", tableId)
+      .in("status", ["confirmed", "cooking", "ready"])
+      .not("confirmed_at", "is", null)
+      .limit(1)
+      .then(({ data }) => { if (data && data.length > 0) setActiveOrderBlocked(true); });
+  }, [tableId]);
 
   // ── Fallback DB: se dopo l'hydration il carrello locale è vuoto, prova a
   // recuperare l'ordine "pending" più recente per questo tavolo, invece di
@@ -1379,19 +1467,43 @@ export default function ConfirmPage() {
 
   // ── Confirm handler ──────────────────────────────────────────────────────
   const handleConfirm = useCallback(
-    async (method: "cash" | "card") => {
+    async (method: "cash" | "card", discountedTotal: number | null, discountCents: number, couponCode: string) => {
       if (!effectiveOrderId) return;
       setLoading(true);
       try {
-        // PATCH order → confirmed + metodo di pagamento
+        // Verifica che non ci sia già un ordine attivo per questo tavolo
+        if (tableId) {
+          const { data: activeOrders } = await supabase
+            .from("orders")
+            .select("id")
+            .eq("table_id", tableId)
+            .in("status", ["confirmed", "cooking", "ready"])
+            .not("confirmed_at", "is", null)
+            .limit(1);
+          if (activeOrders && activeOrders.length > 0) {
+            setActiveOrderBlocked(true);
+            setLoading(false);
+            return;
+          }
+        }
+
+        // PATCH order → confirmed + metodo di pagamento + sconto
+        const updatePayload: Record<string, unknown> = {
+          status: "confirmed",
+          payment_method: method,
+          confirmed_at: new Date().toISOString(),
+          updated_at: new Date().toISOString(),
+          session_id: sessionId,
+        };
+        if (discountedTotal !== null) {
+          updatePayload.original_total_cents = effectiveTotalCents;
+          updatePayload.total_cents          = discountedTotal;
+          updatePayload.discount_cents       = discountCents;
+          updatePayload.coupon_code          = couponCode || null;
+        }
         await supabase
           .from("orders")
-          .update({
-            status: "confirmed",
-            payment_method: method,
-            confirmed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-          })
+          .update(updatePayload)
           .eq("id", effectiveOrderId);
 
         clearCart();
@@ -1406,19 +1518,74 @@ export default function ConfirmPage() {
         setLoading(false);
       }
     },
-    [effectiveOrderId, sessionId, clearCart, router]
+    [effectiveOrderId, sessionId, clearCart, router, tableId]
   );
 
   // ── Loading / hydration ──────────────────────────────────────────────────
-  if (!hydrated) {
-    return (
-      <div style={{ minHeight: "100vh", background: bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap');`}</style>
-        <Loader2 size={32} color={accent} style={{ animation: "spin 1s linear infinite" }} />
-        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
+  const ConfirmSkeleton = () => (
+    <div style={{ minHeight: "100vh", background: bg, paddingTop: 140, paddingBottom: 200 }}>
+      <style>{`
+        @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
+        @keyframes skPulse { 0%,100%{opacity:.5} 50%{opacity:1} }
+        .sk { animation: skPulse 1.5s ease-in-out infinite; border-radius: 8px; background: ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.08)"}; }
+      `}</style>
+      <div style={{ maxWidth: 540, margin: "0 auto", padding: "24px 16px", fontFamily: "'Space Grotesk', sans-serif", display: "flex", flexDirection: "column", gap: 16 }}>
+        {/* Heading */}
+        <div className="sk" style={{ width: 180, height: 28, borderRadius: 10 }} />
+
+        {/* Portata 1 header */}
+        <div style={{ background: isDark ? "#1a1816" : "#fff", borderRadius: 12, padding: "8px 12px", border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`, display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="sk" style={{ width: 24, height: 24, borderRadius: "50%" }} />
+          <div className="sk" style={{ width: 120, height: 12 }} />
+          <div style={{ flex: 1 }} />
+          <div className="sk" style={{ width: 50, height: 12 }} />
+        </div>
+
+        {/* Piatto 1 */}
+        {[0, 1].map(i => (
+          <div key={i} style={{ background: isDark ? "#1a1816" : "#fff", borderRadius: 20, borderLeft: `3px solid ${accent}30`, padding: "14px 14px", display: "flex", gap: 12, alignItems: "center", border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`, animationDelay: `${i * 0.1}s` }}>
+            <div className="sk" style={{ width: 48, height: 48, borderRadius: "50%", flexShrink: 0 }} />
+            <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+              <div className="sk" style={{ width: "60%", height: 14 }} />
+              <div className="sk" style={{ width: "35%", height: 12 }} />
+            </div>
+            <div className="sk" style={{ width: 56, height: 14, borderRadius: 8 }} />
+          </div>
+        ))}
+
+        {/* Portata 2 header */}
+        <div style={{ background: isDark ? "#1a1816" : "#fff", borderRadius: 12, padding: "8px 12px", border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}`, display: "flex", alignItems: "center", gap: 10 }}>
+          <div className="sk" style={{ width: 24, height: 24, borderRadius: "50%" }} />
+          <div className="sk" style={{ width: 140, height: 12 }} />
+          <div style={{ flex: 1 }} />
+          <div className="sk" style={{ width: 50, height: 12 }} />
+        </div>
+
+        {/* Piatto portata 2 */}
+        <div style={{ background: isDark ? "#1a1816" : "#fff", borderRadius: 20, borderLeft: `3px solid ${accent}30`, padding: "14px 14px", display: "flex", gap: 12, alignItems: "center", border: `1px solid ${isDark ? "rgba(255,255,255,0.08)" : "rgba(0,0,0,0.06)"}` }}>
+          <div className="sk" style={{ width: 48, height: 48, borderRadius: "50%", flexShrink: 0 }} />
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", gap: 8 }}>
+            <div className="sk" style={{ width: "55%", height: 14 }} />
+            <div className="sk" style={{ width: "30%", height: 12 }} />
+          </div>
+          <div className="sk" style={{ width: 56, height: 14, borderRadius: 8 }} />
+        </div>
       </div>
-    );
-  }
+
+      {/* Bottom bar skeleton */}
+      <div style={{ position: "fixed", bottom: 0, left: 0, right: 0, background: isDark ? "#0c0a09" : bg, padding: "20px 20px max(28px, env(safe-area-inset-bottom))", zIndex: 50 }}>
+        <div style={{ maxWidth: 540, margin: "0 auto", background: isDark ? "#1c1917" : "#fff", borderRadius: 20, border: `1px solid ${isDark ? "#2e2a27" : "#e8e4d8"}`, padding: "18px 18px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 16 }}>
+          <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+            <div className="sk" style={{ width: 50, height: 11 }} />
+            <div className="sk" style={{ width: 90, height: 22 }} />
+          </div>
+          <div className="sk" style={{ width: 160, height: 48, borderRadius: 14 }} />
+        </div>
+      </div>
+    </div>
+  );
+
+  if (!hydrated) return <ConfirmSkeleton />;
 
   // ── Empty cart ───────────────────────────────────────────────────────────
   // Prima di dichiarare il carrello vuoto, aspettiamo che il fallback DB
@@ -1428,13 +1595,7 @@ export default function ConfirmPage() {
   const stillResolvingFallback = cartEmptyLocally && (checkingDbOrder || (!tableId && !dbRecapItems));
 
   if (cartEmptyLocally && stillResolvingFallback && !confirmed) {
-    return (
-      <div style={{ minHeight: "100vh", background: bg, display: "flex", alignItems: "center", justifyContent: "center" }}>
-        <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap');`}</style>
-        <Loader2 size={32} color={accent} style={{ animation: "spin 1s linear infinite" }} />
-        <style>{`@keyframes spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }`}</style>
-      </div>
-    );
+    return <ConfirmSkeleton />;
   }
 
   if (cartEmptyLocally && !stillResolvingFallback && !confirmed) {
@@ -1475,6 +1636,37 @@ export default function ConfirmPage() {
     );
   }
 
+  // ── Blocco: ordine già attivo per questo tavolo ─────────────────────────
+  if (activeOrderBlocked) {
+    return (
+      <div style={{ minHeight: "100vh", background: bg, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "0 24px", fontFamily: "'Space Grotesk', sans-serif" }}>
+        <div style={{ textAlign: "center", maxWidth: 360, background: "#fff", borderRadius: 28, padding: "36px 28px 32px", boxShadow: "0 8px 40px rgba(0,0,0,0.12)" }}>
+          <div style={{ width: 72, height: 72, borderRadius: "50%", background: `${accent}18`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px", boxShadow: `0 4px 16px ${accent}30` }}>
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke={accent} strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 8h1a4 4 0 0 1 0 8h-1"/>
+              <path d="M2 8h16v9a4 4 0 0 1-4 4H6a4 4 0 0 1-4-4V8z"/>
+              <line x1="6" y1="1" x2="6" y2="4"/>
+              <line x1="10" y1="1" x2="10" y2="4"/>
+              <line x1="14" y1="1" x2="14" y2="4"/>
+            </svg>
+          </div>
+          <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1c1917", marginBottom: 8, letterSpacing: "-0.01em" }}>
+            Ordine già in corso
+          </h2>
+          <p style={{ fontSize: 15, color: "#78716c", lineHeight: 1.6, marginBottom: 28 }}>
+            C'è già un ordine attivo per questo tavolo. Non è possibile inviarne un altro finché quello in corso non viene completato.
+          </p>
+          <button
+            onClick={() => router.push(`/status/${sessionId}`)}
+            style={{ background: accent, color: "#fff", border: "none", borderRadius: 50, padding: "14px 32px", fontSize: 16, fontWeight: 700, cursor: "pointer", boxShadow: `0 6px 20px ${accent}44` }}
+          >
+            Vai allo stato dell'ordine
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   // ── Success screen ───────────────────────────────────────────────────────
   if (confirmed) {
     return (
@@ -1511,7 +1703,7 @@ export default function ConfirmPage() {
   }
 
   return (
-    <div style={{ minHeight: "100vh", background: bg, color: textPri, paddingTop: 140, paddingBottom: compact ? 36 : 200 }}>
+    <div style={{ minHeight: "100vh", background: bg, color: textPri, paddingTop: 140, paddingBottom: 200 }}>
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap');
         @keyframes fadeUp  { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
@@ -1524,7 +1716,7 @@ export default function ConfirmPage() {
         style={{
           maxWidth: 540,
           margin: "0 auto",
-          padding: `24px ${compact ? 56 : 16}px 24px 16px`,
+          padding: "24px 16px 24px 16px",
           fontFamily: "'Space Grotesk', sans-serif",
           animation: "fadeUp 0.35s ease",
         }}
@@ -1550,9 +1742,8 @@ export default function ConfirmPage() {
         ))}
       </main>
 
-      {/* ── Bottom CTA bar (solo schermi con spazio a sufficienza) ──────────── */}
-      {!compact && (
-        <div
+      {/* ── Bottom CTA bar ──────────────────────────────────────────────────── */}
+      <div
           style={{
             position: "fixed",
             bottom: 0,
@@ -1602,7 +1793,7 @@ export default function ConfirmPage() {
                 </span>
               </div>
               <button
-                onClick={() => setModalOpen(true)}
+                onClick={openPaymentModal}
                 style={{
                   width: "100%",
                   padding: "16px",
@@ -1629,10 +1820,6 @@ export default function ConfirmPage() {
             </div>
           </div>
         </div>
-      )}
-
-      {/* ── Tab laterale (schermi con poco spazio verticale) ───────────────── */}
-      {compact && <SideTotalTab accent={accent} totalCents={effectiveTotalCents} onOpen={() => setReceiptOpen(true)} />}
 
       {/* Drawer scontrino */}
       <ReceiptDrawer
@@ -1640,7 +1827,7 @@ export default function ConfirmPage() {
         onClose={() => setReceiptOpen(false)}
         onConfirm={() => {
           setReceiptOpen(false);
-          setModalOpen(true);
+          openPaymentModal();
         }}
         recapItems={recapItems}
         portateGroups={portateGroups}
@@ -1654,7 +1841,9 @@ export default function ConfirmPage() {
 
       {/* Modal pagamento */}
       <PaymentModal
+        key={modalKey}
         open={modalOpen}
+        restaurantId={restaurantId}
         onClose={() => setModalOpen(false)}
         onConfirm={handleConfirm}
         total={effectiveTotalCents}

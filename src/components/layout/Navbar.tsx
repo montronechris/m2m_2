@@ -233,6 +233,16 @@ export function Navbar({
 
   // mobile menu
   const [mobileOpen, setMobileOpen] = useState(false);
+  const [waiterBusy, setWaiterBusy] = useState(false);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const s = (e as CustomEvent<string>).detail;
+      setWaiterBusy(s === 'pending' || s === 'acknowledged');
+    };
+    window.addEventListener('waiter-status', handler);
+    return () => window.removeEventListener('waiter-status', handler);
+  }, []);
 
   // panel guard
   const [panelOpen, setPanelOpen] = useState(false);
@@ -577,26 +587,50 @@ export function Navbar({
                 </motion.button>
               )}
               {/* Bell / chiama cameriere */}
+              <style>{`
+                @keyframes navBellRing {
+                  0%,100%{transform:rotate(0deg)}
+                  10%{transform:rotate(18deg)}
+                  20%{transform:rotate(-16deg)}
+                  30%{transform:rotate(14deg)}
+                  40%{transform:rotate(-10deg)}
+                  50%{transform:rotate(6deg)}
+                  60%{transform:rotate(-4deg)}
+                  70%{transform:rotate(2deg)}
+                  80%{transform:rotate(0deg)}
+                }
+                .nav-bell-ring{animation:navBellRing 1s ease-in-out infinite;transform-origin:top center;display:inline-block}
+              `}</style>
               <motion.button
                 onClick={onCallWaiter}
-                title="Chiama il cameriere"
+                title={waiterBusy ? 'Cameriere in arrivo — tocca per annullare' : 'Chiama il cameriere'}
                 whileTap={{ scale: 0.88 }}
                 style={{
                   position: "relative",
-                  width: 38, height: 38, borderRadius: 12,
-                  border: `1.5px solid ${brandColor}33`,
-                  background: `${brandColor}18`,
-                  color: brandColor,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                  cursor: "pointer",
+                  height: 38, borderRadius: 12,
+                  width: waiterBusy ? 'auto' : 38,
+                  padding: waiterBusy ? '0 12px' : 0,
+                  border: `1.5px solid ${waiterBusy ? '#2e7d3244' : `${brandColor}33`}`,
+                  background: waiterBusy ? '#2e7d3218' : `${brandColor}18`,
+                  color: waiterBusy ? '#2e7d32' : brandColor,
+                  display: "flex", alignItems: "center", justifyContent: "center", gap: 6,
+                  cursor: waiterBusy ? 'default' : 'pointer',
                   flexShrink: 0,
+                  transition: 'width 0.3s ease, background 0.3s ease, color 0.3s ease',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
                 }}
               >
-                <svg viewBox="0 0 24 24" width="19" height="19" fill="none"
-                  stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
-                  <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
-                  <path d="M13.73 21a2 2 0 0 1-3.46 0" />
-                </svg>
+                <span className={waiterBusy ? 'nav-bell-ring' : ''} style={{ display: 'flex' }}>
+                  <svg viewBox="0 0 24 24" width="19" height="19" fill="none"
+                    stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9" />
+                    <path d="M13.73 21a2 2 0 0 1-3.46 0" />
+                  </svg>
+                </span>
+                {waiterBusy && (
+                  <span style={{ fontSize: 12, fontWeight: 700 }}>Cameriere in arrivo</span>
+                )}
               </motion.button>
             </div>
           ) : (

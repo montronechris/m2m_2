@@ -176,7 +176,8 @@ export const getMenuItemOptions = async (menuItemId: string): Promise<ModalOptio
 export const getOrCreatePendingOrder = async (
   tableId: string | null,
   restaurantId: string | null,
-  sessionToken?: string
+  sessionToken?: string,
+  sessionId?: string | null
 ): Promise<PendingOrder> => {
   if (tableId) {
     const existing = await restGet<PendingOrder>(
@@ -187,9 +188,20 @@ export const getOrCreatePendingOrder = async (
     if (existing.length) return existing[0];
   }
 
+  // Fallback: look for an existing pending order tied to this session
+  if (sessionId) {
+    const existing = await restGet<PendingOrder>(
+      "orders",
+      `?session_id=eq.${sessionId}&status=eq.pending&order=created_at.desc&limit=1`,
+      sessionToken
+    );
+    if (existing.length) return existing[0];
+  }
+
   const created = await restPost<PendingOrder>("orders", {
     table_id: tableId ?? null,
     restaurant_id: restaurantId ?? null,
+    session_id: sessionId ?? null,
     status: "pending",
     total_cents: 0,
     notes: null,

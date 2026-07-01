@@ -242,6 +242,7 @@ export function ChatWidget({ brandColor, externalOpen, hideFloatingButton }: { b
                 }}
                 placeholder={c.placeholder}
                 className="flex-1 rounded-full bg-slate-100 px-4 py-2.5 text-sm text-ink outline-none placeholder:text-ink/40"
+                style={{ fontSize: 16 }}
               />
               <button
                 onClick={send}

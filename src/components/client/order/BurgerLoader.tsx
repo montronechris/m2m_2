@@ -32,9 +32,11 @@ interface BurgerLoaderProps {
   isLoading: boolean
   label?: string
   onDone?: () => void
+  brandColor?: string
 }
 
-export function BurgerLoader({ isLoading, label = 'Caricamento', onDone }: BurgerLoaderProps) {
+export function BurgerLoader({ isLoading, label = 'Caricamento', onDone, brandColor }: BurgerLoaderProps) {
+  const barColor = brandColor && brandColor !== '#ffffff' ? brandColor : '#f59e0b'
   const [progress, setProgress] = useState(0)
   const [showing, setShowing] = useState(true)
 
@@ -51,31 +53,27 @@ useEffect(() => {
   mountTimeRef.current = Date.now()
   doneRef.current = false
 
-const interval = setInterval(() => {
-  setProgress(p => {
-    if (p >= 92) return p
-    const step = p < 50 ? 6 : p < 75 ? 4 : 2
-    return Math.min(92, p + step)
-  })
-}, 120)
-
-    const checker = setInterval(() => {
+    const interval = setInterval(() => {
       const elapsed = Date.now() - mountTimeRef.current
       if (!isLoadingRef.current && elapsed >= MIN_DURATION && !doneRef.current) {
         doneRef.current = true
         clearInterval(interval)
-        clearInterval(checker)
         setProgress(100)
         setTimeout(() => {
           setShowing(false)
           onDone?.()
         }, 400)
+        return
       }
-    }, 100)
+      setProgress(p => {
+        if (p >= 92) return p
+        const step = p < 50 ? 6 : p < 75 ? 4 : 2
+        return Math.min(92, p + step)
+      })
+    }, 120)
 
     return () => {
       clearInterval(interval)
-      clearInterval(checker)
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -117,7 +115,7 @@ const interval = setInterval(() => {
           <div style={{
             height: '100%',
             borderRadius: 9999,
-            background: '#f59e0b',
+            background: barColor,
             width: `${progress}%`,
             transition: 'width 300ms ease-out',
           }} />

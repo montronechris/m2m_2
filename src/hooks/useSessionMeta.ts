@@ -3,6 +3,7 @@
 
 import { useEffect, useState } from "react";
 import { createBrowserClient } from "@supabase/ssr";
+import { getTableSession } from "@/lib/table-session";
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -27,21 +28,55 @@ type SessionMeta = {
 export function useSessionMeta(sessionId: string | undefined): SessionMeta {
   const [tableNumber, setTableNumber] = useState<string | null>(() => {
     if (typeof window === "undefined" || !sessionId) return null;
-    try { return localStorage.getItem(`table_number_${sessionId}`) || null; } catch { return null; }
+    try { const c = localStorage.getItem(`table_number_${sessionId}`); return (c && c !== "0") ? c : null; } catch { return null; }
   });
-  const [restaurantName, setRestaurantName] = useState<string | null>(null);
+  const [restaurantName, setRestaurantName] = useState<string | null>(() => {
+    if (typeof window === "undefined" || !sessionId) return null;
+    try { return localStorage.getItem(`restaurant_name_${sessionId}`) || null; } catch { return null; }
+  });
   const [brandColor, setBrandColor] = useState<string>(() => {
     if (typeof window === "undefined") return "#ffffff";
     try {
-      const keys = Object.keys(localStorage).filter((k) =>
-        k.startsWith("brand_color_")
-      );
-      if (keys.length === 1) return localStorage.getItem(keys[0]) || "#ffffff";
+      // 1. Cache specifico per questa sessione (più preciso)
+      if (sessionId) {
+        const bySession = localStorage.getItem(`brand_color_session_${sessionId}`);
+        if (bySession) return bySession;
+      }
+      // 2. Cache per restaurantId via session cookie
+      const sess = getTableSession();
+      if (sess?.restaurantId) {
+        const byRestaurant = localStorage.getItem(`brand_color_${sess.restaurantId}`);
+        if (byRestaurant) return byRestaurant;
+      }
     } catch {
       /* ignore */
     }
     return "#ffffff";
   });
+
+  // Ascolta l'evento emesso dalla page quando ha già i dati del ristorante,
+  // così non dobbiamo aspettare una seconda query Supabase dal layout.
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const { name, brandColor: color, tableNumber: tn } = (e as CustomEvent<{
+        name?: string; brandColor?: string; tableNumber?: string | null
+      }>).detail
+      if (name) {
+        setRestaurantName(name)
+        if (sessionId) try { localStorage.setItem(`restaurant_name_${sessionId}`, name) } catch {}
+      }
+      if (color) {
+        setBrandColor(color)
+        if (sessionId) try { localStorage.setItem(`brand_color_session_${sessionId}`, color) } catch {}
+      }
+      if (tn) {
+        setTableNumber(tn)
+        if (sessionId) try { localStorage.setItem(`table_number_${sessionId}`, tn) } catch {}
+      }
+    }
+    window.addEventListener('restaurant-meta-ready', handler)
+    return () => window.removeEventListener('restaurant-meta-ready', handler)
+  }, [sessionId])
 
   useEffect(() => {
     if (!sessionId) return;
@@ -68,7 +103,7 @@ export function useSessionMeta(sessionId: string | undefined): SessionMeta {
               .maybeSingle();
             if (table?.label) resolvedTableNumber = table.label;
           }
-          if (!resolvedTableNumber && qr.table_number != null) {
+          if (!resolvedTableNumber && qr.table_number != null && qr.table_number !== 0) {
             resolvedTableNumber = String(qr.table_number);
           }
         } else {
@@ -97,15 +132,16 @@ export function useSessionMeta(sessionId: string | undefined): SessionMeta {
             .eq("id", restaurantId)
             .maybeSingle();
           if (!cancelled && restaurant) {
-            if (restaurant.brand_color) setBrandColor(restaurant.brand_color);
-            if (restaurant.name) setRestaurantName(restaurant.name);
-            try {
-              localStorage.setItem(
-                `brand_color_${restaurantId}`,
-                restaurant.brand_color
-              );
-            } catch {
-              /* ignore */
+            if (restaurant.brand_color) {
+              setBrandColor(restaurant.brand_color);
+              try {
+                localStorage.setItem(`brand_color_${restaurantId}`, restaurant.brand_color);
+                localStorage.setItem(`brand_color_session_${sessionId}`, restaurant.brand_color);
+              } catch { /* ignore */ }
+            }
+            if (restaurant.name) {
+              setRestaurantName(restaurant.name);
+              try { localStorage.setItem(`restaurant_name_${sessionId}`, restaurant.name); } catch { /* ignore */ }
             }
           }
         }

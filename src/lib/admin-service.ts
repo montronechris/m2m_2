@@ -323,6 +323,21 @@ export const markPortataDelivered = async (orderId: string, portata: number, pro
     .eq("order_id", orderId)
     .eq("portata", portata);
   if (error) throw error;
+
+  // Se tutte le portate sono consegnate → ordine → served
+  const { data: allItems } = await supabase
+    .from("order_items")
+    .select("portata_delivered")
+    .eq("order_id", orderId);
+  const allDelivered = (allItems ?? []).length > 0 && (allItems ?? []).every(it => it.portata_delivered);
+  if (allDelivered) {
+    const { error: statusError } = await supabase
+      .from("orders")
+      .update({ status: "served", updated_at: new Date().toISOString() })
+      .eq("id", orderId)
+      .in("status", ["confirmed", "cooking", "ready"]);
+    if (statusError) console.error("[markPortataDelivered] status→served:", statusError);
+  }
 };
 
 /**
@@ -344,9 +359,14 @@ export const markPortataPickedUp = async (orderId: string, portata: number, prof
     .eq("order_id", orderId);
   if (itemsError) throw itemsError;
 
-  const allPickedUp = (items ?? []).every((it) => it.picked_up_at !== null);
+  const allPickedUp = (items ?? []).length > 0 && (items ?? []).every((it) => it.picked_up_at !== null);
   if (allPickedUp) {
-    await updateOrderStatus(orderId, "served");
+    const { error: statusError } = await supabase
+      .from("orders")
+      .update({ status: "served", updated_at: new Date().toISOString() })
+      .eq("id", orderId)
+      .in("status", ["confirmed", "cooking", "ready"]); // non sovrascrivere stati già avanzati
+    if (statusError) console.error("[markPortataPickedUp] status→served:", statusError);
   }
 };
 

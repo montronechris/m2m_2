@@ -36,6 +36,7 @@ import { BrandingSection } from './sections/BrandingSection'
 import { StaffSection } from './sections/StaffSection'
 import { SettingsSection } from './sections/SettingsSection'
 import { WaiterSection } from './sections/WaiterSection'
+import { PaymentSection } from './sections/PaymentSection'
 import { HistorySection } from './sections/HistorySection'
 import { CalendarSection } from './sections/CalendarSection'
 import { AIAssistantOverlay } from './components/AIAssistantOverlay'
@@ -72,6 +73,8 @@ function SectionRenderer({
       return <SettingsSection ctx={ctx} theme={theme} />
     case 'waiter':
       return <WaiterSection ctx={ctx} theme={theme} />
+    case 'payment':
+      return <PaymentSection ctx={ctx} theme={theme} />
     case 'history':
       return <HistorySection ctx={ctx} theme={theme} />
     case 'calendar':
@@ -314,6 +317,8 @@ export default function AdminDashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [ctx, setCtx] = useState<RestaurantCtx | null>(null)
   const [activeOrdersCount, setActiveOrdersCount] = useState(0)
+  const [pendingPaymentsCount, setPendingPaymentsCount] = useState(0)
+  const [brandColor, setBrandColor] = useState('#10b981')
   const theme: ThemeMode = 'light'
 
   // Notification sound mute (persistent, like the original)
@@ -364,6 +369,7 @@ export default function AdminDashboardPage() {
 
         if (!active) return
 
+        if (restaurant.brand_color) setBrandColor(restaurant.brand_color)
         setCtx({
           restaurantId: restaurant.id,
           restaurantName: restaurant.name,
@@ -380,6 +386,10 @@ export default function AdminDashboardPage() {
           notificationPrefs: { admin: true, cameriere: true },
         })
         setActiveOrdersCount(count ?? 0)
+        // Badge pagamenti pendenti
+        supabase.from('waiter_calls').select('id', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurant.restaurantId).eq('type', 'payment').eq('status', 'pending')
+          .then(({ count: c }) => setPendingPaymentsCount(c ?? 0))
       } catch (err) {
         console.error('Errore caricamento dashboard:', err)
         if (active) router.push('/login')
@@ -505,7 +515,7 @@ export default function AdminDashboardPage() {
                   item={it}
                   isActive={activeSection === it.id}
                   onClick={() => setActiveSection(it.id)}
-                  badge={it.id === 'orders' ? activeOrdersCount : undefined}
+                  badge={it.id === 'orders' ? activeOrdersCount : it.id === 'payment' ? pendingPaymentsCount : undefined}
                 />
               ))}
             </div>
@@ -609,7 +619,7 @@ export default function AdminDashboardPage() {
           ════════════════════════════════════════════════════════════════════ */}
       <nav
         className="fixed bottom-0 left-0 right-0 z-40 flex items-stretch border-t border-tt-line bg-white px-1 pb-1 pt-1 backdrop-blur-xl lg:hidden"
-        style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}
+        style={{ paddingBottom: 'env(safe-area-inset-bottom)', borderTop: `2px solid ${brandColor}` }}
       >
         {bottomNavSlots.map((slot) => {
           if (slot.isMore) {
@@ -623,7 +633,7 @@ export default function AdminDashboardPage() {
             )
           }
           if (!slot.item) return null
-          const showBadge = slot.item.id === 'orders' ? activeOrdersCount : undefined
+          const showBadge = slot.item.id === 'orders' ? activeOrdersCount : slot.item.id === 'payment' ? pendingPaymentsCount : undefined
           return (
             <BottomNavItem
               key={slot.item.id}

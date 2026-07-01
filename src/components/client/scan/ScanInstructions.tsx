@@ -18,21 +18,21 @@ const STEPS = [
     number: "1",
     title: "Scegli i piatti",
     description: "Sfoglia il menu e aggiungi al carrello tutto quello che vuoi ordinare.",
-    icon: <ShoppingCart size={22} color="#1A3D2B" strokeWidth={1.8} />,
+    icon: (color: string) => <ShoppingCart size={22} color={color} strokeWidth={1.8} />,
   },
   {
     number: "2",
     title: "Dividili in portate",
     description:
       "Organizza i piatti scelti in portate per decidere in che ordine arriveranno al tavolo.",
-    icon: <Layers2 size={22} color="#1A3D2B" strokeWidth={1.8} />,
+    icon: (color: string) => <Layers2 size={22} color={color} strokeWidth={1.8} />,
   },
   {
     number: "3",
     title: "Lascia una recensione (opzionale)",
     description:
       "A fine pasto puoi lasciare un feedback al ristorante e al sito per aiutarci a migliorare.",
-    icon: <Star size={22} color="#1A3D2B" strokeWidth={1.8} />,
+    icon: (color: string) => <Star size={22} color={color} strokeWidth={1.8} />,
   },
 ];
 
@@ -41,13 +41,11 @@ const ACTIONS = [
     icon: <Bell size={18} color="#fff" />,
     title: "Chiama il cameriere",
     description: "Invia una notifica al personale — arriverà al tuo tavolo il prima possibile.",
-    bg: "#1A3D2B",
   },
   {
     icon: <Sparkles size={18} color="#fff" />,
     title: "Assistente AI",
     description: "Chiedi ingredienti, allergeni, consigli sui piatti o qualsiasi altra domanda sul menu.",
-    bg: "#1A3D2B",
   },
 ];
 
@@ -185,14 +183,14 @@ export function ScanInstructions({
                   width: 48,
                   height: 48,
                   borderRadius: 14,
-                  background: "#EDE5D8",
+                  background: `${brand}18`,
                   flexShrink: 0,
                   display: "flex",
                   alignItems: "center",
                   justifyContent: "center",
-                  }}
+                }}
               >
-                {step.icon}
+                {step.icon(brand)}
               </div>
               <div style={{ paddingTop: 2 }}>
                 <p style={{ fontSize: 14, fontWeight: 700, color: "#1C1C1E", marginBottom: 3 }}>
@@ -236,7 +234,7 @@ export function ScanInstructions({
               animate={{ opacity: 1, x: 0 }}
               transition={{ duration: 0.4, delay: 0.65 + i * 0.1 }}
               style={{
-                background: "#1A3D2B",
+                background: brand,
                 borderRadius: 50,
                 padding: "14px 18px",
                 display: "flex",
@@ -338,11 +336,7 @@ export function ScanInstructions({
           whileTap={canContinue && !ticked ? { scale: 0.97 } : undefined}
           style={{
             width: "100%",
-            background: ticked
-              ? "#2D6A4F"
-              : canContinue
-              ? "#1A3D2B"
-              : "#8FA899",
+            background: !canContinue ? `${brand}80` : brand,
             color: "#fff",
             border: "none",
             borderRadius: 50,
@@ -357,7 +351,7 @@ export function ScanInstructions({
             alignItems: "center",
             justifyContent: "center",
             gap: 10,
-            boxShadow: canContinue ? "0 6px 24px rgba(26,61,43,0.35)" : "none",
+            boxShadow: canContinue ? `0 6px 24px ${brand}55` : "none",
           }}
         >
           <AnimatePresence mode="wait">

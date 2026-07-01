@@ -8,19 +8,23 @@ export interface TableSession {
   restaurantId?: string;
   tableId?: string;
   createdAt: number;
+  lastActivity: number;
 }
 
 const STORAGE_KEY = "tavolarapida_table_session";
-const SESSION_DURATION_MS = 15 * 60 * 1000; // 15 minuti
+const MAX_SESSION_DURATION_MS = 4 * 60 * 60 * 1000;  // 4 ore max assoluto
+export const INACTIVITY_TIMEOUT_MS = 30 * 60 * 1000; // 30 minuti di inattività
 
 // ─── Core ────────────────────────────────────────────────────────────────────
 
-export const saveTableSession = (session: Omit<TableSession, "createdAt">) => {
+export const saveTableSession = (session: Omit<TableSession, "createdAt" | "lastActivity">) => {
   if (typeof window === "undefined") return;
   try {
+    const now = Date.now();
     const newSession: TableSession = {
       ...session,
-      createdAt: Date.now(),
+      createdAt: now,
+      lastActivity: now,
     };
     localStorage.setItem(STORAGE_KEY, JSON.stringify(newSession));
   } catch (e) {
@@ -35,8 +39,13 @@ export const getTableSession = (): TableSession | null => {
     if (!stored) return null;
 
     const session: TableSession = JSON.parse(stored);
+    const now = Date.now();
 
-    if (Date.now() - session.createdAt > SESSION_DURATION_MS) {
+    const lastActivity = session.lastActivity ?? session.createdAt;
+    const isInactive = now - lastActivity > INACTIVITY_TIMEOUT_MS;
+    const isExpired  = now - session.createdAt > MAX_SESSION_DURATION_MS;
+
+    if (isInactive || isExpired) {
       clearTableSession();
       return null;
     }
@@ -47,6 +56,18 @@ export const getTableSession = (): TableSession | null => {
     clearTableSession();
     return null;
   }
+};
+
+/** Aggiorna il timestamp di ultima attività senza toccare il resto della sessione. */
+export const touchSession = (): void => {
+  if (typeof window === "undefined") return;
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (!stored) return;
+    const session: TableSession = JSON.parse(stored);
+    session.lastActivity = Date.now();
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(session));
+  } catch { /* silenzioso */ }
 };
 
 export const clearTableSession = () => {

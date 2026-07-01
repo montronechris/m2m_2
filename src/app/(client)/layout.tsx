@@ -2,11 +2,14 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { Navbar } from "@/components/layout/Navbar";
 import { CallWaiterButton } from "@/components/layout/CallWaiterButton";
 import { ChatWidget } from "@/components/landing/ChatWidget";
 import { useSessionMeta } from "@/hooks/useSessionMeta";
+import { useInactivityTimeout } from "@/hooks/useInactivityTimeout";
+import { clearTableSession } from "@/lib/table-session";
+import { useCartStore } from "@/stores/useCartStore";
 
 const HIDDEN_NAVBAR_SEGMENTS = ["cart", "scan"];
 
@@ -57,6 +60,15 @@ export default function ClientLayout({
   const sessionId = sessionIdRef.current;
 
   const { tableNumber, effectiveBrand, restaurantName } = useSessionMeta(sessionId);
+  const router = useRouter();
+  const expireCart = useCartStore(s => s.expireCart);
+
+  // Scadenza per inattività: svuota il carrello nel DB, pulisce la sessione e reindirizza
+  useInactivityTimeout(async () => {
+    try { await expireCart(); } catch { /* silenzioso */ }
+    clearTableSession();
+    router.replace("/");
+  });
 
   const [waiterTrigger, setWaiterTrigger] = useState(0);
   const [waiterStatus, setWaiterStatus] = useState<'idle' | 'pending' | 'acknowledged'>('idle');

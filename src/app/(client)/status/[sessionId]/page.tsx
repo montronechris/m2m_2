@@ -2,16 +2,17 @@
 "use client";
 
 import React, { useEffect, useState, useCallback, useRef } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useAnimation } from "framer-motion";
 import {
   Clock, Loader2, ChefHat, CheckCircle, Utensils, Bell, ArrowRight,
 } from "lucide-react";
 import type { Palette } from "@/components/client/order/palette";
 
 import { getTableSession } from "@/lib/table-session";
+import { useCartStore } from "@/stores/useCartStore";
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -93,7 +94,7 @@ const STATUS_LABEL_IT: Record<string, string> = {
   pending:   "In attesa",
   cooking:   "In preparazione",
   ready:     "In consegna",
-  served:    "In consegna",
+  served:    "Consegnato",
   completed: "Completato",
 };
 
@@ -260,9 +261,9 @@ function HeroCard({
             <AnimatePresence mode="wait" initial={false}>
               <motion.p
                 key={eta}
-                initial={{ opacity: 0, y: 10, filter: "blur(4px)" }}
-                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
-                exit={{ opacity: 0, y: -10, filter: "blur(4px)" }}
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -10 }}
                 transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
                 style={{
                   color: "#fff",
@@ -494,134 +495,274 @@ function OrderSummaryCard({
   activePortataNum?: number | null;
 }) {
   const t = themeTokens(isDark);
-  const totalItems  = orders.reduce((s, o) => s + o.items.reduce((si, it) => si + it.quantity, 0), 0);
-  const totalCents  = orders.reduce((s, o) => s + o.total_cents, 0);
-
-  // Mostra solo gli item della portata attualmente in preparazione
-  const visibleItems = activePortataNum != null
-    ? orders.flatMap(o => o.items).filter(it => (it.portata ?? 1) === activePortataNum)
-    : orders.flatMap(o => o.items);
-  const visibleCount = visibleItems.reduce((s, it) => s + it.quantity, 0);
-
-  // Flatten unique items for thumbnails (first 4)
-  const thumbItems = visibleItems
-    .sort((a, b) => (a.portata ?? 1) - (b.portata ?? 1))
-    .slice(0, 4);
-
   const [expanded, setExpanded] = React.useState(false);
+  const dragControls = useAnimation();
 
-  // Flatten all items across orders, keeping order status for each
-  const allItems = orders.flatMap(o => {
-    const isPending = o.status === "confirmed" || o.status === "pending";
-    const isCooking = o.status === "cooking";
-    const accent = isPending ? brand : isCooking ? "#3b82f6" : "#22c55e";
-    const statusLabel = isPending ? "In attesa" : isCooking ? "In cucina" : "Pronto";
-    return o.items.map(it => ({ ...it, accent, statusLabel, priceCents: o.total_cents / o.items.reduce((s, i) => s + i.quantity, 0) }));
-  })
-    .filter(it => activePortataNum == null || (it.portata ?? 1) === activePortataNum)
-    .sort((a, b) => (a.portata ?? 1) - (b.portata ?? 1));
+  const totalCents = orders.reduce((s, o) => s + o.total_cents, 0);
+  const allItems   = orders.flatMap(o => o.items);
+  const totalQty   = allItems.reduce((s, i) => s + i.quantity, 0);
+
+  // Raggruppa per numero portata
+  const portateNums = [...new Set(allItems.map(i => i.portata ?? 1))].sort((a, b) => a - b);
+
+  type PortataStatus = "cooking" | "waiting" | "done";
+
+  const getPortataStatus = (num: number): PortataStatus => {
+    if (activePortataNum != null) {
+      if (num === activePortataNum) return "cooking";
+      if (num < activePortataNum)  return "done";
+      return "waiting";
+    }
+    // activePortataNum null: controlla se tutti i piatti di questa portata sono consegnati
+    const items = allItems.filter(i => (i.portata ?? 1) === num);
+    return items.every(i => i.delivered_at) ? "done" : "waiting";
+  };
+
+  const STATUS_ORDER: Record<PortataStatus, number> = { cooking: 0, waiting: 1, done: 2 };
+
+  const sortedPortate = [...portateNums].sort((a, b) => {
+    const sa = STATUS_ORDER[getPortataStatus(a)];
+    const sb = STATUS_ORDER[getPortataStatus(b)];
+    return sa !== sb ? sa - sb : a - b;
+  });
+
+  const COOKING_LABEL = "In preparazione";
+  const WAITING_LABEL = "In attesa";
+  const DONE_LABEL    = "Conclusa";
+
+  const statusMeta = (s: PortataStatus, pNum: number) => {
+    if (s === "cooking") return {
+      label: COOKING_LABEL,
+      accent: brand,
+      dotAnim: true,
+      headerBg: `${brand}14`,
+      headerBorder: `${brand}28`,
+      headerText: brand,
+      itemOpacity: 1,
+    };
+    if (s === "waiting") return {
+      label: WAITING_LABEL,
+      accent: isDark ? "#78716c" : "#a8a29e",
+      dotAnim: false,
+      headerBg: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
+      headerBorder: t.border,
+      headerText: t.inkMuted,
+      itemOpacity: 1,
+    };
+    return {
+      label: DONE_LABEL,
+      accent: isDark ? "#b45252" : "#e57373",
+      dotAnim: false,
+      headerBg: isDark ? "rgba(180,82,82,0.08)" : "rgba(229,115,115,0.08)",
+      headerBorder: isDark ? "rgba(180,82,82,0.18)" : "rgba(229,115,115,0.18)",
+      headerText: isDark ? "#c97575" : "#c0504a",
+      itemOpacity: 0.65,
+    };
+  };
+
+  // Thumbnail dalla portata attiva (o tutte se non c'è portata attiva)
+  const thumbSource = activePortataNum != null
+    ? allItems.filter(i => (i.portata ?? 1) === activePortataNum)
+    : allItems;
+  const thumbItems = thumbSource.slice(0, 4);
 
   return (
     <motion.div
+      drag="y"
+      dragConstraints={{ top: 0, bottom: 200 }}
+      dragElastic={{ top: 0.3, bottom: 0.15 }}
+      dragMomentum={false}
+      animate={dragControls}
+      onDragEnd={(_, info) => {
+        if (!expanded && info.offset.y < -60) { setExpanded(true); }
+        else if (expanded && (info.offset.y > 80 || info.velocity.y > 300)) { setExpanded(false); }
+        dragControls.start({ y: 0, transition: { type: "spring", stiffness: 400, damping: 30 } });
+      }}
       initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.4, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed bottom-0 left-0 right-0 z-30 overflow-hidden rounded-t-[20px]"
-      style={{ background: t.surface, border: `1px solid ${t.border}`, boxShadow: "0 -4px 24px rgba(0,0,0,0.10)" }}
+      className="fixed bottom-0 left-0 right-0 z-30 rounded-t-[20px]"
+      style={{
+        background: t.surface,
+        border: `1px solid ${t.border}`,
+        boxShadow: "0 -4px 24px rgba(0,0,0,0.10)",
+        touchAction: "none",
+        overflow: "visible",
+        cursor: "grab",
+      }}
     >
+      {/* Filler: riempie il gap sotto la card durante il drag verso l'alto */}
+      <div style={{
+        position: "absolute",
+        top: "100%",
+        left: -1,
+        right: -1,
+        height: 300,
+        background: t.surface,
+        borderLeft: `1px solid ${t.border}`,
+        borderRight: `1px solid ${t.border}`,
+      }} />
+      {/* Drag handle */}
+      <div className="flex justify-center" style={{ padding: "14px 0 10px", pointerEvents: "none" }}>
+        <div style={{ width: 44, height: 5, borderRadius: 99, background: isDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.15)" }} />
+      </div>
+
       {/* Header — tap to expand/collapse */}
       <button
         onClick={() => setExpanded(v => !v)}
-        className="flex w-full items-center justify-between px-4 py-3"
-        style={{ borderBottom: expanded ? `1px solid ${t.borderSoft}` : "none" }}
+        className="flex w-full items-center justify-between px-4 pb-2 pt-0"
+        style={{ touchAction: "none" }}
       >
-        <span style={{ fontSize: 13, fontWeight: 600, color: t.ink }}>Il tuo ordine</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>Il tuo ordine</span>
         <div className="flex items-center gap-2">
           <span style={{ fontSize: 11, color: t.inkSoft }}>
-            {visibleCount} {visibleCount === 1 ? "articolo" : "articoli"} · € {formatPrice(totalCents)}
+            {totalQty} {totalQty === 1 ? "articolo" : "articoli"} · € {formatPrice(totalCents)}
           </span>
           <motion.svg
-            animate={{ rotate: expanded ? 90 : 0 }}
-            transition={{ duration: 0.2 }}
+            animate={{ rotate: expanded ? 180 : 0 }}
+            transition={{ duration: 0.22 }}
             width="16" height="16" viewBox="0 0 24 24" fill="none"
-            stroke={t.inkSoft} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"
+            stroke={t.inkSoft} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
           >
-            <polyline points="9 18 15 12 9 6" />
+            <polyline points="6 9 12 15 18 9" />
           </motion.svg>
         </div>
       </button>
 
-      {/* Thumbnails — always visible */}
-      <div className="flex items-center gap-2 px-4 py-3">
-        {thumbItems.map((item, i) => (
-          <div
-            key={`${item.id}-${i}`}
-            style={{
-              width: 46, height: 46, borderRadius: 12, overflow: "hidden",
-              background: `${brand}1a`, flexShrink: 0,
+      {/* Thumbnails — sempre visibili */}
+      {!expanded && (
+        <div className="flex items-center gap-2 px-4 pb-4" style={{ touchAction: "none", pointerEvents: "none" }}>
+          {thumbItems.map((item, i) => (
+            <div
+              key={`${item.id}-thumb-${i}`}
+              style={{
+                width: 46, height: 46, borderRadius: 12, overflow: "hidden",
+                background: `${brand}18`, flexShrink: 0,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                border: `1px solid ${brand}22`,
+              }}
+            >
+              {item.image_url
+                ? <img src={item.image_url} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                : <span style={{ fontSize: 20 }}>{["🍔","🥗","🍜","🍰","🍕","🥩","🍷","🍮"][i % 8]}</span>
+              }
+            </div>
+          ))}
+          {thumbSource.length > 4 && (
+            <div style={{
+              width: 46, height: 46, borderRadius: 12,
+              background: t.surfaceSoft, border: `1px solid ${t.border}`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              border: `1px solid ${brand}22`,
-            }}
-          >
-            {item.image_url
-              ? <img src={item.image_url} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-              : <span style={{ fontSize: 20 }}>{["🍔","🥗","🍜","🍰","🍕","🥩","🍷","🍮"][i % 8]}</span>
-            }
-          </div>
-        ))}
-        {visibleCount > 4 && (
-          <div style={{
-            width: 46, height: 46, borderRadius: 12,
-            background: t.surfaceSoft, border: `1px solid ${t.border}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-            fontSize: 11, fontWeight: 700, color: t.inkMuted,
-          }}>
-            +{visibleCount - 4}
-          </div>
-        )}
-      </div>
+              fontSize: 11, fontWeight: 700, color: t.inkMuted,
+            }}>
+              +{thumbSource.length - 4}
+            </div>
+          )}
+        </div>
+      )}
 
-      {/* Expanded item list */}
+      {/* Lista portate espansa */}
       <AnimatePresence initial={false}>
         {expanded && (
           <motion.div
-            key="item-list"
+            key="portate-list"
             initial={{ height: 0, opacity: 0 }}
             animate={{ height: "auto", opacity: 1 }}
             exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.22 }}
-            style={{ overflow: "hidden" }}
+            transition={{ duration: 0.24 }}
+            style={{ overflow: "hidden", maxHeight: "60vh", overflowY: "auto" }}
           >
-            {allItems.map((item, i) => (
-              <div
-                key={`${item.id}-${i}`}
-                className="flex items-center justify-between px-4 py-2"
-                style={{ borderTop: `1px solid ${t.borderSoft}` }}
-              >
-                <div className="flex items-center gap-2 min-w-0 flex-1">
-                  <span style={{ fontSize: 12, fontWeight: 500, color: t.ink }} className="truncate">
-                    {item.name}
-                  </span>
-                  <span style={{ fontSize: 11, color: t.inkMuted, flexShrink: 0 }}>×{item.quantity}</span>
-                </div>
-                <div className="flex items-center gap-2 ml-2 shrink-0">
-                  <span style={{
-                    display: "inline-flex", alignItems: "center", gap: 4,
-                    fontSize: 10, fontWeight: 700,
-                    background: `${item.accent}18`, color: item.accent,
-                    border: `1px solid ${item.accent}30`,
-                    borderRadius: 20, padding: "2px 8px",
-                  }}>
-                    <span style={{
-                      width: 5, height: 5, borderRadius: "50%",
-                      background: item.accent, display: "inline-block",
-                      animation: "livePulse 2s ease-in-out infinite",
-                    }} />
-                    {item.statusLabel}
-                  </span>
-                </div>
-              </div>
-            ))}
+            <div className="pb-6 pt-1">
+              {sortedPortate.map((pNum, gi) => {
+                const status = getPortataStatus(pNum);
+                const meta   = statusMeta(status, pNum);
+                const items  = allItems.filter(i => (i.portata ?? 1) === pNum);
+
+                return (
+                  <div key={pNum} style={{ marginBottom: gi < sortedPortate.length - 1 ? 10 : 0 }}>
+                    {/* Intestazione portata */}
+                    <div
+                      className="mx-4 flex items-center justify-between rounded-xl px-3 py-2"
+                      style={{
+                        background: meta.headerBg,
+                        border: `1px solid ${meta.headerBorder}`,
+                        marginBottom: 6,
+                      }}
+                    >
+                      <div className="flex items-center gap-2">
+                        {status === "cooking" && (
+                          <span style={{
+                            width: 7, height: 7, borderRadius: "50%",
+                            background: brand, display: "inline-block", flexShrink: 0,
+                            animation: "livePulse 2s ease-in-out infinite",
+                          }} />
+                        )}
+                        {status === "done" && (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={meta.headerText} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                        )}
+                        {status === "waiting" && (
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={meta.headerText} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
+                          </svg>
+                        )}
+                        <span style={{ fontSize: 11, fontWeight: 700, color: meta.headerText, letterSpacing: "0.03em" }}>
+                          {portateNums.length > 1 ? `Portata ${pNum} · ` : ""}{meta.label}
+                        </span>
+                      </div>
+                      <span style={{ fontSize: 10, color: meta.headerText, opacity: 0.7 }}>
+                        {items.reduce((s, i) => s + i.quantity, 0)} pz
+                      </span>
+                    </div>
+
+                    {/* Items della portata */}
+                    {items.map((item, ii) => (
+                      <div
+                        key={`${item.id}-${ii}`}
+                        className="flex items-center justify-between px-4 py-2"
+                        style={{
+                          opacity: meta.itemOpacity,
+                          borderTop: ii === 0 ? "none" : `1px solid ${t.borderSoft}`,
+                        }}
+                      >
+                        <div className="flex items-center gap-2 min-w-0 flex-1">
+                          {item.image_url && (
+                            <div style={{
+                              width: 32, height: 32, borderRadius: 8, overflow: "hidden",
+                              flexShrink: 0, background: `${brand}12`,
+                            }}>
+                              <img src={item.image_url} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
+                            </div>
+                          )}
+                          <span style={{ fontSize: 13, fontWeight: 500, color: t.ink }} className="truncate">
+                            {item.name}
+                          </span>
+                          <span style={{ fontSize: 11, color: t.inkMuted, flexShrink: 0 }}>×{item.quantity}</span>
+                        </div>
+                        <span style={{
+                          display: "inline-flex", alignItems: "center", gap: 4,
+                          fontSize: 10, fontWeight: 700,
+                          background: `${meta.accent}18`,
+                          color: meta.accent,
+                          border: `1px solid ${meta.accent}35`,
+                          borderRadius: 20, padding: "2px 9px",
+                          flexShrink: 0, marginLeft: 8,
+                        }}>
+                          {meta.dotAnim && (
+                            <span style={{
+                              width: 5, height: 5, borderRadius: "50%",
+                              background: meta.accent, display: "inline-block",
+                              animation: "livePulse 2s ease-in-out infinite",
+                            }} />
+                          )}
+                          {meta.label}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -901,6 +1042,226 @@ function makePalette(brand: string): Palette {
 }
 
 
+// ─── THANK YOU SCREEN ────────────────────────────────────────────────────────
+
+function ThankYouScreen({
+  brand,
+  isDark,
+  restaurantName,
+  tableNumber,
+  googleReviewUrl,
+  tripadvisorUrl,
+  instagram,
+  website,
+}: {
+  brand: string;
+  isDark: boolean;
+  restaurantName: string | null;
+  tableNumber: string | null;
+  googleReviewUrl: string | null;
+  tripadvisorUrl: string | null;
+  instagram: string | null;
+  website: string | null;
+}) {
+  const t = themeTokens(isDark);
+  const [r, g, b] = [
+    parseInt(brand.slice(1, 3), 16),
+    parseInt(brand.slice(3, 5), 16),
+    parseInt(brand.slice(5, 7), 16),
+  ];
+  const alpha = (a: number) => `rgba(${r},${g},${b},${a})`;
+
+  const socialLinks = [
+    googleReviewUrl && {
+      label: "Lascia una recensione",
+      sub: "Google",
+      href: googleReviewUrl,
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
+          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
+          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
+          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
+        </svg>
+      ),
+    },
+    tripadvisorUrl && {
+      label: "Recensiscici su",
+      sub: "TripAdvisor",
+      href: tripadvisorUrl,
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="#00AF87">
+          <circle cx="7" cy="12" r="3"/><circle cx="17" cy="12" r="3"/>
+          <path d="M12 4C7.6 4 3.8 6.2 2 9.5l2.5.5C5.9 7.6 8.8 6 12 6s6.1 1.6 7.5 4l2.5-.5C20.2 6.2 16.4 4 12 4z"/>
+          <circle cx="7" cy="12" r="1.5" fill="#fff"/><circle cx="17" cy="12" r="1.5" fill="#fff"/>
+        </svg>
+      ),
+    },
+    instagram && {
+      label: "Seguici su",
+      sub: "Instagram",
+      href: `https://instagram.com/${instagram.replace("@", "")}`,
+      icon: (
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
+          <defs>
+            <linearGradient id="ig" x1="0%" y1="100%" x2="100%" y2="0%">
+              <stop offset="0%" stopColor="#f09433"/><stop offset="25%" stopColor="#e6683c"/>
+              <stop offset="50%" stopColor="#dc2743"/><stop offset="75%" stopColor="#cc2366"/>
+              <stop offset="100%" stopColor="#bc1888"/>
+            </linearGradient>
+          </defs>
+          <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig)"/>
+          <circle cx="12" cy="12" r="4.5" stroke="#fff" strokeWidth="1.8" fill="none"/>
+          <circle cx="17" cy="7" r="1.2" fill="#fff"/>
+        </svg>
+      ),
+    },
+  ].filter(Boolean) as { label: string; sub: string; href: string; icon: React.ReactNode }[];
+
+  return (
+    <motion.div
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      transition={{ duration: 0.5 }}
+      className="fixed inset-0 z-50 flex flex-col items-center justify-between overflow-y-auto"
+      style={{ background: isDark ? "#0c0a09" : `rgb(${Math.round(r + (255 - r) * 0.94)},${Math.round(g + (255 - g) * 0.94)},${Math.round(b + (255 - b) * 0.94)})` }}
+    >
+      {/* Blob decorativo */}
+      <div style={{
+        position: "fixed", top: "-30%", right: "-20%",
+        width: 400, height: 400, borderRadius: "50%",
+        background: alpha(0.12), filter: "blur(80px)", pointerEvents: "none",
+      }} />
+      <div style={{
+        position: "fixed", bottom: "-20%", left: "-10%",
+        width: 300, height: 300, borderRadius: "50%",
+        background: alpha(0.08), filter: "blur(60px)", pointerEvents: "none",
+      }} />
+
+      {/* Contenuto centrale */}
+      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
+        {/* Icona animata */}
+        <motion.div
+          initial={{ scale: 0.6, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.6, delay: 0.1, ease: [0.34, 1.56, 0.64, 1] }}
+          className="relative mb-8"
+        >
+          <div style={{
+            width: 96, height: 96, borderRadius: "50%",
+            background: `linear-gradient(135deg, ${brand}, ${alpha(0.7)})`,
+            boxShadow: `0 20px 60px -10px ${alpha(0.5)}`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <motion.path
+                d="M20 6L9 17l-5-5"
+                initial={{ pathLength: 0 }}
+                animate={{ pathLength: 1 }}
+                transition={{ duration: 0.5, delay: 0.4 }}
+              />
+            </svg>
+          </div>
+          {/* Ring pulse */}
+          <motion.div
+            initial={{ scale: 1, opacity: 0.4 }}
+            animate={{ scale: 1.6, opacity: 0 }}
+            transition={{ duration: 1.2, delay: 0.3, repeat: Infinity, repeatDelay: 1 }}
+            style={{
+              position: "absolute", inset: 0, borderRadius: "50%",
+              border: `2px solid ${brand}`,
+            }}
+          />
+        </motion.div>
+
+        {/* Testo */}
+        <motion.div
+          initial={{ opacity: 0, y: 16 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5, delay: 0.25 }}
+        >
+          {tableNumber && (
+            <p style={{ fontSize: 12, fontWeight: 600, color: brand, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
+              Tavolo {tableNumber}
+            </p>
+          )}
+          <h1 style={{
+            fontSize: 34, fontWeight: 800, color: t.ink,
+            fontFamily: "'Space Grotesk', sans-serif",
+            letterSpacing: "-0.03em", lineHeight: 1.1, marginBottom: 12,
+          }}>
+            Grazie mille!
+          </h1>
+          <p style={{ fontSize: 16, color: t.inkMuted, lineHeight: 1.6, maxWidth: 300 }}>
+            {restaurantName
+              ? `È stato un piacere avervi da ${restaurantName}. Speriamo di rivedervi presto!`
+              : "È stato un piacere. Speriamo di rivedervi presto!"}
+          </p>
+        </motion.div>
+
+        {/* Divisore */}
+        {socialLinks.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 10 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.4, delay: 0.45 }}
+            className="mt-10 w-full max-w-xs"
+          >
+            <p style={{ fontSize: 11, fontWeight: 600, color: t.inkSoft, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
+              Ti è piaciuto? Dillo agli altri
+            </p>
+            <div className="flex flex-col gap-3">
+              {socialLinks.map(({ label, sub, href, icon }) => (
+                <a
+                  key={href}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-3 rounded-2xl px-4 py-3 transition active:scale-[0.97]"
+                  style={{
+                    background: t.surface,
+                    border: `1px solid ${t.border}`,
+                    boxShadow: t.cardShadow,
+                    textDecoration: "none",
+                  }}
+                >
+                  <div style={{
+                    width: 36, height: 36, borderRadius: 10, overflow: "hidden",
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.03)",
+                    flexShrink: 0,
+                  }}>
+                    {icon}
+                  </div>
+                  <div className="flex-1 text-left">
+                    <p style={{ fontSize: 13, fontWeight: 600, color: t.ink }}>{label}</p>
+                    <p style={{ fontSize: 11, color: t.inkSoft }}>{sub}</p>
+                  </div>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.inkSoft} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M5 12h14M12 5l7 7-7 7"/>
+                  </svg>
+                </a>
+              ))}
+            </div>
+          </motion.div>
+        )}
+      </div>
+
+      {/* Footer */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.4, delay: 0.6 }}
+        className="w-full pb-safe px-6 pb-8 text-center"
+      >
+        <p style={{ fontSize: 11, color: t.inkSoft }}>
+          Il conto è stato saldato · Buona giornata 🙏
+        </p>
+      </motion.div>
+    </motion.div>
+  );
+}
+
 // ─── LOADING SKELETON ─────────────────────────────────────────────────────────
 
 function LoadingSkeleton({ brand, isDark, bg }: { brand: string; isDark: boolean; bg?: string }) {
@@ -962,8 +1323,10 @@ export default function StatusPage() {
   const [orders,      setOrders]      = useState<Order[]>([]);
   const [loading,     setLoading]     = useState(true);
   const [tableNumber, setTableNumber] = useState<string | null>(null);
+  const [resolvedTableId, setResolvedTableId] = useState<string | null>(null);
   const [tick,        setTick]        = useState(0);
   const [activeTab,   setActiveTab]   = useState<TabKey>("attesa");
+  const activeTabRef = useRef<TabKey>("attesa");
   const prevCountsRef = useRef<{ attesa: number; cucina: number; pronti: number }>({ attesa: 0, cucina: 0, pronti: 0 });
   const [badges, setBadges] = useState<{ attesa: number; cucina: number; pronti: number }>({ attesa: 0, cucina: 0, pronti: 0 });
   const isFirstLoad = useRef(true);
@@ -1018,17 +1381,115 @@ export default function StatusPage() {
   const [allServed,       setAllServed]       = useState(false);
   const [activePortataNum, setActivePortataNum] = useState<number | null>(null);
   const [activePortataStartedAt, setActivePortataStartedAt] = useState<string | null>(null);
-  const [showReview,      setShowReview]      = useState(false);
-  const [reviewMinimized, setReviewMinimized] = useState(false);
-  const [reviewStars,     setReviewStars]     = useState(0);
+  const [showReview,       setShowReview]       = useState(false);
+  const [reviewMinimized,  setReviewMinimized]  = useState(false);
+  const [reviewStars,      setReviewStars]      = useState(0);
   const [reviewText,      setReviewText]      = useState("");
+  const [reviewDishId,    setReviewDishId]    = useState<string | null>(null);
+  const [reviewDishName,  setReviewDishName]  = useState<string | null>(null);
   const [reviewSending,   setReviewSending]   = useState(false);
   const [reviewSent,      setReviewSent]      = useState(false);
-  const reviewShownRef  = useRef(false);
-  const deliveredCountRef = useRef(0);
+  const reviewShownRef       = useRef(false);
+  const reviewedDishIdsRef   = useRef<Set<string>>(new Set());
+  const [reviewedDishIds,    setReviewedDishIds]    = useState<string[]>([]);
+  const deliveredCountRef    = useRef(-1);
+
+  const [showPaidScreen,   setShowPaidScreen]   = useState(false);
+  // 'idle' | 'processing' | 'success'
+  const [paidStep,         setPaidStep]         = useState<'idle'|'processing'|'success'>('idle');
+  const [paidProgress,     setPaidProgress]     = useState(0); // 0-100
+
+  useEffect(() => {
+    if (!showPaidScreen) return;
+    setPaidStep('processing');
+    // Dopo 2s → success + barra
+    const t1 = setTimeout(() => {
+      setPaidStep('success');
+      setPaidProgress(0);
+      const start = Date.now();
+      const duration = 3000;
+      const tick = () => {
+        const elapsed = Date.now() - start;
+        const pct = Math.min(100, (elapsed / duration) * 100);
+        setPaidProgress(pct);
+        if (pct < 100) requestAnimationFrame(tick);
+        else router.replace(`/order/${sessionId}`);
+      };
+      requestAnimationFrame(tick);
+    }, 2000);
+    return () => clearTimeout(t1);
+  }, [showPaidScreen]);
+
+  // End screen (post-ordine)
+  const [showEndScreen,    setShowEndScreen]    = useState(false);
+  const [paymentRequested, setPaymentRequested] = useState(false);
+  const [paymentRequestSending, setPaymentRequestSending] = useState(false);
+  const [paymentCallId, setPaymentCallId] = useState<string | null>(null);
+  const paymentCallIdRef = useRef<string | null>(null);
+  const [upsellItems,      setUpsellItems]      = useState<Array<{ id: string; name: string; description: string | null; price_cents: number; image_url: string | null; category_id: string | null }>>([]);
+  const [upsellCategories, setUpsellCategories] = useState<Array<{ id: string; name: string }>>([]);
+  const [selectedUpsellCat, setSelectedUpsellCat] = useState<string | null>(null);
+  const [selectedUpsellDish, setSelectedUpsellDish] = useState<{ id: string; name: string; description: string | null; price_cents: number; image_url: string | null } | null>(null);
+  const addItem = useCartStore(s => s.addItem);
+  const cartSessionId = useCartStore(s => s.sessionId);
+  const router = useRouter();
+  useEffect(() => { activeTabRef.current = activeTab; }, [activeTab]);
+  useEffect(() => { paymentCallIdRef.current = paymentCallId; }, [paymentCallId]);
   const [lastDeliveredPortata, setLastDeliveredPortata] = useState<number | null>(null);
   const dragStartY      = useRef<number | null>(null);
   const [reviewDragY,   setReviewDragY]      = useState(0);
+
+  // Fetch upsell items (dolci/dessert in priorità, altrimenti ultimi 12 items) + categorie
+  useEffect(() => {
+    if (!restaurantId) return;
+    (async () => {
+      // Cerca categorie con "dolci" o "dessert" nel nome
+      const { data: cats } = await supabase
+        .from("categories")
+        .select("id, name")
+        .eq("restaurant_id", restaurantId)
+        .ilike("name", "%dolc%");
+      const { data: cats2 } = await supabase
+        .from("categories")
+        .select("id, name")
+        .eq("restaurant_id", restaurantId)
+        .ilike("name", "%dessert%");
+      const dessertCatIds = [...new Set([...(cats ?? []), ...(cats2 ?? [])].map(c => c.id))];
+
+      let items: typeof upsellItems = [];
+      if (dessertCatIds.length > 0) {
+        const { data } = await supabase
+          .from("menu_items")
+          .select("id, name, description, price_cents, image_url, category_id")
+          .in("category_id", dessertCatIds)
+          .eq("is_available", true)
+          .limit(20);
+        items = data ?? [];
+      }
+      // Fallback: ultimi 12 piatti disponibili
+      if (items.length === 0) {
+        const { data } = await supabase
+          .from("menu_items")
+          .select("id, name, description, price_cents, image_url, category_id")
+          .eq("restaurant_id", restaurantId)
+          .eq("is_available", true)
+          .order("created_at", { ascending: false })
+          .limit(12);
+        items = data ?? [];
+      }
+      setUpsellItems(items);
+
+      // Carica nomi categorie per i filtri
+      const catIds = [...new Set(items.map(i => i.category_id).filter(Boolean))] as string[];
+      if (catIds.length > 0) {
+        const { data: catData } = await supabase
+          .from("categories")
+          .select("id, name")
+          .in("id", catIds);
+        setUpsellCategories(catData ?? []);
+      }
+    })();
+  }, [restaurantId]);
 
   // Listener: la stellina nell'header riapre la card
   useEffect(() => {
@@ -1167,17 +1628,73 @@ export default function StatusPage() {
         }
       }
 
-      if (!resolvedTableId) { setOrders([]); setLoading(false); return; }
       if (resolvedTableNumber) setTableNumber(resolvedTableNumber);
+      if (resolvedTableId) setResolvedTableId(resolvedTableId);
 
-      const since = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString();
-      const { data: ordersData, error: ordErr } = await supabase
-        .from("orders").select("*")
-        .eq("table_id", resolvedTableId)
-        .in("status", ["confirmed", "cooking", "ready", "served"])
-        .not("confirmed_at", "is", null)
-        .gte("created_at", since)
-        .order("created_at", { ascending: true });
+      // Check pagamento confermato dal cameriere (usa table_id o session_id come fallback)
+      {
+        let paidFound = false;
+        if (resolvedTableId) {
+          const { data } = await supabase.from("orders").select("id")
+            .eq("table_id", resolvedTableId).not("paid_at", "is", null).limit(1);
+          paidFound = !!(data && data.length > 0);
+        }
+        if (!paidFound) {
+          const { data } = await supabase.from("orders").select("id")
+            .eq("session_id", sessionId).not("paid_at", "is", null).limit(1);
+          paidFound = !!(data && data.length > 0);
+        }
+        if (paidFound) { setShowPaidScreen(true); setLoading(false); return; }
+      }
+
+      // Sincronizza stato pagamento richiesto tra dispositivi
+      if (resolvedTableId) {
+        const { data: pendingCall } = await supabase
+          .from("waiter_calls")
+          .select("id, status")
+          .eq("table_id", resolvedTableId)
+          .eq("type", "payment")
+          .in("status", ["pending", "acknowledged"])
+          .order("created_at", { ascending: false })
+          .limit(1)
+          .maybeSingle();
+        if (pendingCall) {
+          setPaymentRequested(true);
+          setPaymentCallId(pendingCall.id);
+        } else {
+          setPaymentRequested(false);
+          setPaymentCallId(null);
+        }
+      }
+
+      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+      let ordersData: any[] | null = null;
+      let ordErr: any = null;
+
+      if (resolvedTableId) {
+        const res = await supabase
+          .from("orders").select("*")
+          .eq("table_id", resolvedTableId)
+          .in("status", ["confirmed", "cooking", "ready", "served"])
+          .not("confirmed_at", "is", null)
+          .gte("created_at", since)
+          .order("created_at", { ascending: true });
+        ordersData = res.data;
+        ordErr = res.error;
+      }
+
+      // Fallback: look up by session_id (handles cases where table_id was null at order creation)
+      if (!ordersData?.length && sessionId) {
+        const res = await supabase
+          .from("orders").select("*")
+          .eq("session_id", sessionId)
+          .in("status", ["confirmed", "cooking", "ready", "served"])
+          .not("confirmed_at", "is", null)
+          .gte("created_at", since)
+          .order("created_at", { ascending: true });
+        if (!res.error) { ordersData = res.data; ordErr = null; }
+      }
+
       if (ordErr) throw ordErr;
       if (!ordersData?.length) { setOrders([]); setLoading(false); return; }
 
@@ -1195,6 +1712,8 @@ export default function StatusPage() {
         (menuItems || []).forEach(m => { nameMap[m.id] = m.name; imageMap[m.id] = (m as any).image_url ?? null; });
       }
 
+      let nextPortataNum: number | null = null;
+      let nextPortataStartedAt: string | null = null;
       const formatted: Order[] = ordersData.map(order => {
         const orderItems = (itemsData || []).filter(i => i.order_id === order.id);
         const computedTotalCents = orderItems.reduce((sum, i) => sum + Math.round((i.base_price ?? 0) * 100) * (i.quantity ?? 1), 0);
@@ -1217,18 +1736,15 @@ export default function StatusPage() {
           if (anyDelivered)      displayStatus = "served"; // step 3 — Consegnato
           else if (anyCompleted) displayStatus = "ready";  // step 2 — In consegna
           else                   displayStatus = "cooking"; // step 1 — In preparazione
-          setActivePortataNum(activePortata ?? null);
+          nextPortataNum = activePortata ?? null;
 
-          // Timestamp di "partenza" della portata attiva: per la prima portata
-          // è la conferma dell'ordine; per le portate successive è il momento
-          // in cui è stata consegnata l'ultima portata precedente.
           if (activePortata != null && activePortata > 1) {
             const prevItems = orderItems.filter(i => (i.portata ?? 1) < activePortata && i.delivered_at);
             const prevDeliveredTimes = prevItems.map(i => new Date(i.delivered_at as string).getTime());
             const lastPrevDelivered = prevDeliveredTimes.length ? Math.max(...prevDeliveredTimes) : null;
-            setActivePortataStartedAt(lastPrevDelivered != null ? new Date(lastPrevDelivered).toISOString() : (order.confirmed_at ?? null));
+            nextPortataStartedAt = lastPrevDelivered != null ? new Date(lastPrevDelivered).toISOString() : (order.confirmed_at ?? null);
           } else {
-            setActivePortataStartedAt(order.confirmed_at ?? null);
+            nextPortataStartedAt = order.confirmed_at ?? null;
           }
         }
 
@@ -1236,7 +1752,7 @@ export default function StatusPage() {
           ...order,
           status: displayStatus,
           _displayTime: order.confirmed_at || order.updated_at || order.created_at,
-          total_cents: computedTotalCents > 0 ? computedTotalCents : (order.total_cents ?? 0),
+          total_cents: (order.total_cents && order.total_cents > 0) ? order.total_cents : computedTotalCents,
           table_number: resolvedTableNumber,
           items: orderItems.map((i): OrderItem => ({
             id:           i.id,
@@ -1251,17 +1767,20 @@ export default function StatusPage() {
         };
       });
 
+      setActivePortataNum(nextPortataNum);
+      setActivePortataStartedAt(nextPortataStartedAt);
+
       const newPending = formatted.filter(o => o.status === "confirmed" || o.status === "pending").length;
       const newCooking = formatted.filter(o => o.status === "cooking").length;
       const newReady   = formatted.filter(o => o.status === "ready").length;
 
       if (!isFirstLoad.current) {
         setBadges(prev => ({
-          attesa: activeTab !== "attesa" && newPending > prevCountsRef.current.attesa ? prev.attesa + (newPending - prevCountsRef.current.attesa) : prev.attesa,
-          cucina: activeTab !== "cucina" && newCooking > prevCountsRef.current.cucina ? prev.cucina + (newCooking - prevCountsRef.current.cucina) : prev.cucina,
-          pronti: activeTab !== "pronti" && newReady   > prevCountsRef.current.pronti ? prev.pronti + (newReady   - prevCountsRef.current.pronti) : prev.pronti,
+          attesa: activeTabRef.current !== "attesa" && newPending > prevCountsRef.current.attesa ? prev.attesa + (newPending - prevCountsRef.current.attesa) : prev.attesa,
+          cucina: activeTabRef.current !== "cucina" && newCooking > prevCountsRef.current.cucina ? prev.cucina + (newCooking - prevCountsRef.current.cucina) : prev.cucina,
+          pronti: activeTabRef.current !== "pronti" && newReady   > prevCountsRef.current.pronti ? prev.pronti + (newReady   - prevCountsRef.current.pronti) : prev.pronti,
         }));
-        if (newReady > prevCountsRef.current.pronti && activeTab !== "pronti") {
+        if (newReady > prevCountsRef.current.pronti && activeTabRef.current !== "pronti") {
           if (typeof navigator !== "undefined" && navigator.vibrate) navigator.vibrate([100, 50, 100]);
         }
       } else {
@@ -1272,6 +1791,37 @@ export default function StatusPage() {
       // Mostra solo l'ordine più recente — i nuovi sovrascrivono il precedente
       const latestOrder = formatted.length ? formatted[formatted.length - 1] : null;
       setOrders(latestOrder ? [latestOrder] : []);
+      // Carica dal localStorage quali piatti sono già stati recensiti per questo ordine
+      if (latestOrder) {
+        try {
+          const lsKey = `reviewed_dishes_${latestOrder.id}`;
+          const stored = localStorage.getItem(lsKey);
+          if (stored) {
+            const ids: string[] = JSON.parse(stored);
+            ids.forEach(id => reviewedDishIdsRef.current.add(id));
+          }
+        } catch {}
+        // Controlla anche dal DB (altri dispositivi)
+        const { data: existingReviews } = await supabase
+          .from("reviews")
+          .select("menu_item_id")
+          .eq("order_id", latestOrder.id)
+          .not("menu_item_id", "is", null);
+        if (existingReviews) {
+          existingReviews.forEach((r: { menu_item_id: string }) => {
+            reviewedDishIdsRef.current.add(r.menu_item_id);
+          });
+          // Sincronizza state per re-render reattivo dei chip
+          setReviewedDishIds([...reviewedDishIdsRef.current]);
+          // Sincronizza in localStorage
+          try {
+            localStorage.setItem(
+              `reviewed_dishes_${latestOrder.id}`,
+              JSON.stringify([...reviewedDishIdsRef.current])
+            );
+          } catch {}
+        }
+      }
       if (latestOrder && (ordersData[ordersData.length - 1] as any)?.payment_method) {
         setPaymentMethod((ordersData[ordersData.length - 1] as any).payment_method);
       }
@@ -1280,7 +1830,9 @@ export default function StatusPage() {
       const allDone = ordersData.length > 0 && ordersData.every(o => o.status === "served" || o.status === "completed");
       if (allDone) {
         setAllServed(true);
-        if (!reviewShownRef.current) {
+        const allDishIds = [...new Set((latestOrder?.items ?? []).map((i: any) => i.menu_item_id).filter(Boolean))];
+        const hasUnreviewed = allDishIds.some(id => !reviewedDishIdsRef.current.has(id));
+        if (!reviewShownRef.current && hasUnreviewed) {
           reviewShownRef.current = true;
           setTimeout(() => { setShowReview(true); setReviewMinimized(false); }, 600);
         }
@@ -1292,16 +1844,23 @@ export default function StatusPage() {
         const activeItems = activeOrderIds.size > 0 ? allItems.filter(i => activeOrderIds.has(i.order_id)) : allItems;
         const deliveredItems = activeItems.filter((i) => i.portata_delivered);
         const deliveredCount = deliveredItems.length;
-        if (!isFirstLoad.current && deliveredCount > deliveredCountRef.current) {
+        if (deliveredCountRef.current === -1) {
+          // Prima chiamata: inizializza senza mostrare il popup
+          deliveredCountRef.current = deliveredCount;
+        } else if (deliveredCount > deliveredCountRef.current) {
           const portateNums = [...new Set(deliveredItems.map((i) => i.portata ?? 1))].sort((a: number, b: number) => a - b);
           setLastDeliveredPortata(portateNums[0] ?? null);
-          // rileva se tutte le portate sono state consegnate
           const allPortate = [...new Set(activeItems.map((i) => i.portata ?? 1))];
           const allDelivered = allPortate.every(p => activeItems.filter(i => (i.portata ?? 1) === p).some(i => i.portata_delivered));
           if (allDelivered) setIsLastPortata(true);
           deliveredCountRef.current = deliveredCount;
-          setTimeout(() => { setShowReview(true); setReviewMinimized(false); }, 800);
-        } else if (deliveredCount !== deliveredCountRef.current) {
+          const allDishIds2 = [...new Set(allItems.map((i: any) => i.menu_item_id).filter(Boolean))];
+          const hasUnreviewed2 = allDishIds2.some(id => !reviewedDishIdsRef.current.has(id));
+          if (hasUnreviewed2) {
+            reviewShownRef.current = true;
+            setTimeout(() => { setShowReview(true); setReviewMinimized(false); }, 800);
+          }
+        } else {
           deliveredCountRef.current = deliveredCount;
         }
       }
@@ -1310,7 +1869,7 @@ export default function StatusPage() {
     } finally {
       setLoading(false);
     }
-  }, [sessionId, activeTab]);
+  }, [sessionId]);
 
   useEffect(() => {
     if (!sessionId) return;
@@ -1318,10 +1877,32 @@ export default function StatusPage() {
     const channel = supabase.channel(`status_realtime_${sessionId}`)
       .on("postgres_changes", { event: "*", schema: "public", table: "orders" },      fetchOrders)
       .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, fetchOrders)
+      .on("postgres_changes", { event: "*", schema: "public", table: "waiter_calls" },
+        (payload) => {
+          if (payload.eventType === "DELETE") {
+            // Su DELETE payload.old ha solo la PK — confronta con il ref
+            const deletedId = (payload.old as { id?: string })?.id;
+            if (deletedId && deletedId === paymentCallIdRef.current) {
+              setPaymentRequested(false);
+              setPaymentCallId(null);
+            }
+            return;
+          }
+          const row = payload.new as { type?: string; status?: string; id?: string };
+          if (!row || row.type !== "payment") return;
+          if (row.status === "closed" || row.status === "done") {
+            setPaymentRequested(false);
+            setPaymentCallId(null);
+            setShowPaidScreen(true);
+          } else {
+            setPaymentRequested(true);
+            setPaymentCallId(row.id ?? null);
+          }
+        }
+      )
       .subscribe();
-    const pollInterval = setInterval(fetchOrders, 3_000);
     const tickInterval = setInterval(() => setTick(t => t + 1), 60_000);
-    return () => { supabase.removeChannel(channel); clearInterval(pollInterval); clearInterval(tickInterval); };
+    return () => { supabase.removeChannel(channel); clearInterval(tickInterval); };
   }, [sessionId, fetchOrders]);
 
   const pending = orders.filter(o => o.status === "confirmed" || o.status === "pending");
@@ -1337,18 +1918,70 @@ export default function StatusPage() {
     pronti: "Nessun ordine pronto",
   };
 
+  const markDishReviewed = (dishId: string, orderId: string | null) => {
+    reviewedDishIdsRef.current.add(dishId);
+    setReviewedDishIds([...reviewedDishIdsRef.current]);
+    if (orderId) {
+      try { localStorage.setItem(`reviewed_dishes_${orderId}`, JSON.stringify([...reviewedDishIdsRef.current])); } catch {}
+    }
+  };
+
   const submitReview = async () => {
-    if (!reviewStars || !restaurantId) return;
+    if (!reviewStars || !restaurantId || !reviewDishId) return;
     setReviewSending(true);
     try {
-      await supabase.from("reviews").insert({
+      const orderId = orders[0]?.id ?? null;
+
+      // Pre-check fresco dal DB: se un altro dispositivo ha già recensito questo piatto, blocca subito
+      if (orderId) {
+        const { data: existing } = await supabase
+          .from("reviews").select("id")
+          .eq("order_id", orderId)
+          .eq("menu_item_id", reviewDishId)
+          .maybeSingle();
+        if (existing) {
+          markDishReviewed(reviewDishId, orderId);
+          setReviewStars(0); setReviewText(""); setReviewDishId(null); setReviewDishName(null);
+          return;
+        }
+      }
+
+      const { error } = await supabase.from("reviews").insert({
         restaurant_id: restaurantId,
         stars:         reviewStars,
         text:          reviewText.trim() || null,
         session_id:    sessionId,
         table_number:  tableNumber,
+        order_id:      orderId,
+        menu_item_id:  reviewDishId,
+        dish_name:     reviewDishName ?? null,
       });
-      setReviewSent(true);
+
+      // 23505 = unique violation (race tra due dispositivi nello stesso istante)
+      if (error && error.code !== "23505" && error) {
+        console.error("[ReviewPopup] insert error:", error);
+        return;
+      }
+
+      markDishReviewed(reviewDishId, orderId);
+
+      const rawItems = (orders[0]?.items ?? []) as Array<{ menu_item_id: string }>;
+      const uniqueDishIds = [...new Set(rawItems.map(i => i.menu_item_id).filter(Boolean))];
+      const remaining = uniqueDishIds.filter(id => !reviewedDishIdsRef.current.has(id));
+
+      if (remaining.length === 0) {
+        setReviewSent(true);
+        setTimeout(() => { setShowReview(false); setShowEndScreen(true); }, 1800);
+      } else {
+        setReviewSent(true);
+        setTimeout(() => {
+          setReviewSent(false);
+          setReviewStars(0);
+          setReviewText("");
+          setReviewDishId(null);
+          setReviewDishName(null);
+        }, 1800);
+      }
     } catch (e) {
       console.error("[ReviewPopup] submit:", e);
     } finally {
@@ -1374,6 +2007,96 @@ export default function StatusPage() {
           @keyframes shimmerBg { 0% { opacity: 0.5; } 50% { opacity: 1; } 100% { opacity: 0.5; } }
         `}</style>
         <LoadingSkeleton brand={effectiveBrand} isDark={isDark} bg={bg} />
+      </div>
+    );
+  }
+
+  // ── Pagamento confermato dal cameriere ───────────────────────────────────
+  if (showPaidScreen) {
+    const brand = effectiveBrand || "#3a2f26";
+    return (
+      <div style={{
+        position: "fixed", inset: 0, zIndex: 200,
+        background: isDark ? "#1c1917" : "#fff",
+        display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center",
+        padding: "0 32px",
+        gap: 24,
+      }}>
+        <AnimatePresence mode="wait">
+          {paidStep === "processing" && (
+            <motion.div
+              key="processing"
+              initial={{ opacity: 0, y: 16 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0, y: -16 }}
+              transition={{ duration: 0.4 }}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}
+            >
+              {/* Spinner */}
+              <div style={{
+                width: 72, height: 72, borderRadius: "50%",
+                border: `4px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)"}`,
+                borderTop: `4px solid ${brand}`,
+                animation: "spinPay 0.9s linear infinite",
+              }} />
+              <style>{`@keyframes spinPay { to { transform: rotate(360deg); } }`}</style>
+              <p style={{ fontSize: 20, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917", margin: 0 }}>
+                Pagamento in corso...
+              </p>
+            </motion.div>
+          )}
+
+          {paidStep === "success" && (
+            <motion.div
+              key="success"
+              initial={{ opacity: 0, scale: 0.9 }}
+              animate={{ opacity: 1, scale: 1 }}
+              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, width: "100%" }}
+            >
+              {/* Checkmark */}
+              <motion.div
+                initial={{ scale: 0 }}
+                animate={{ scale: 1 }}
+                transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.1 }}
+                style={{
+                  width: 72, height: 72, borderRadius: "50%",
+                  background: brand,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                }}
+              >
+                <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
+                  <path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              </motion.div>
+
+              <p style={{ fontSize: 20, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917", margin: 0, textAlign: "center" }}>
+                Pagamento effettuato con successo
+              </p>
+              <p style={{ fontSize: 14, color: isDark ? "#a8a29e" : "#78716c", margin: 0, textAlign: "center" }}>
+                Grazie per aver scelto {restaurantName || "il nostro ristorante"} 🙏
+              </p>
+
+              {/* Barra di avanzamento */}
+              <div style={{
+                width: "100%", height: 6, borderRadius: 3,
+                background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
+                overflow: "hidden", marginTop: 8,
+              }}>
+                <div style={{
+                  height: "100%", borderRadius: 3,
+                  background: brand,
+                  width: `${paidProgress}%`,
+                  transition: "width 0.05s linear",
+                }} />
+              </div>
+              <p style={{ fontSize: 12, color: isDark ? "#a8a29e" : "#78716c", margin: 0 }}>
+                Ritorno al menù...
+              </p>
+            </motion.div>
+          )}
+        </AnimatePresence>
       </div>
     );
   }
@@ -1505,6 +2228,364 @@ export default function StatusPage() {
     );
   }
 
+  // ── END SCREEN ────────────────────────────────────────────────────────────
+  if (showEndScreen) {
+    const order = orders[0];
+    const payMethod = (order as any)?.payment_method as string | null;
+    const payLabel = payMethod === "cash" ? "Pagamento in contanti" : payMethod === "card" ? "Pagamento con carta" : null;
+    const totalEur = order ? ((order.total_cents ?? 0) / 100).toFixed(2) : null;
+    const originalTotalCents =
+      (order as any)?.original_total_cents ??
+      ((order as any)?.discount_cents > 0
+        ? (order.total_cents ?? 0) + (order as any).discount_cents
+        : null);
+    const originalTotalEur = originalTotalCents
+      ? (originalTotalCents / 100).toFixed(2)
+      : null;
+
+    return (
+      <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Space Grotesk', sans-serif", overflowY: "auto" }}>
+        {/* Header */}
+        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "170px 24px max(40px, env(safe-area-inset-bottom))", textAlign: "center" }}>
+          <motion.h1 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
+            style={{ fontSize: 28, fontWeight: 800, color: isDark ? "#f5f5f4" : "#1c1917", letterSpacing: "-0.02em", marginBottom: 8 }}>
+            Grazie mille!
+          </motion.h1>
+          <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
+            style={{ fontSize: 16, color: isDark ? "#a8a29e" : "#78716c", marginBottom: 28, lineHeight: 1.5 }}>
+            Ci auguriamo che tu abbia trascorso{"\n"}una piacevole serata.
+          </motion.p>
+
+          {/* Riepilogo ordine */}
+          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
+            style={{ background: isDark ? "#1c1917" : "#fff", borderRadius: 20, padding: "20px 24px", width: "100%", maxWidth: 340, boxShadow: "0 4px 24px rgba(0,0,0,0.08)", textAlign: "left", border: `2px solid ${effectiveBrand}` }}>
+            {tableNumber && (
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
+                <span style={{ fontSize: 14, color: isDark ? "#a8a29e" : "#78716c" }}>Tavolo</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917" }}>#{tableNumber}</span>
+              </div>
+            )}
+            {totalEur && (
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <span style={{ fontSize: 14, color: isDark ? "#a8a29e" : "#78716c" }}>Totale</span>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917" }}>€{totalEur}</span>
+                  {originalTotalEur && (
+                    <span style={{ fontSize: 13, color: "#e53935", textDecoration: "line-through", opacity: 0.85 }}>
+                      €{originalTotalEur}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+            {payLabel && (
+              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+                <span style={{ fontSize: 14, color: isDark ? "#a8a29e" : "#78716c" }}>Pagamento</span>
+                <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917" }}>{payLabel}</span>
+              </div>
+            )}
+            {/* Richiesta pagamento */}
+            <div style={{ borderTop: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.07)"}`, paddingTop: 14 }}>
+              {paymentRequested ? (
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 18 }}>✅</span>
+                    <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? "#a8a29e" : "#78716c" }}>Cameriere in arrivo!</span>
+                  </div>
+                  <button
+                    onClick={async () => {
+                      if (paymentCallId) {
+                        await supabase.from("waiter_calls").delete().eq("id", paymentCallId);
+                      }
+                      setPaymentRequested(false);
+                      setPaymentCallId(null);
+                    }}
+                    style={{
+                      fontSize: 12, fontWeight: 700, color: "#ef4444",
+                      background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)",
+                      borderRadius: 20, padding: "4px 12px", cursor: "pointer",
+                    }}
+                  >
+                    Annulla
+                  </button>
+                </div>
+              ) : (
+                <>
+                  <button
+                    disabled={paymentRequestSending}
+                    onClick={async () => {
+                      if (paymentRequestSending || paymentRequested) return;
+                      setPaymentRequestSending(true);
+                      try {
+                        const tableIdForRequest = orders[0]?.table_id ?? null;
+                        const ridForRequest = restaurantId;
+                        const orderIdForRequest = orders[0]?.id ?? null;
+                        if (ridForRequest) {
+                          const { data: wc } = await supabase.from("waiter_calls").insert({
+                            restaurant_id: ridForRequest,
+                            table_id: tableIdForRequest,
+                            order_id: orderIdForRequest,
+                            type: "payment",
+                            status: "pending",
+                          }).select("id").single();
+                          if (wc?.id) setPaymentCallId(wc.id);
+                        }
+                        setPaymentRequested(true);
+                      } finally {
+                        setPaymentRequestSending(false);
+                      }
+                    }}
+                    style={{
+                      width: "100%",
+                      padding: "12px 0",
+                      borderRadius: 12,
+                      border: "none",
+                      background: paymentRequestSending ? `${effectiveBrand}80` : effectiveBrand,
+                      color: "#fff",
+                      fontSize: 14,
+                      fontWeight: 700,
+                      cursor: paymentRequestSending ? "default" : "pointer",
+                      fontFamily: "'Space Grotesk', sans-serif",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "center",
+                      gap: 8,
+                    }}
+                  >
+                    {paymentRequestSending ? (
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" style={{ animation: "spin 0.7s linear infinite" }}>
+                        <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
+                      </svg>
+                    ) : (
+                      "💳 Chiama il cameriere per pagare"
+                    )}
+                  </button>
+                </>
+              )}
+            </div>
+          </motion.div>
+        </div>
+
+        {/* Upsell section */}
+        {upsellItems.length > 0 && (
+          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
+            style={{ paddingBottom: 40 }}>
+            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: isDark ? "#78716c" : "#a8a29e", textAlign: "center", marginBottom: 14 }}>
+              Hai ancora spazio? 🍰
+            </p>
+
+            {/* Category filter chips */}
+            {upsellCategories.length > 1 && (
+              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingLeft: 16, paddingRight: 16, paddingBottom: 12, scrollbarWidth: "none" }}>
+                <button
+                  onClick={() => setSelectedUpsellCat(null)}
+                  style={{
+                    flexShrink: 0, borderRadius: 50, padding: "6px 14px", fontSize: 13, fontWeight: 600,
+                    border: `2px solid ${selectedUpsellCat === null ? effectiveBrand : (isDark ? "#3a3530" : "#e7e5e4")}`,
+                    background: selectedUpsellCat === null ? `${effectiveBrand}15` : "transparent",
+                    color: selectedUpsellCat === null ? effectiveBrand : (isDark ? "#a8a29e" : "#78716c"),
+                    cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s",
+                  }}
+                >
+                  Tutti
+                </button>
+                {upsellCategories.map(cat => (
+                  <button
+                    key={cat.id}
+                    onClick={() => setSelectedUpsellCat(cat.id === selectedUpsellCat ? null : cat.id)}
+                    style={{
+                      flexShrink: 0, borderRadius: 50, padding: "6px 14px", fontSize: 13, fontWeight: 600,
+                      border: `2px solid ${selectedUpsellCat === cat.id ? effectiveBrand : (isDark ? "#3a3530" : "#e7e5e4")}`,
+                      background: selectedUpsellCat === cat.id ? `${effectiveBrand}15` : "transparent",
+                      color: selectedUpsellCat === cat.id ? effectiveBrand : (isDark ? "#a8a29e" : "#78716c"),
+                      cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s",
+                    }}
+                  >
+                    {cat.name}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            {/* Swipe-scrollable dish cards */}
+            <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingLeft: 16, paddingRight: 16, paddingBottom: 8, scrollbarWidth: "none", WebkitOverflowScrolling: "touch" as any }}>
+              {upsellItems
+                .filter(item => selectedUpsellCat === null || item.category_id === selectedUpsellCat)
+                .map(item => (
+                  <button
+                    key={item.id}
+                    onClick={() => setSelectedUpsellDish(item)}
+                    style={{
+                      flexShrink: 0, width: 160, borderRadius: 16, overflow: "hidden", textAlign: "left",
+                      background: isDark ? "#1c1917" : "#fff", boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
+                      border: "none", cursor: "pointer", padding: 0, display: "block",
+                    }}
+                  >
+                    {item.image_url ? (
+                      <img src={item.image_url} alt={item.name}
+                        style={{ width: "100%", height: 100, objectFit: "cover", display: "block" }} />
+                    ) : (
+                      <div style={{ width: "100%", height: 100, background: `${effectiveBrand}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>
+                        🍽️
+                      </div>
+                    )}
+                    <div style={{ padding: "10px 12px 12px" }}>
+                      <p style={{ fontSize: 13, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                        {item.name}
+                      </p>
+                      {item.description && (
+                        <p style={{ fontSize: 11, color: isDark ? "#78716c" : "#a8a29e", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as any, overflow: "hidden", marginBottom: 4 }}>
+                          {item.description}
+                        </p>
+                      )}
+                      <p style={{ fontSize: 13, fontWeight: 700, color: effectiveBrand }}>
+                        €{(item.price_cents / 100).toFixed(2)}
+                      </p>
+                    </div>
+                  </button>
+                ))}
+            </div>
+          </motion.div>
+        )}
+
+        {/* Dish detail modal — drag-to-dismiss */}
+        <AnimatePresence>
+          {selectedUpsellDish && (
+            <>
+              {/* Backdrop */}
+              <motion.div
+                key="dish-backdrop"
+                initial={{ opacity: 0 }}
+                animate={{ opacity: 1 }}
+                exit={{ opacity: 0 }}
+                transition={{ duration: 0.22 }}
+                onClick={() => setSelectedUpsellDish(null)}
+                style={{
+                  position: "fixed", inset: 0, zIndex: 200,
+                  background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)",
+                }}
+              />
+
+              {/* Sheet */}
+              <motion.div
+                key="dish-sheet"
+                drag="y"
+                dragConstraints={{ top: 0 }}
+                dragElastic={{ top: 0.05, bottom: 0.3 }}
+                onDragEnd={(_, info) => {
+                  if (info.offset.y > 80 || info.velocity.y > 400) {
+                    setSelectedUpsellDish(null);
+                  }
+                }}
+                initial={{ y: "100%" }}
+                animate={{ y: 0 }}
+                exit={{ y: "100%" }}
+                transition={{ type: "spring", stiffness: 340, damping: 34, mass: 0.9 }}
+                onClick={e => e.stopPropagation()}
+                style={{
+                  position: "fixed", bottom: 0, left: 0, right: 0,
+                  zIndex: 201, touchAction: "none",
+                  maxWidth: 480, margin: "0 auto",
+                }}
+              >
+                <div style={{
+                  background: isDark ? "#1c1917" : "#fff",
+                  borderRadius: "24px 24px 0 0",
+                  boxShadow: "0 -8px 48px rgba(0,0,0,0.22)",
+                  overflow: "hidden",
+                }}>
+                  {/* Handle */}
+                  <div style={{ paddingTop: 10, paddingBottom: 6, display: "flex", justifyContent: "center", cursor: "grab" }}>
+                    <div style={{ width: 40, height: 4, borderRadius: 99, background: isDark ? "#3a3530" : "#d4d0cc" }} />
+                  </div>
+
+                  {/* Immagine */}
+                  {selectedUpsellDish.image_url && (
+                    <motion.div
+                      initial={{ opacity: 0, scale: 1.04 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{ duration: 0.35, delay: 0.08 }}
+                    >
+                      <img
+                        src={selectedUpsellDish.image_url}
+                        alt={selectedUpsellDish.name}
+                        style={{ width: "100%", height: 200, objectFit: "cover", display: "block" }}
+                        draggable={false}
+                      />
+                    </motion.div>
+                  )}
+
+                  {/* Contenuto */}
+                  <motion.div
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: 0.1 }}
+                    style={{
+                      padding: "20px 20px max(28px, env(safe-area-inset-bottom)) 20px",
+                      fontFamily: "'Space Grotesk', sans-serif",
+                    }}
+                  >
+                    <h2 style={{
+                      fontSize: 22, fontWeight: 800,
+                      color: isDark ? "#f5f5f4" : "#1c1917",
+                      marginBottom: 6, letterSpacing: "-0.02em",
+                    }}>
+                      {selectedUpsellDish.name}
+                    </h2>
+
+                    {selectedUpsellDish.description && (
+                      <p style={{
+                        fontSize: 14, color: isDark ? "#a8a29e" : "#78716c",
+                        lineHeight: 1.6, marginBottom: 16,
+                      }}>
+                        {selectedUpsellDish.description}
+                      </p>
+                    )}
+
+                    <span style={{
+                      display: "block",
+                      fontSize: 28, fontWeight: 800,
+                      color: effectiveBrand, letterSpacing: "-0.02em",
+                      marginBottom: 20,
+                    }}>
+                      €{(selectedUpsellDish.price_cents / 100).toFixed(2).replace(".", ",")}
+                    </span>
+
+                    <motion.button
+                      whileTap={{ scale: 0.97 }}
+                      onClick={async () => {
+                        const allItems = orders.flatMap(o => o.items);
+                        const maxPortata = allItems.reduce((m: number, i: any) => Math.max(m, i.portata ?? 1), 0);
+                        const params = new URLSearchParams({
+                          upsell_id:      selectedUpsellDish.id,
+                          upsell_name:    selectedUpsellDish.name,
+                          upsell_price:   String(selectedUpsellDish.price_cents),
+                          upsell_portata: String(maxPortata + 1),
+                        });
+                        setSelectedUpsellDish(null);
+                        router.push(`/cart/${sessionId}?${params.toString()}`);
+                      }}
+                      style={{
+                        width: "100%", padding: "16px", borderRadius: 16, border: "none",
+                        background: effectiveBrand, color: "#fff",
+                        fontSize: 16, fontWeight: 800, cursor: "pointer",
+                        fontFamily: "'Space Grotesk', sans-serif",
+                        boxShadow: `0 8px 28px ${effectiveBrand}55`,
+                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                      }}
+                    >
+                      Aggiungi all&apos;ordine →
+                    </motion.button>
+                  </motion.div>
+                </div>
+              </motion.div>
+            </>
+          )}
+        </AnimatePresence>
+      </div>
+    );
+  }
+
   if (allServed) {
     return (
       <div
@@ -1532,19 +2613,21 @@ export default function StatusPage() {
             <div style={{ margin: "0 auto", width: 36, height: 4, borderRadius: 99, background: "#d4d0cc" }} />
           </div>
 
-          {/* Badge utensili */}
-          <div style={{ display: "flex", justifyContent: "center", margin: "16px 0 20px" }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: "50%",
-              background: effectiveBrand,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              boxShadow: `0 8px 24px ${effectiveBrand}55`,
-            }}>
-              <Utensils size={26} color="#fff" />
-            </div>
-          </div>
-
-          {!reviewSent ? (
+          {(() => {
+            // Se tutti i piatti sono già recensiti, salta direttamente al "Grazie"
+            const allDishIds = [...new Set((orders[0]?.items ?? []).map((i: any) => i.menu_item_id).filter(Boolean))];
+            const allAlreadyReviewed = allDishIds.length > 0 && allDishIds.every(id => reviewedDishIds.includes(id));
+            if (allAlreadyReviewed && !reviewSent) {
+              // Tutti già recensiti: vai direttamente all'end screen
+              setTimeout(() => setShowEndScreen(true), 400);
+              return null;
+            }
+          })()}
+          {!reviewSent && (() => {
+            const allDishIds = [...new Set((orders[0]?.items ?? []).map((i: any) => i.menu_item_id).filter(Boolean))];
+            const allAlreadyReviewed = allDishIds.length > 0 && allDishIds.every(id => reviewedDishIds.includes(id));
+            if (allAlreadyReviewed) return null;
+            return (
             <>
               <p className="mb-1 text-center text-[14px]" style={{ color: "#78716c" }}>
                 {tableNumber ? `Tavolo ${tableNumber}` : "Il tuo ordine"} · tutto servito 🎉
@@ -1563,14 +2646,55 @@ export default function StatusPage() {
                 ))}
               </div>
 
+              {/* Selezione piatto specifico */}
+              {(() => {
+                const rawItems = (orders[0]?.items ?? []) as Array<{ menu_item_id: string; name: string }>;
+                const unique = Array.from(new Map(rawItems.map(i => [i.menu_item_id, i])).values());
+                if (!unique.length) return null;
+                return (
+                  <div style={{ marginBottom: 16 }}>
+                    <p style={{ fontSize: 12, fontWeight: 700, color: "#a8a29e", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
+                      Seleziona il piatto da recensire
+                    </p>
+                    <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
+                      {unique.map(dish => {
+                        const done = reviewedDishIds.includes(dish.menu_item_id);
+                        const selected = reviewDishId === dish.menu_item_id;
+                        return (
+                          <button key={dish.menu_item_id} type="button"
+                            disabled={done}
+                            onClick={() => {
+                              if (done) return;
+                              if (selected) { setReviewDishId(null); setReviewDishName(null); }
+                              else { setReviewDishId(dish.menu_item_id); setReviewDishName(dish.name); }
+                            }}
+                            style={{
+                              flexShrink: 0, borderRadius: 50, padding: "7px 14px",
+                              fontSize: 13, fontWeight: 600, whiteSpace: "nowrap",
+                              cursor: done ? "default" : "pointer",
+                              border: done ? "2px solid #d1fae5" : selected ? `2px solid ${effectiveBrand}` : "2px solid #e7e5e4",
+                              background: done ? "#d1fae5" : selected ? `${effectiveBrand}15` : "#fafaf8",
+                              color: done ? "#059669" : selected ? effectiveBrand : "#78716c",
+                              transition: "all 0.15s",
+                              opacity: done ? 0.8 : 1,
+                            }}>
+                            {done ? `✓ ${dish.name}` : dish.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                );
+              })()}
+
               <textarea
                 value={reviewText} onChange={e => setReviewText(e.target.value)}
                 placeholder="Raccontaci la tua esperienza (opzionale)…" rows={3}
                 className="w-full resize-none outline-none"
-                style={{ borderRadius: 14, border: `1.5px solid ${effectiveBrand}55`, padding: "12px 16px", fontSize: 14, color: "#1c1917", background: "#fafaf8", fontFamily: "inherit", lineHeight: 1.55 }}
+                style={{ borderRadius: 14, border: `1.5px solid ${effectiveBrand}55`, padding: "12px 16px", fontSize: 16, color: "#1c1917", background: "#fafaf8", fontFamily: "inherit", lineHeight: 1.55 }}
               />
 
-              <motion.button type="button" onClick={submitReview} disabled={!reviewStars || reviewSending} whileTap={{ scale: 0.97 }}
+              <motion.button type="button" onClick={submitReview} disabled={!reviewStars || !reviewDishId || reviewSending} whileTap={{ scale: 0.97 }}
                 className="mt-4 flex w-full items-center justify-center gap-2 text-white disabled:opacity-40"
                 style={{ background: effectiveBrand, borderRadius: 50, padding: "17px 24px", fontSize: 16, fontWeight: 700, border: "none", cursor: "pointer", letterSpacing: "-0.01em", boxShadow: `0 6px 20px ${effectiveBrand}44` }}>
                 {reviewSending ? "Invio…" : (<>Invia <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="1.8" strokeOpacity="0.5"/><path d="M7.5 12l3 3 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></>)}
@@ -1583,24 +2707,19 @@ export default function StatusPage() {
                 </button>
               </div>
             </>
-          ) : (
+            );
+          })()}
+          {reviewSent && (
             /* Stato inviato */
             <div className="text-center pb-4">
-              <motion.div initial={{ scale: 0.5, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-                transition={{ duration: 0.45, ease: [0.34, 1.56, 0.64, 1] }}
-                className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full"
-                style={{ background: effectiveBrand, boxShadow: `0 8px 24px -4px ${effectiveBrand}66` }}>
-                <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
-                  <path d="M5 12l4.5 4.5L19 7" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-              </motion.div>
-              <h2 className="mb-1 text-[22px] font-bold" style={{ color: "#1c1917", fontFamily: "'Space Grotesk', sans-serif" }}>Grazie mille! 🙏</h2>
+              <h2 className="mb-1 text-[22px] font-bold" style={{ color: "#1c1917", fontFamily: "'Space Grotesk', sans-serif" }}>Grazie mille!</h2>
               <p className="mb-6 text-sm" style={{ color: "#78716c" }}>Buona giornata!</p>
             </div>
           )}
         </div>
       </div>
     );
+
   }
 
   return (
@@ -1620,8 +2739,8 @@ export default function StatusPage() {
 
       {/* Background blobs */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden pt-40" aria-hidden>
-        <div className="absolute -left-20 -top-10 h-72 w-72 rounded-full blur-3xl" style={{ background: `radial-gradient(circle, ${effectiveBrand}, transparent 70%)`, opacity: isDark ? 0.12 : 0.16 }} />
-        <div className="absolute -right-24 top-1/3 h-80 w-80 rounded-full blur-3xl" style={{ background: `radial-gradient(circle, ${effectiveBrand}, transparent 70%)`, opacity: isDark ? 0.08 : 0.12 }} />
+        <div className="absolute -left-20 -top-10 h-72 w-72 rounded-full blur-2xl" style={{ background: `radial-gradient(circle, ${effectiveBrand}, transparent 70%)`, opacity: isDark ? 0.12 : 0.16 }} />
+        <div className="absolute -right-24 top-1/3 h-80 w-80 rounded-full blur-2xl" style={{ background: `radial-gradient(circle, ${effectiveBrand}, transparent 70%)`, opacity: isDark ? 0.08 : 0.12 }} />
       </div>
 
       {/* Navbar ora fornita dal layout condiviso src/app/(client)/layout.tsx:
@@ -1642,20 +2761,24 @@ export default function StatusPage() {
       <AnimatePresence>
         {showReview && (
           <>
-            {/* Overlay — visibile solo quando espansa */}
+            {/* Blocca lo scroll del body quando la card è aperta */}
+            <style>{`body { overflow: hidden !important; touch-action: none; }`}</style>
+
+            {/* Overlay — chiude la card al tap, blocca interazioni sotto */}
             <motion.div
               key="review-overlay"
               initial={{ opacity: 0 }}
               animate={{ opacity: reviewMinimized ? 0 : 1 }}
               exit={{ opacity: 0 }}
               transition={{ duration: 0.22 }}
-              className="fixed inset-0 z-50"
+              className="fixed inset-0"
               style={{
-                background: "rgba(0,0,0,0.38)",
+                zIndex: 120,
+                background: "rgba(0,0,0,0.45)",
                 backdropFilter: "blur(3px)",
-                pointerEvents: reviewMinimized ? "none" : "auto",
+                pointerEvents: "auto",
               }}
-              onClick={() => { if (!reviewMinimized) setReviewMinimized(true); }}
+              onClick={() => { setShowReview(false); setReviewMinimized(false); }}
             />
 
             {/* Wrapper di entrata/uscita (framer gestisce solo slide-in/out iniziale) */}
@@ -1665,8 +2788,9 @@ export default function StatusPage() {
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
               transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
-              className="fixed bottom-0 left-0 right-0 z-50 flex justify-center"
-              style={{ pointerEvents: "none" }}
+              className="fixed bottom-0 left-0 right-0 flex justify-center"
+              style={{ zIndex: 121 }}
+              onClick={e => e.stopPropagation()}
             >
               {/* Inner div: gestisce minimize/expand + drag in real-time via CSS */}
               <div
@@ -1681,11 +2805,14 @@ export default function StatusPage() {
               >
                 {/* Card: sempre full-height, il translateY la nasconde parzialmente */}
                 <div
+                  onClick={e => e.stopPropagation()}
                   style={{
                     background: "#ffffff",
                     borderRadius: "32px 32px 0 0",
                     boxShadow: "0 -8px 40px rgba(0,0,0,0.18)",
                     overflow: "hidden",
+                    maxHeight: "calc(100vh - 180px)",
+                    overflowY: "auto",
                   }}
                 >
                   {/* ── DRAG HANDLE ── */}
@@ -1753,23 +2880,6 @@ export default function StatusPage() {
                   {/* ── CONTENUTO PIENO — sempre nel DOM, nascosto dal translateY ── */}
                   <div style={{ padding: "0 24px 12px" }}>
 
-                    {/* Badge utensili */}
-                    <div style={{ display: "flex", justifyContent: "center", marginBottom: 20 }}>
-                      <div
-                        style={{
-                          width: 56,
-                          height: 56,
-                          borderRadius: "50%",
-                          background: effectiveBrand,
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          boxShadow: `0 8px 24px ${effectiveBrand}55`,
-                        }}
-                      >
-                        <Utensils size={26} color="#fff" />
-                      </div>
-                    </div>
 
                     {!reviewSent ? (
                       <>
@@ -1822,6 +2932,47 @@ export default function StatusPage() {
                           ))}
                         </div>
 
+                        {/* Selezione piatto specifico */}
+                        {(() => {
+                          const rawItems = (orders[0]?.items ?? []) as Array<{ menu_item_id: string; name: string }>;
+                          const unique = Array.from(new Map(rawItems.map(i => [i.menu_item_id, i])).values());
+                          if (!unique.length) return null;
+                          return (
+                            <div style={{ marginBottom: 16 }}>
+                              <p style={{ fontSize: 12, fontWeight: 700, color: "#a8a29e", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
+                                Seleziona il piatto da recensire
+                              </p>
+                              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
+                                {unique.map(dish => {
+                                  const done = reviewedDishIds.includes(dish.menu_item_id);
+                                  const selected = reviewDishId === dish.menu_item_id;
+                                  return (
+                                    <button key={dish.menu_item_id} type="button"
+                                      disabled={done}
+                                      onClick={() => {
+                                        if (done) return;
+                                        if (selected) { setReviewDishId(null); setReviewDishName(null); }
+                                        else { setReviewDishId(dish.menu_item_id); setReviewDishName(dish.name); }
+                                      }}
+                                      style={{
+                                        flexShrink: 0, borderRadius: 50, padding: "7px 14px",
+                                        fontSize: 13, fontWeight: 600, whiteSpace: "nowrap",
+                                        cursor: done ? "default" : "pointer",
+                                        border: done ? "2px solid #d1fae5" : selected ? `2px solid ${effectiveBrand}` : "2px solid #e7e5e4",
+                                        background: done ? "#d1fae5" : selected ? `${effectiveBrand}15` : "#fafaf8",
+                                        color: done ? "#059669" : selected ? effectiveBrand : "#78716c",
+                                        transition: "all 0.15s",
+                                        opacity: done ? 0.8 : 1,
+                                      }}>
+                                      {done ? `✓ ${dish.name}` : dish.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          );
+                        })()}
+
                         {/* Textarea */}
                         <textarea
                           value={reviewText}
@@ -1833,7 +2984,7 @@ export default function StatusPage() {
                             borderRadius: 14,
                             border: `1.5px solid ${effectiveBrand}55`,
                             padding: "12px 16px",
-                            fontSize: 14,
+                            fontSize: 16,
                             color: "#1c1917",
                             background: "#fafaf8",
                             fontFamily: "inherit",
@@ -1845,7 +2996,7 @@ export default function StatusPage() {
                         <motion.button
                           type="button"
                           onClick={submitReview}
-                          disabled={!reviewStars || reviewSending}
+                          disabled={!reviewStars || !reviewDishId || reviewSending}
                           whileTap={{ scale: 0.97 }}
                           className="mt-4 flex w-full items-center justify-center gap-2 text-white disabled:opacity-40"
                           style={{

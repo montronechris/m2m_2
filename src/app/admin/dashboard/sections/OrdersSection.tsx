@@ -270,7 +270,8 @@ export function OrdersSection({ ctx }: Props) {
           const time = new Date(o.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
           const items = o.order_items ?? []
           const totalPortate = groupByPortata(items).length
-          const activeGroup = getActivePortataGroup(items)
+          const groups = groupByPortata(items)
+          const activeGroup = getActivePortataGroup(items) ?? (groups.length > 0 ? groups[groups.length - 1] : null)
           const rawState = activeGroup ? getPortataState(activeGroup.items) : null
           const state: ExtendedPortataState | null = rawState === 'in_preparazione' && (o.status === 'confirmed' || o.status === 'pending')
             ? 'in_arrivo'

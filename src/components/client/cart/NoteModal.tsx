@@ -21,8 +21,28 @@ export function NoteModal({ isOpen, itemName, initialNote, brandColor, onClose, 
   const [note, setNote] = useState(initialNote);
   const [dragY, setDragY] = useState(0);
   const [closing, setClosing] = useState(false);
+  const [kbOffset, setKbOffset] = useState(0);
   const dragStartY = useRef<number | null>(null);
   const closeTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Solleva il modal quando la tastiera virtuale appare
+  useEffect(() => {
+    if (!isOpen) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const update = () => {
+      const offset = window.innerHeight - vv.height - vv.offsetTop;
+      setKbOffset(Math.max(0, offset));
+    };
+    vv.addEventListener("resize", update);
+    vv.addEventListener("scroll", update);
+    update();
+    return () => {
+      vv.removeEventListener("resize", update);
+      vv.removeEventListener("scroll", update);
+      setKbOffset(0);
+    };
+  }, [isOpen]);
 
   useEffect(() => {
     if (isOpen) {
@@ -93,7 +113,7 @@ export function NoteModal({ isOpen, itemName, initialNote, brandColor, onClose, 
         onPointerUp={handlePointerUp}
         onPointerCancel={handlePointerUp}
         style={{
-          position: "absolute", bottom: 0, left: 0, right: 0,
+          position: "absolute", bottom: kbOffset, left: 0, right: 0, transition: "bottom 0.2s ease",
           background: "#fff",
           borderRadius: "24px 24px 0 0",
           transform: sheetTransform,
@@ -134,7 +154,7 @@ export function NoteModal({ isOpen, itemName, initialNote, brandColor, onClose, 
             rows={4}
             autoFocus
             placeholder="es. senza cipolla, ben cotto, ecc."
-            style={{ width: "100%", resize: "none", borderRadius: 16, border: `2px solid ${T.borderSoft}`, background: "rgba(255,255,255,0.9)", padding: "12px 14px", fontSize: 14, color: "#1a2236", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
+            style={{ width: "100%", resize: "none", borderRadius: 16, border: `2px solid ${T.borderSoft}`, background: "rgba(255,255,255,0.9)", padding: "12px 14px", fontSize: 16, color: "#1a2236", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
           />
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>
             <span style={{ fontSize: 11, color: "rgba(28,25,23,0.4)" }}>Suggerimenti: senza · ben cotto · piccante</span>

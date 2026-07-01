@@ -1,8 +1,9 @@
 // src/app/(client)/cart/[sessionId]/page.tsx
 "use client";
 import React, { useState, useEffect, useMemo, useRef } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useCartStore } from "@/stores/useCartStore";
+import { useCartRealtime } from "@/hooks/useCartRealtime";
 import { getTableSession } from "@/lib/table-session";
 import { getMenuItemOptions, type ModalOption, type CartCustomization } from "@/lib/api-service";
 import {
@@ -210,6 +211,28 @@ export default function CartPage() {
   const updatePortata  = useCartStore((s) => s.updatePortata);
   const initFromDB     = useCartStore((s) => s.initFromDB);
   const initialized    = useCartStore((s) => s.initialized);
+
+  useCartRealtime();
+
+  // Aggiunge piatto upsell passato via query params (da /status)
+  const searchParams = useSearchParams();
+  const upsellAdded = useRef(false);
+  useEffect(() => {
+    if (!initialized || upsellAdded.current) return;
+    const id      = searchParams.get("upsell_id");
+    const name    = searchParams.get("upsell_name");
+    const price   = searchParams.get("upsell_price");
+    const portata = searchParams.get("upsell_portata");
+    if (!id || !name || !price) return;
+    upsellAdded.current = true;
+    addItem({
+      menuItemId: id,
+      name,
+      basePriceCents: Number(price),
+      customizations: [],
+      portata: portata ? Number(portata) : 1,
+    });
+  }, [initialized]);
 
   const [loading,       setLoading]       = useState(false);
   const [error,         setError]         = useState<string | null>(null);
@@ -540,11 +563,12 @@ initFromDB(
     // Piccolo debounce: lascia a Zustand il tempo di committare items e orderId
     // nello stesso batch dopo che initFromDB ha completato, evitando il redirect
     // prematuro che si verificava al F5 quando initialized=true ma items=[] ancora.
+    const isUpsell = !!searchParams.get("upsell_id");
     const t = setTimeout(() => {
-      if (orderId === null && items.length === 0 && !submitted.current) {
+      if (orderId === null && items.length === 0 && !submitted.current && !isUpsell) {
         router.replace(`/order/${sid}`);
       }
-    }, 80);
+    }, isUpsell ? 1500 : 80);
     return () => clearTimeout(t);
   }, [sessionLoaded, storeLoading, initialized, orderId, items.length, session, router]);
 
@@ -613,8 +637,12 @@ initFromDB(
   };
 
   // Fase 2: tap su "Elimina" → conferma rimozione (rimuove tutti gli orderItemIds del gruppo unito)
-  const handleConfirmDelete = (orderItemIds: string[], itemName: string, e: React.MouseEvent) => {
+  const handleConfirmDelete = (orderItemIds: string[], itemName: string, portata: number, portataItemsCount: number, e: React.MouseEvent) => {
     e.stopPropagation();
+    if (portataItemsCount === 1 && portata === 1) {
+      showPortataError(`Questo è l'unico piatto della 1ª Portata. Non puoi eliminarlo.`);
+      return;
+    }
     const isLast = items.length === orderItemIds.length;
     setRevealedId(null);
     setConfirmingId(orderItemIds[0]);
@@ -1112,9 +1140,9 @@ initFromDB(
         .qty-slot-digit.slot-in-bottom { animation: slotInFromBottom 0.28s cubic-bezier(0.16,1,0.3,1) forwards; }
       `}</style>
 
-      {/* Header sticky — glass + brand accent underline */}
+      {/* Header fisso in cima */}
       <div style={{
-        position: "sticky", top: 0, zIndex: 50,
+        position: "fixed", top: 0, left: 0, right: 0, zIndex: 50,
         background: T.headerBg,
         backdropFilter: "blur(18px) saturate(140%)",
         WebkitBackdropFilter: "blur(18px) saturate(140%)",
@@ -1190,7 +1218,7 @@ initFromDB(
         </div>
       </div>
 
-      <div style={{ width: "100%", padding: "24px 10px 160px", position: "relative", zIndex: 1 }}>
+      <div style={{ width: "100%", padding: "88px 10px 160px", position: "relative", zIndex: 1 }}>
 
         {/* Errore */}
         {error && (
@@ -1367,7 +1395,7 @@ initFromDB(
 
                   {/* Blocco [-] 1 [+] unificato */}
                   <div style={{ display: "flex", alignItems: "center", background: "#f1f4f8", border: "1.5px solid #dde6f5", borderRadius: 10, overflow: "hidden" }}>
-                    <button className="btn-stepper" onClick={() => handleStepperChange(primaryId, qty, -1)} disabled={qty <= 1} aria-label="Diminuisci quantità"
+                    <button className="btn-stepper" onPointerDown={(e) => { e.preventDefault(); if (qty > 1) handleStepperChange(primaryId, qty, -1); }} disabled={qty <= 1} aria-label="Diminuisci quantità"
                       style={{ width: 34, height: 34, background: "none", border: "none", borderRight: "1.5px solid #dde6f5", cursor: qty <= 1 ? "not-allowed" : "pointer", color: qty <= 1 ? "#b0bdd0" : T.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       <Minus size={14} strokeWidth={2.4} />
                     </button>
@@ -1385,14 +1413,14 @@ initFromDB(
                         );
                       })()}
                     </span>
-                    <button className="btn-stepper" onClick={() => handleStepperChange(primaryId, qty, 1)} aria-label="Aumenta quantità"
+                    <button className="btn-stepper" onPointerDown={(e) => { e.preventDefault(); handleStepperChange(primaryId, qty, 1); }} aria-label="Aumenta quantità"
                       style={{ width: 34, height: 34, background: "none", border: "none", borderLeft: "1.5px solid #dde6f5", cursor: "pointer", color: T.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       <Plus size={14} strokeWidth={2.4} />
                     </button>
                   </div>
 
                   {/* Cestino */}
-                  <button onClick={(e) => handleConfirmDelete(item.orderItemIds, item.name, e)} disabled={!!confirmingId} aria-label={`Elimina ${item.name}`}
+                  <button onClick={(e) => handleConfirmDelete(item.orderItemIds, item.name, portata, portataItems.length, e)} disabled={!!confirmingId} aria-label={`Elimina ${item.name}`}
                     style={{ width: 34, height: 34, borderRadius: 10, background: "transparent", border: "none", cursor: confirmingId ? "not-allowed" : "pointer", color: "#e53e3e", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <Trash2 size={15} strokeWidth={2.2} />
                   </button>

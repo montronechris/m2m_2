@@ -10,6 +10,7 @@ export type SectionId =
   | 'staff'
   | 'branding'
   | 'waiter'
+  | 'payment'
   | 'history'
   | 'calendar'
   | 'settings'

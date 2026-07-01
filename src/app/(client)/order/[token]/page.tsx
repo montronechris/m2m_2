@@ -3,7 +3,7 @@
 import React, { useEffect, useState, useRef, useMemo } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
-import { motion, AnimatePresence, useMotionValue, useTransform, animate } from 'framer-motion'
+import { motion, AnimatePresence, useMotionValue, useTransform, animate, useAnimation } from 'framer-motion'
 import {
   AlertCircle,
   Search,
@@ -33,6 +33,7 @@ import { MenuItemCard, type MenuItem } from '@/components/client/order/MenuItemC
 import { buildPalette, DEFAULT_BRAND, type Palette } from '@/components/client/order/palette'
 import { useOrderSession } from '@/hooks/useOrderSession'
 import { useCartStore } from '@/stores/useCartStore'
+import { useCartRealtime } from '@/hooks/useCartRealtime'
 import { BurgerLoader } from '@/components/client/order/BurgerLoader'
 
 // ─── SKELETON DI CARICAMENTO (transizione tra pagine) ──────────────────────────
@@ -161,16 +162,32 @@ export default function OrderPage({ params }: { params: Promise<{ token: string 
     initFromDB(tableId ?? null, restaurantId, restaurant?.slug ?? initialSlug, sessionId)
   }, [sessionId, restaurantId, tableId, restaurant?.slug, initialSlug, cartInitialized, cartLoading, initFromDB])
 
+  // Sincronizzazione real-time del carrello tra dispositivi allo stesso tavolo
+  useCartRealtime()
+
   // ── Palette dinamica dal brand_color reale del ristorante ───────────────────
   const T: Palette = useMemo(
     () => buildPalette(restaurant?.brand_color || DEFAULT_BRAND),
     [restaurant?.brand_color]
   )
 
+  // Appena i dati del ristorante sono pronti, li invia al layout (Navbar)
+  // tramite evento custom — evita una seconda query Supabase dal layout.
+  useEffect(() => {
+    if (!restaurant || !sessionId) return
+    window.dispatchEvent(new CustomEvent('restaurant-meta-ready', {
+      detail: {
+        name: restaurant.name,
+        brandColor: (restaurant as any).brand_color ?? null,
+        tableNumber: tableNumber ?? null,
+      }
+    }))
+  }, [restaurant, sessionId, tableNumber])
+
   // Calcola lo sfondo finale (immagine / colore custom / gradiente brand di default)
   const resolvedBg = restaurant
     ? (restaurant as any).background_type === 'image' && (restaurant as any).background_image_url
-      ? `url(${(restaurant as any).background_image_url}) center/cover no-repeat fixed`
+      ? `url(${(restaurant as any).background_image_url}) center/cover no-repeat`
       : (restaurant as any).background_type === 'color' && (restaurant as any).background_image_url
       ? (restaurant as any).background_image_url
       : T.bgGradient
@@ -275,6 +292,20 @@ const [loaderDone, setLoaderDone] = useState(!fromScan);  const [activeCat, setA
 
   const cartCount = cartItems.reduce((a, i) => a + i.quantity, 0)
   const cartTotal = cartTotalCents / 100
+
+  // Animazione icona carrello quando aumentano gli articoli
+  const cartIconControls = useAnimation()
+  const prevCartCountRef = useRef(cartCount)
+  useEffect(() => {
+    if (cartCount > prevCartCountRef.current) {
+      cartIconControls.start({
+        scale:    [1, 1.45, 0.92, 1.18, 1],
+        rotate:   [0, -12,  12,  -6,   0],
+        transition: { duration: 0.48, times: [0, 0.18, 0.42, 0.72, 1], ease: 'easeOut' },
+      })
+    }
+    prevCartCountRef.current = cartCount
+  }, [cartCount, cartIconControls])
 
   function addToCart(item: MenuItem, originRect?: DOMRect) {
     addCartItem({
@@ -410,6 +441,7 @@ if (!loaderDone) {
       <BurgerLoader
         isLoading={!sessionId || sessionLoading}
         onDone={() => setLoaderDone(true)}
+        brandColor={restaurant?.brand_color ?? undefined}
       />
     </div>
   )
@@ -445,6 +477,10 @@ if (!loaderDone) {
     )
   }
 
+  const isImageBg =
+    (restaurant as any).background_type === 'image' &&
+    !!(restaurant as any).background_image_url
+
   return (
     <PageShell bare>
       <div
@@ -455,27 +491,38 @@ if (!loaderDone) {
             '--brand-text': T.textMuted,
             '--brand-dark': T.text,
             '--brand-border': T.border,
-            background:
-              (restaurant as any).background_type === 'image' &&
-              (restaurant as any).background_image_url
-                ? `url(${(restaurant as any).background_image_url}) center/cover no-repeat fixed`
-                : (restaurant as any).background_type === 'color' &&
-                  (restaurant as any).background_image_url
-                ? (restaurant as any).background_image_url
-                : T.bgGradient,
+            background: isImageBg
+              ? 'transparent'
+              : (restaurant as any).background_type === 'color' &&
+                (restaurant as any).background_image_url
+              ? (restaurant as any).background_image_url
+              : T.bgGradient,
           } as React.CSSProperties
         }
       >
+        {/* Sfondo immagine — usa un div fixed separato per evitare il bug
+            di zoom su mobile causato da background-attachment:fixed */}
+        {isImageBg && (
+          <div
+            aria-hidden
+            style={{
+              position: 'fixed',
+              inset: 0,
+              zIndex: 0,
+              backgroundImage: `url(${(restaurant as any).background_image_url})`,
+              backgroundSize: 'cover',
+              backgroundPosition: 'center',
+            }}
+          />
+        )}
+
         {/* Decorative blobs — nascosti se c'è uno sfondo immagine */}
-        {!(
-          (restaurant as any).background_type === 'image' &&
-          (restaurant as any).background_image_url
-        ) && (
+        {!isImageBg && (
           <div aria-hidden className="pointer-events-none fixed inset-0 -z-10 overflow-hidden">
-            <div className="absolute -top-24 left-1/4 h-80 w-80 rounded-full blur-3xl" style={{ background: `${T.brand}22` }} />
-            <div className="absolute -top-10 right-0 h-64 w-64 rounded-full blur-3xl" style={{ background: `${T.brand}14` }} />
-            <div className="absolute bottom-1/4 -left-10 h-72 w-72 rounded-full blur-3xl" style={{ background: `${T.brand}12` }} />
-            <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full blur-3xl" style={{ background: `${T.brand}10` }} />
+            <div className="absolute -top-24 left-1/4 h-80 w-80 rounded-full blur-2xl" style={{ background: `${T.brand}22` }} />
+            <div className="absolute -top-10 right-0 h-64 w-64 rounded-full blur-xl" style={{ background: `${T.brand}14` }} />
+            <div className="absolute bottom-1/4 -left-10 h-72 w-72 rounded-full blur-xl" style={{ background: `${T.brand}12` }} />
+            <div className="absolute bottom-0 right-1/4 h-96 w-96 rounded-full blur-2xl" style={{ background: `${T.brand}10` }} />
           </div>
         )}
 
@@ -796,7 +843,7 @@ className="mt-6 rounded-3xl border border-black/10 bg-white/85 p-4 shadow-sm bac
                     onPointerDown={(e) => {
                       e.currentTarget.setPointerCapture(e.pointerId)
                       const startY = e.clientY
-                      const startH = cartDetailRef.current?.scrollHeight ?? 240
+                      const startH = (cartDetailRef.current?.scrollHeight ?? 240) + 16
                       const base = cartExpanded ? startH : 0
 
                       const onMove = (ev: PointerEvent) => {
@@ -806,7 +853,7 @@ className="mt-6 rounded-3xl border border-black/10 bg-white/85 p-4 shadow-sm bac
                       }
                       const onUp = (ev: PointerEvent) => {
                         const delta = startY - ev.clientY
-                        const fullH = cartDetailRef.current?.scrollHeight ?? 240
+                        const fullH = (cartDetailRef.current?.scrollHeight ?? 240) + 16
                         const threshold = fullH * 0.35
                         if (!cartExpanded && delta > threshold) {
                           setCartExpanded(true)
@@ -829,12 +876,23 @@ className="mt-6 rounded-3xl border border-black/10 bg-white/85 p-4 shadow-sm bac
 
                   {/* Always-visible compact row */}
                   <div className="flex items-center gap-3 px-3 pb-3">
-                    <div id="cart-icon" className="relative grid h-11 w-11 shrink-0 place-items-center rounded-xl" style={{ background: T.brand }}>
+                    <motion.div
+                      id="cart-icon"
+                      animate={cartIconControls}
+                      className="relative grid h-11 w-11 shrink-0 place-items-center rounded-xl"
+                      style={{ background: T.brand }}
+                    >
                       <ShoppingCart className="h-5 w-5 text-white" />
-                      <span className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-red-500 text-[10px] font-bold text-white">
+                      <motion.span
+                        key={cartCount}
+                        initial={{ scale: 1.6, opacity: 0 }}
+                        animate={{ scale: 1, opacity: 1 }}
+                        transition={{ duration: 0.25, ease: 'backOut' }}
+                        className="absolute -right-1.5 -top-1.5 grid h-5 w-5 place-items-center rounded-full bg-red-500 text-[10px] font-bold text-white"
+                      >
                         {cartCount}
-                      </span>
-                    </div>
+                      </motion.span>
+                    </motion.div>
                     <div className="flex-1">
                       <p className="font-serif text-sm font-black uppercase tracking-wide text-ink">{cartLabel}</p>
                       <p className="text-xs font-bold tabular-nums" style={{ color: T.brand }}>{(cartTotalCents / 100).toFixed(2)} €</p>

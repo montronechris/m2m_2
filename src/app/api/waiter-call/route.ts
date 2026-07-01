@@ -27,6 +27,7 @@ export async function POST(req: Request) {
     .insert({
       table_id: session.table_id,
       restaurant_id: session.restaurant_id,
+      session_id: sessionId,
     })
     .select("id")
     .single();
