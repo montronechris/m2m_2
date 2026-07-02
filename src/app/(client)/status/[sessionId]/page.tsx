@@ -1889,7 +1889,6 @@ export default function StatusPage() {
           if (row.status === "closed" || row.status === "done") {
             setPaymentRequested(false);
             setPaymentCallId(null);
-            setShowPaidScreen(true);
           } else {
             setPaymentRequested(true);
             setPaymentCallId(row.id ?? null);
