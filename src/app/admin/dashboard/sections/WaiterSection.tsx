@@ -152,12 +152,41 @@ export function WaiterSection({ ctx }: Props) {
     finally { setBusyKey(null) }
   }
 
-  async function dismissCall(id: string, setter: React.Dispatch<React.SetStateAction<WaiterCall[]>>, orderId?: string | null) {
+  async function dismissCall(id: string, setter: React.Dispatch<React.SetStateAction<WaiterCall[]>>, orderId?: string | null, tableId?: string | null) {
     setter((prev) => prev.filter((r) => r.id !== id))
     try {
       await supabase.from('waiter_calls').update({ status: 'done' }).eq('id', id)
       if (orderId) {
-        await supabase.from('orders').update({ status: 'completed', paid_at: new Date().toISOString() }).eq('id', orderId)
+        const paidAt = new Date().toISOString()
+        // "Pagamento gestito" chiude l'intero conto del tavolo: potrebbero
+        // esserci più ordini serviti e non ancora pagati (es. piatti extra
+        // ordinati durante il servizio), non solo quello legato a questa
+        // specifica chiamata cameriere.
+        // Nota: 'completed' non è un valore valido dell'enum order_status
+        // del DB (i valori ammessi sono pending/confirmed/cooking/ready/
+        // served/cancelled/expired) — impostiamo solo paid_at, che è ciò
+        // che il resto dell'app usa per considerare un ordine saldato.
+        if (tableId) {
+          await supabase
+            .from('orders')
+            .update({ paid_at: paidAt })
+            .eq('table_id', tableId)
+            .in('status', ['confirmed', 'cooking', 'ready', 'served'])
+            .is('paid_at', null)
+        } else {
+          await supabase.from('orders').update({ paid_at: paidAt }).eq('id', orderId)
+        }
+        // Il pagamento chiude il conto del tavolo: il carrello ancora "pending"
+        // (piatti aggiunti dal cliente e non ancora inviati in cucina) va svuotato.
+        if (tableId) {
+          const { data: pendingOrders } = await supabase
+            .from('orders').select('id').eq('table_id', tableId).eq('status', 'pending')
+          const pendingIds = (pendingOrders ?? []).map((o) => o.id)
+          if (pendingIds.length) {
+            await supabase.from('order_items').delete().in('order_id', pendingIds)
+            await supabase.from('orders').delete().in('id', pendingIds)
+          }
+        }
       }
     }
     catch { load() }
@@ -337,7 +366,7 @@ export function WaiterSection({ ctx }: Props) {
                       <Bell className="h-3 w-3 animate-pulse" /> Il cliente è pronto per pagare
                     </p>
                     <div className="flex gap-2">
-                      <button onClick={() => dismissCall(r.id, setPayments, r.order_id)}
+                      <button onClick={() => dismissCall(r.id, setPayments, r.order_id, r.table_id)}
                         className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-brand-emerald to-brand-sky py-1.5 text-xs font-bold text-white shadow-glow-emerald transition hover:scale-105">
                         <CheckCircle2 className="h-3.5 w-3.5" /> Pagamento gestito
                       </button>

@@ -97,6 +97,7 @@ export type CartItem = {
   customizations: CartCustomization[];
   note?: string;              // nota libera sul piatto
   portata?: number;           // numero di portata (1 = prima, 2 = seconda, ecc.)
+  portataLocked?: boolean;    // true se la portata non è modificabile dal cliente (es. upsell)
 };
 
 /** Pending order row from the DB. */
@@ -241,7 +242,43 @@ export const getOrderItems = async (orderId: string, sessionToken?: string): Pro
     customizations: (row.customizations ?? []) as CartCustomization[],
     note: row.note ?? "",
     portata: row.portata ?? 1,
+    portataLocked: row.portata_locked ?? false,
   }));
+};
+
+/**
+ * Se il tavolo ha un ordine già inviato in cucina e non ancora pagato
+ * (confirmed/cooking/ready/served, paid_at null), ritorna il numero di
+ * portata più alto già usato in quell'ordine — i nuovi piatti aggiunti
+ * dopo l'invio devono partire da (questo numero + 1) e restare bloccati
+ * finché il conto non viene saldato.
+ * Ritorna null se non c'è nessun ordine attivo (piatti liberamente
+ * assegnabili a qualsiasi portata, comportamento normale).
+ */
+export const getActivePortataFloor = async (
+  tableId: string | null,
+  sessionToken?: string
+): Promise<number | null> => {
+  if (!tableId) return null;
+  const activeOrders = await restGet(
+    "orders",
+    `?table_id=eq.${tableId}&status=in.(confirmed,cooking,ready,served)&confirmed_at=not.is.null&paid_at=is.null&select=id`,
+    sessionToken
+  );
+  if (!activeOrders.length) return null;
+
+  const orderIds = activeOrders.map((o: any) => o.id).join(",");
+  // Solo le portate GIÀ CONSEGNATE contano come "floor": una portata solo
+  // riservata (es. un piatto upsell già bloccato ma non ancora portato in
+  // tavola) non deve impedire ad altri piatti di condividere lo stesso numero.
+  const deliveredItems = await restGet(
+    "order_items",
+    `?order_id=in.(${orderIds})&portata_delivered=eq.true&select=portata`,
+    sessionToken
+  );
+  if (!deliveredItems.length) return null;
+
+  return deliveredItems.reduce((max: number, i: any) => Math.max(max, i.portata ?? 1), 0);
 };
 
 /**
@@ -258,6 +295,7 @@ export const addItemToOrder = async (
     customizations: CartCustomization[];
     portata?: number;            // numero di portata (default 1)
     is_drink?: boolean;          // true se è una bevanda
+    portataLocked?: boolean;     // true se la portata non è modificabile dal cliente (es. upsell)
   },
   sessionToken?: string
 ): Promise<string> => {
@@ -271,6 +309,7 @@ export const addItemToOrder = async (
     customizations: item.customizations,
     portata: item.portata ?? 1,
     is_drink: item.is_drink ?? false,
+    portata_locked: item.portataLocked ?? false,
   }, sessionToken);
 
   // 2. Recalculate order total (sum all items from DB — single source of truth)

@@ -10,6 +10,7 @@ import {
   updateOrderItemNote,
   updateOrderItemPortata,
   cancelOrder,
+  getActivePortataFloor,
   type PendingOrder,
 } from "@/lib/api-service";
 
@@ -30,10 +31,12 @@ type CartState = {
   initialized:    boolean;
   /** Epoch ms dell'ultima mutazione. null = nessuna attività ancora. */
   lastActivityAt: number | null;
+  /** Portata più alta già in corso/consegnata su un ordine attivo non pagato del tavolo. null = nessun ordine attivo. */
+  activePortataFloor: number | null;
 
   totalCents:     () => number;
   initFromDB:     (tableId: string | null, restaurantId: string | null, restaurantSlug: string, sessionId: string | null) => Promise<void>;
-  addItem:        (item: { menuItemId: string; name: string; basePriceCents: number; customizations: CartCustomization[]; portata?: number; is_drink?: boolean }) => Promise<void>;
+  addItem:        (item: { menuItemId: string; name: string; basePriceCents: number; customizations: CartCustomization[]; portata?: number; is_drink?: boolean; portataLocked?: boolean }) => Promise<void>;
   removeItem:     (orderItemId: string) => Promise<void>;
   updateQuantity: (orderItemId: string, delta: number) => Promise<void>;
   /** Cambia portata di un item. Se qty > 1, splitta: 1 unità va nella nuova portata, il resto rimane. */
@@ -56,6 +59,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
   loading:        false,
   initialized:    false,
   lastActivityAt: null,
+  activePortataFloor: null,
 
   totalCents: () =>
     get().items.reduce((sum, item) => sum + item.priceCents * item.quantity, 0),
@@ -75,11 +79,12 @@ export const useCartStore = create<CartState>()((set, get) => ({
 );
       const rawItems: CartItem[] = await getOrderItems(order.id, sessionId ?? undefined);
       const items: CartItemPortata[] = rawItems.map(i => ({ ...i, portata: i.portata ?? 1 }));
+      const activePortataFloor = await getActivePortataFloor(tableId, sessionId ?? undefined);
       // lastActivityAt rimane null finché l'utente non aggiunge/rimuove
       // un piatto nella sessione corrente. NON usiamo updated_at del DB
       // perché verrebbe toccato da altre operazioni e farebbe scadere
       // la sessione appena l'utente riapre la pagina.
-      set({ orderId: order.id, items, loading: false, initialized: true });
+      set({ orderId: order.id, items, loading: false, initialized: true, activePortataFloor });
     } catch (err) {
       console.error("[CartStore] initFromDB failed:", err);
       set({ loading: false, initialized: true });
@@ -87,7 +92,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
   },
 
   // ── ADD ───────────────────────────────────────────────────────────────────
-  addItem: async ({ menuItemId, name, basePriceCents, customizations, portata = 1, is_drink = false }) => {
+  addItem: async ({ menuItemId, name, basePriceCents, customizations, portata = 1, is_drink = false, portataLocked = false }) => {
     const { orderId, tableId, restaurantId } = get();
     const extraCents     = customizations.reduce((sum, c) => sum + (c.priceModifierCents ?? 0), 0);
     const totalItemCents = basePriceCents + extraCents;
@@ -104,16 +109,33 @@ export const useCartStore = create<CartState>()((set, get) => ({
       }
     }
 
+    // Se il tavolo ha già un ordine con portate GIÀ CONSEGNATE, i nuovi piatti
+    // non possono finire lì: partono di default dalla prima portata libera.
+    // Restano comunque modificabili — l'utente potrà spostarli su qualsiasi
+    // altra portata non ancora consegnata. Solo i piatti aggiunti dalla card
+    // upsell (portataLocked passato esplicitamente a true) restano fissi.
+    let effectivePortata = portata;
+    const effectivePortataLocked = portataLocked;
+    try {
+      const floor = await getActivePortataFloor(tableId, get().sessionId ?? undefined);
+      if (floor != null) {
+        set({ activePortataFloor: floor });
+        if (!portataLocked) effectivePortata = Math.max(portata, floor + 1);
+      }
+    } catch (err) {
+      console.error("[CartStore] getActivePortataFloor failed:", err);
+    }
+
     try {
         console.log("[addItem] orderId:", activeOrderId, "sessionId:", get().sessionId); // ← aggiungi
       const newOrderItemId = await addItemToOrder(activeOrderId, {
-        menuItemId, name, priceCents: totalItemCents, quantity: 1, customizations, portata, is_drink,
+        menuItemId, name, priceCents: totalItemCents, quantity: 1, customizations, portata: effectivePortata, is_drink, portataLocked: effectivePortataLocked,
       }, get().sessionId ?? undefined);
 
       const newItem: CartItemPortata = {
         orderItemId: newOrderItemId, menuItemId, name,
         priceCents: totalItemCents, quantity: 1, customizations,
-        portata,
+        portata: effectivePortata, portataLocked: effectivePortataLocked,
       };
 
       set((state) => {
@@ -124,7 +146,8 @@ export const useCartStore = create<CartState>()((set, get) => ({
         const existingIdx = state.items.findIndex(
           (i) => i.menuItemId === menuItemId &&
                  JSON.stringify(i.customizations) === JSON.stringify(customizations) &&
-                 i.portata === portata
+                 i.portata === effectivePortata &&
+                 !i.portataLocked && !effectivePortataLocked
         );
         if (existingIdx >= 0) {
           const updated = [...state.items];
@@ -184,7 +207,7 @@ export const useCartStore = create<CartState>()((set, get) => ({
   updatePortata: async (orderItemId: string, newPortata: number) => {
     const { items, orderId } = get();
     const item = items.find((i) => i.orderItemId === orderItemId);
-    if (!item || item.portata === newPortata) return;
+    if (!item || item.portata === newPortata || item.portataLocked) return;
 
     const customKey = JSON.stringify(item.customizations);
 

@@ -498,6 +498,13 @@ function OrderSummaryCard({
   const [expanded, setExpanded] = React.useState(false);
   const dragControls = useAnimation();
 
+  // animate={dragControls} è un controllo imperativo: senza questo effetto
+  // resterebbe bloccata sullo stato "initial" (opacity: 0) per sempre, dato
+  // che dragControls.start() viene altrimenti chiamato solo in onDragEnd.
+  useEffect(() => {
+    dragControls.start({ opacity: 1, y: 0, transition: { duration: 0.4, delay: 0.15, ease: [0.22, 1, 0.36, 1] } });
+  }, [dragControls]);
+
   const totalCents = orders.reduce((s, o) => s + o.total_cents, 0);
   const allItems   = orders.flatMap(o => o.items);
   const totalQty   = allItems.reduce((s, i) => s + i.quantity, 0);
@@ -1631,20 +1638,36 @@ export default function StatusPage() {
       if (resolvedTableNumber) setTableNumber(resolvedTableNumber);
       if (resolvedTableId) setResolvedTableId(resolvedTableId);
 
-      // Check pagamento confermato dal cameriere (usa table_id o session_id come fallback)
+      // Check pagamento confermato dal cameriere (usa table_id o session_id come fallback).
+      // Solo se il pagamento è recente: altrimenti un tavolo pagato giorni fa
+      // rilancerebbe per sempre l'animazione "pagamento in corso" a ogni nuova
+      // visita/sessione futura sullo stesso tavolo.
       {
+        const recentSince = new Date(Date.now() - 10 * 60 * 1000).toISOString();
         let paidFound = false;
         if (resolvedTableId) {
           const { data } = await supabase.from("orders").select("id")
-            .eq("table_id", resolvedTableId).not("paid_at", "is", null).limit(1);
+            .eq("table_id", resolvedTableId).not("paid_at", "is", null).gte("paid_at", recentSince).limit(1);
           paidFound = !!(data && data.length > 0);
         }
         if (!paidFound) {
           const { data } = await supabase.from("orders").select("id")
-            .eq("session_id", sessionId).not("paid_at", "is", null).limit(1);
+            .eq("session_id", sessionId).not("paid_at", "is", null).gte("paid_at", recentSince).limit(1);
           paidFound = !!(data && data.length > 0);
         }
-        if (paidFound) { setShowPaidScreen(true); setLoading(false); return; }
+        if (paidFound) {
+          // L'animazione va mostrata una sola volta: dopo il primo passaggio,
+          // /status non deve più intercettare la sessione (altrimenti resta
+          // "bloccata" sulla schermata di successo per tutti i 10 minuti).
+          let alreadyShown = false;
+          try { alreadyShown = localStorage.getItem(`paid_shown_${sessionId}`) === "1"; } catch {}
+          if (alreadyShown) {
+            router.replace(`/order/${sessionId}`);
+            return;
+          }
+          try { localStorage.setItem(`paid_shown_${sessionId}`, "1"); } catch {}
+          setShowPaidScreen(true); setLoading(false); return;
+        }
       }
 
       // Sincronizza stato pagamento richiesto tra dispositivi
@@ -1677,7 +1700,7 @@ export default function StatusPage() {
           .eq("table_id", resolvedTableId)
           .in("status", ["confirmed", "cooking", "ready", "served"])
           .not("confirmed_at", "is", null)
-          .gte("created_at", since)
+          .gte("confirmed_at", since)
           .order("created_at", { ascending: true });
         ordersData = res.data;
         ordErr = res.error;
@@ -1690,7 +1713,7 @@ export default function StatusPage() {
           .eq("session_id", sessionId)
           .in("status", ["confirmed", "cooking", "ready", "served"])
           .not("confirmed_at", "is", null)
-          .gte("created_at", since)
+          .gte("confirmed_at", since)
           .order("created_at", { ascending: true });
         if (!res.error) { ordersData = res.data; ordErr = null; }
       }
