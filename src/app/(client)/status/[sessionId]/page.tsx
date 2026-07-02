@@ -1655,7 +1655,19 @@ export default function StatusPage() {
             .eq("session_id", sessionId).not("paid_at", "is", null).gte("paid_at", recentSince).limit(1);
           paidFound = !!(data && data.length > 0);
         }
-        if (paidFound) { setShowPaidScreen(true); setLoading(false); return; }
+        if (paidFound) {
+          // L'animazione va mostrata una sola volta: dopo il primo passaggio,
+          // /status non deve più intercettare la sessione (altrimenti resta
+          // "bloccata" sulla schermata di successo per tutti i 10 minuti).
+          let alreadyShown = false;
+          try { alreadyShown = localStorage.getItem(`paid_shown_${sessionId}`) === "1"; } catch {}
+          if (alreadyShown) {
+            router.replace(`/order/${sessionId}`);
+            return;
+          }
+          try { localStorage.setItem(`paid_shown_${sessionId}`, "1"); } catch {}
+          setShowPaidScreen(true); setLoading(false); return;
+        }
       }
 
       // Sincronizza stato pagamento richiesto tra dispositivi
