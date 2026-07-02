@@ -1472,13 +1472,17 @@ export default function ConfirmPage() {
       setLoading(true);
       try {
         // Verifica che non ci sia già un ordine attivo per questo tavolo
+        // (stessa finestra temporale usata da /status, per evitare che un
+        // vecchio ordine mai chiuso blocchi il tavolo indefinitamente)
         if (tableId) {
+          const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
           const { data: activeOrders } = await supabase
             .from("orders")
             .select("id")
             .eq("table_id", tableId)
             .in("status", ["confirmed", "cooking", "ready"])
             .not("confirmed_at", "is", null)
+            .gte("confirmed_at", since)
             .limit(1);
           if (activeOrders && activeOrders.length > 0) {
             setActiveOrderBlocked(true);

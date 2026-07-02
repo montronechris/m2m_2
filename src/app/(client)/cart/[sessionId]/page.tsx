@@ -100,7 +100,10 @@ function mergeDuplicateItems(groupItems: CartItemLike[]): MergedCartItem[] {
   const map = new Map<string, MergedCartItem>();
 
   for (const item of groupItems) {
-    const key = `${item.menuItemId}::${JSON.stringify(item.customizations)}`;
+    // portataLocked entra nella chiave: un piatto bloccato (già in un ordine
+    // attivo/consegnato) non deve mai fondersi con uno stesso piatto ancora
+    // libero, altrimenti la riga unita erediterebbe i controlli sbagliati.
+    const key = `${item.menuItemId}::${JSON.stringify(item.customizations)}::${item.portataLocked ? "locked" : "free"}`;
     const existing = map.get(key);
     if (existing) {
       existing.orderItemIds.push(item.orderItemId!);
@@ -217,13 +220,15 @@ export default function CartPage() {
   // Aggiunge piatto upsell passato via query params (da /status)
   const searchParams = useSearchParams();
   const upsellAdded = useRef(false);
+  const hasUpsellParam = !!searchParams.get("upsell_id");
+  const [addingUpsell, setAddingUpsell] = useState(hasUpsellParam);
   useEffect(() => {
     if (!initialized || upsellAdded.current) return;
     const id      = searchParams.get("upsell_id");
     const name    = searchParams.get("upsell_name");
     const price   = searchParams.get("upsell_price");
     const portata = searchParams.get("upsell_portata");
-    if (!id || !name || !price) return;
+    if (!id || !name || !price) { setAddingUpsell(false); return; }
     upsellAdded.current = true;
     addItem({
       menuItemId: id,
@@ -231,7 +236,8 @@ export default function CartPage() {
       basePriceCents: Number(price),
       customizations: [],
       portata: portata ? Number(portata) : 1,
-    });
+      portataLocked: true,
+    }).finally(() => setAddingUpsell(false));
   }, [initialized]);
 
   const [loading,       setLoading]       = useState(false);
@@ -312,6 +318,12 @@ export default function CartPage() {
   const portataErrorTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const maxExistingPortata = useMemo(() => Math.max(...items.map(i => i.portata ?? 1), 1), [items]);
   const selectablePortate = maxExistingPortata + 1;
+  // Portate già CONSEGNATE su un ordine attivo del tavolo: non si può più
+  // assegnare un piatto a queste. Una portata solo "riservata" (es. un piatto
+  // upsell bloccato ma non ancora servito) non conta: altri piatti possono
+  // ancora condividerla.
+  const storeActivePortataFloor = useCartStore((s) => s.activePortataFloor);
+  const portataFloor = storeActivePortataFloor ?? 0;
 
   const showPortataError = (msg: string) => {
     setPortataError(msg);
@@ -763,7 +775,7 @@ initFromDB(
     );
   }
 
-  if (!initialized || storeLoading) return <CartSkeleton T={T} />;
+  if (!initialized || storeLoading || addingUpsell) return <CartSkeleton T={T} />;
 
   if (items.length === 0 || showEmptyAnim) {
     const handleGoToMenu = () => {
@@ -1363,26 +1375,33 @@ initFromDB(
                   <div style={{ position: "relative" }}>
                     <button
                       className="portata-badge"
-                      onClick={(e) => { e.stopPropagation(); setShowPortataSelector(showPortataSelector === primaryId ? null : primaryId); }}
-                      aria-label={`Cambia portata, attuale ${item.portata ?? 1}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (item.portataLocked) return;
+                        setShowPortataSelector(showPortataSelector === primaryId ? null : primaryId);
+                      }}
+                      aria-label={item.portataLocked ? `Portata ${item.portata ?? 1}, non modificabile` : `Cambia portata, attuale ${item.portata ?? 1}`}
                       style={{
                         display: "flex", alignItems: "center", gap: 4,
                         padding: "7px 11px", borderRadius: 12,
                         background: "#f4f6fa",
                         border: `1.5px solid ${showPortataSelector === primaryId ? T.accent : "#dde6f5"}`,
-                        cursor: "pointer",
+                        cursor: item.portataLocked ? "default" : "pointer",
+                        opacity: item.portataLocked ? 0.7 : 1,
                         fontSize: 13, fontWeight: 700, color: "#1a2236",
                       }}
                     >
                       <span style={{ fontWeight: 800 }}>{item.portata ?? 1}</span>
                       <span style={{ fontSize: 11 }}>ª</span>
-                      <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ transform: showPortataSelector === primaryId ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}>
-                        <path d="M2 3.5L5 6.5L8 3.5" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                      </svg>
+                      {!item.portataLocked && (
+                        <svg width="10" height="10" viewBox="0 0 10 10" fill="none" style={{ transform: showPortataSelector === primaryId ? "rotate(180deg)" : "rotate(0deg)", transition: "transform 0.2s ease" }}>
+                          <path d="M2 3.5L5 6.5L8 3.5" stroke="#64748b" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                        </svg>
+                      )}
                     </button>
-                    {showPortataSelector === primaryId && (
+                    {!item.portataLocked && showPortataSelector === primaryId && (
                       <div className="portata-selector" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, background: "#fff", border: "1px solid #dde6f5", borderRadius: 14, padding: 5, boxShadow: "0 10px 36px rgba(0,0,0,0.14)", zIndex: 100, display: "flex", gap: 4, minWidth: "max-content" }}>
-                        {Array.from({ length: selectablePortate }, (_, i) => i + 1).map((p) => (
+                        {Array.from({ length: selectablePortate }, (_, i) => i + 1).filter((p) => p > portataFloor).map((p) => (
                           <button key={p} className="portata-option" onClick={(e) => { e.stopPropagation(); handlePortataChange(primaryId, p, item); }} aria-label={`Sposta alla portata ${p}`}
                             style={{ width: 38, height: 38, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", border: (item.portata ?? 1) === p ? `2px solid ${T.accent}` : "1px solid #dde6f5", background: (item.portata ?? 1) === p ? T.accentBg : "transparent", cursor: "pointer", fontSize: 14, fontWeight: 800, color: (item.portata ?? 1) === p ? T.accent : "#64748b" }}>
                             {p}
