@@ -1638,37 +1638,10 @@ export default function StatusPage() {
       if (resolvedTableNumber) setTableNumber(resolvedTableNumber);
       if (resolvedTableId) setResolvedTableId(resolvedTableId);
 
-      // Check pagamento confermato dal cameriere (usa table_id o session_id come fallback).
-      // Solo se il pagamento è recente: altrimenti un tavolo pagato giorni fa
-      // rilancerebbe per sempre l'animazione "pagamento in corso" a ogni nuova
-      // visita/sessione futura sullo stesso tavolo.
-      {
-        const recentSince = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-        let paidFound = false;
-        if (resolvedTableId) {
-          const { data } = await supabase.from("orders").select("id")
-            .eq("table_id", resolvedTableId).not("paid_at", "is", null).gte("paid_at", recentSince).limit(1);
-          paidFound = !!(data && data.length > 0);
-        }
-        if (!paidFound) {
-          const { data } = await supabase.from("orders").select("id")
-            .eq("session_id", sessionId).not("paid_at", "is", null).gte("paid_at", recentSince).limit(1);
-          paidFound = !!(data && data.length > 0);
-        }
-        if (paidFound) {
-          // L'animazione va mostrata una sola volta: dopo il primo passaggio,
-          // /status non deve più intercettare la sessione (altrimenti resta
-          // "bloccata" sulla schermata di successo per tutti i 10 minuti).
-          let alreadyShown = false;
-          try { alreadyShown = localStorage.getItem(`paid_shown_${sessionId}`) === "1"; } catch {}
-          if (alreadyShown) {
-            router.replace(`/order/${sessionId}`);
-            return;
-          }
-          try { localStorage.setItem(`paid_shown_${sessionId}`, "1"); } catch {}
-          setShowPaidScreen(true); setLoading(false); return;
-        }
-      }
+      // Una volta che il cameriere ha segnato "Pagamento gestito" (paid_at
+      // impostato), /status non deve più mostrare la schermata "Pagamento
+      // effettuato": l'ordine è chiuso lato cameriere e il cliente non deve
+      // più vedere quel flow su questa pagina.
 
       // Sincronizza stato pagamento richiesto tra dispositivi
       if (resolvedTableId) {
