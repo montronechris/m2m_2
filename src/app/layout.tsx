@@ -5,7 +5,6 @@ import "./globals.css";
 import { Toaster } from "@/components/ui/toaster";
 import { I18nProvider } from "@/components/i18n/I18nProvider";
 import { AnimatedBackground } from "@/components/landing/AnimatedBackground";
-import { ChatWidget } from "@/components/landing/ChatWidget";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",

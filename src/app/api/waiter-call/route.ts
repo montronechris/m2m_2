@@ -3,31 +3,49 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function POST(req: Request) {
-  const { sessionId } = await req.json();
+  const { sessionId, tableCode } = await req.json();
 
-  if (!sessionId) {
-    return NextResponse.json({ error: "sessionId mancante" }, { status: 400 });
+  if (!sessionId && !tableCode) {
+    return NextResponse.json({ error: "sessionId o tableCode mancante" }, { status: 400 });
   }
 
   const supabase = getSupabaseAdmin();
 
-  // sessionId nell'URL client = qr_sessions.id
-  const { data: session, error: sessionError } = await supabase
-    .from("qr_sessions")
-    .select("table_id, restaurant_id")
-    .eq("id", sessionId)
-    .single();
+  let tableId: string | null = null;
+  let restaurantId: string | null = null;
+  let sessionIdOrNull: string | null = null;
 
-  if (sessionError || !session) {
-    return NextResponse.json({ error: "Sessione non trovata" }, { status: 404 });
+  if (sessionId) {
+    const { data: session, error: sessionError } = await supabase
+      .from("qr_sessions")
+      .select("table_id, restaurant_id")
+      .eq("id", sessionId)
+      .single();
+    if (sessionError || !session) {
+      return NextResponse.json({ error: "Sessione non trovata" }, { status: 404 });
+    }
+    tableId = session.table_id;
+    restaurantId = session.restaurant_id;
+    sessionIdOrNull = sessionId;
+  } else {
+    const { data: tbl, error: tblErr } = await supabase
+      .from("tables")
+      .select("id, restaurant_id")
+      .eq("code", String(tableCode).toUpperCase())
+      .maybeSingle();
+    if (tblErr || !tbl) {
+      return NextResponse.json({ error: "Tavolo non trovato" }, { status: 404 });
+    }
+    tableId = tbl.id;
+    restaurantId = tbl.restaurant_id;
   }
 
   const { data: call, error: insertError } = await supabase
     .from("waiter_calls")
     .insert({
-      table_id: session.table_id,
-      restaurant_id: session.restaurant_id,
-      session_id: sessionId,
+      table_id: tableId,
+      restaurant_id: restaurantId,
+      session_id: sessionIdOrNull,
     })
     .select("id")
     .single();

@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
-import { Timer, Gift, Sparkles, X } from 'lucide-react'
+import { Timer, Gift, Sparkles } from 'lucide-react'
 
 /**
  * PromoCountdown — dismissible promotional strip showing a live countdown.
@@ -67,7 +67,6 @@ function TimeCard({
 }
 
 export function PromoCountdown() {
-  const [dismissed, setDismissed] = useState(false)
   const [target, setTarget] = useState<number | null>(null)
   const [timeLeft, setTimeLeft] = useState<TimeLeft>({
     days: 2,
@@ -90,13 +89,30 @@ export function PromoCountdown() {
     setTimeLeft(getTimeLeft(t))
   }, [])
 
-  // Tick every second.
+  // Tick every second — pauses when tab hidden.
   useEffect(() => {
     if (target == null) return
-    const id = window.setInterval(() => {
-      setTimeLeft(getTimeLeft(target))
-    }, 1000)
-    return () => window.clearInterval(id)
+    let id: number | null = null
+    const tick = () => setTimeLeft(getTimeLeft(target))
+    const start = () => {
+      if (id == null) {
+        tick()
+        id = window.setInterval(tick, 1000)
+      }
+    }
+    const stop = () => {
+      if (id != null) {
+        window.clearInterval(id)
+        id = null
+      }
+    }
+    const onVis = () => (document.hidden ? stop() : start())
+    start()
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      stop()
+      document.removeEventListener('visibilitychange', onVis)
+    }
   }, [target])
 
   // Optional subtle pulse on the Sparkles icon every few seconds.
@@ -111,10 +127,10 @@ export function PromoCountdown() {
     []
   )
 
-  if (dismissed || target == null) return null
+  if (target == null) return null
 
   return (
-    <div className="relative overflow-hidden border-b border-ink/5 bg-gradient-to-r from-brand-amber/10 via-brand-rose/5 to-brand-rose/10">
+    <div className="relative mx-3 my-2 overflow-hidden rounded-2xl border border-brand-amber/30 bg-gradient-to-r from-brand-amber/30 via-brand-rose/25 to-brand-rose/35 shadow-[0_1px_0_rgba(0,0,0,0.04),0_4px_16px_-6px_rgba(217,119,6,0.25)] sm:mx-6 sm:rounded-3xl">
       <div className="noise-overlay absolute inset-0 pointer-events-none" />
       <div className="relative mx-auto flex w-full max-w-7xl items-center justify-between gap-3 px-4 py-2.5 sm:px-6 lg:px-8">
         {/* Left: icon + label */}
@@ -161,15 +177,6 @@ export function PromoCountdown() {
           />
         </div>
 
-        {/* Close button */}
-        <button
-          type="button"
-          onClick={() => setDismissed(true)}
-          aria-label="Chiudi offerta"
-          className="grid h-7 w-7 shrink-0 place-items-center rounded-full text-ink/40 transition hover:bg-ink/5 hover:text-ink/70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber/40"
-        >
-          <X className="h-4 w-4" />
-        </button>
       </div>
     </div>
   )

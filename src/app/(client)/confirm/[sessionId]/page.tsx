@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import { useCartStore } from "@/stores/useCartStore";
 import { useCartRealtime } from "@/hooks/useCartRealtime";
+import { useI18n } from "@/components/i18n/I18nProvider";
 
 // ─── MORPH BUTTON ─────────────────────────────────────────────────────────────
 
@@ -200,6 +201,9 @@ function PaymentModal({
   accent: string;
   restaurantId?: string | null;
 }) {
+  const { tr } = useI18n();
+  const tC = tr.client.confirm;
+  const tCommon = tr.client.common;
   const [selected, setSelected] = useState<"cash" | "card" | null>(null);
   const [coupon, setCoupon] = useState("");
   const [couponOpen, setCouponOpen] = useState(false);
@@ -345,7 +349,7 @@ function PaymentModal({
         {/* Header */}
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 20 }}>
           <h2 style={{ fontSize: 18, fontWeight: 800, color: textPri, margin: 0, letterSpacing: "-0.01em" }}>
-            Come vuoi pagare?
+            {tC.howToPay}
           </h2>
           <button onClick={triggerClose} style={{ background: "#ef44441a", border: "none", cursor: "pointer", padding: 6, borderRadius: 8, color: "#ef4444", display: "flex", alignItems: "center", justifyContent: "center" }}>
             <X size={18} />
@@ -365,7 +369,7 @@ function PaymentModal({
             alignItems: "center",
           }}
         >
-          <span style={{ fontSize: 13, color: textSec, fontWeight: 500 }}>Totale ordine</span>
+          <span style={{ fontSize: 13, color: textSec, fontWeight: 500 }}>{tC.orderTotal}</span>
           <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
             {discountedTotal !== null && (
               <span style={{
@@ -416,7 +420,7 @@ function PaymentModal({
           }}
         >
           <Tag size={16} color={accent} />
-          <span style={{ flex: 1, textAlign: "left" }}>Hai un codice coupon?</span>
+          <span style={{ flex: 1, textAlign: "left" }}>{tC.couponPrompt}</span>
           <ChevronRight
             size={16}
             color={textSec}
@@ -429,7 +433,7 @@ function PaymentModal({
             <input
               value={coupon}
               onChange={(e) => { setCoupon(e.target.value.toUpperCase()); setCouponStatus("idle"); }}
-              placeholder="Inserisci il codice"
+              placeholder={tC.enterCode}
               onKeyDown={(e) => { if (e.key === "Enter") applyCoupon(); }}
               style={{
                 flex: 1,
@@ -461,7 +465,7 @@ function PaymentModal({
                 minWidth: 72,
               }}
             >
-              {couponStatus === "checking" ? "…" : "Applica"}
+              {couponStatus === "checking" ? "…" : tC.apply}
             </button>
           </div>
         )}
@@ -476,7 +480,7 @@ function PaymentModal({
             ? discount.type === "percent"
               ? `✓ Sconto del ${discount.value}% applicato`
               : `✓ Sconto di €${discount.value} applicato`
-            : "✗ Coupon non valido"}
+            : tC.couponInvalid}
           </p>
         )}
 
@@ -513,7 +517,7 @@ function PaymentModal({
             }}
           >
             <Banknote size={26} color="#22c55e" />
-            <span style={{ fontSize: 14, fontWeight: 700, color: selected === "cash" ? accent : textPri }}>Contanti</span>
+            <span style={{ fontSize: 14, fontWeight: 700, color: selected === "cash" ? accent : textPri }}>{tC.cash}</span>
           </button>
 
           {/* Carta */}
@@ -536,27 +540,27 @@ function PaymentModal({
             <CreditCard size={26} color="#3b82f6" />
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 14, fontWeight: 700, color: selected === "card" ? accent : textPri }}>
-                Paga con carta
+                {tC.payWithCard}
               </div>
-              <div style={{ fontSize: 11, color: textSec }}>Apple Pay / Carta</div>
+              <div style={{ fontSize: 11, color: textSec }}>{tC.cardSubtitle}</div>
             </div>
           </button>
         </div>
 
         <p style={{ textAlign: "center", fontSize: 12, color: textSec, margin: "10px 0 0" }}>
-          (Paghi dopo aver mangiato)
+          ({tC.payAfterEating})
         </p>
 
         {/* CTA */}
         {selected ? (
           <MorphButton
-            label="Conferma ordine →"
+            label={tC.confirmOrderArrow}
             accent={accent}
             onClick={async () => { onConfirm(selected, discountedTotal ?? null, discountedTotal !== null ? (total - discountedTotal) : 0, coupon.trim().toUpperCase()); }}
           />
         ) : (
           <button disabled style={{ width: "100%", padding: "15px", borderRadius: 12, border: "none", background: isDark ? "#2a2623" : "#e8e4d8", color: isDark ? "#4a4642" : "#b0ac9e", fontSize: 15, fontWeight: 800, cursor: "not-allowed", fontFamily: "'Space Grotesk', sans-serif" }}>
-            Conferma ordine →
+            {tC.confirmOrderArrow}
           </button>
         )}
       </div>
@@ -578,6 +582,8 @@ function PortataSection({
   isDark: boolean;
   accent: string;
 }) {
+  const { tr } = useI18n();
+  const tC = tr.client.confirm;
   const textSec = isDark ? "#7a7470" : "#9c9284";
   const textPri = isDark ? "#f2f0ed" : "#18130e";
   // Stile "card" coerente con /cart: superficie chiara semitrasparente + blur,
@@ -588,12 +594,12 @@ function PortataSection({
   const noteColor = "#d97706";
 
   const portataLabels: Record<number, string> = {
-    1: "Prima portata",
-    2: "Seconda portata",
-    3: "Terza portata",
-    4: "Quarta portata",
+    1: tC.courseFirstFull,
+    2: tC.courseSecondFull,
+    3: tC.courseThirdFull,
+    4: tC.courseFourthFull,
   };
-  const label = portataLabels[portataNum] ?? `Portata ${portataNum}`;
+  const label = portataLabels[portataNum] ?? `${tr.client.cart.courseWord} ${portataNum}`;
 
   const subtotal = items.reduce((s, i) => s + i.priceCents * i.quantity, 0);
 
@@ -783,10 +789,12 @@ function ReceiptLine({ qty, name, priceCents, dim }: { qty: number; name: string
 // ─── SIDE TOTAL TAB (schermi corti) ────────────────────────────────────────────
 
 function SideTotalTab({ accent, totalCents, onOpen }: { accent: string; totalCents: number; onOpen: () => void }) {
+  const { tr } = useI18n();
+  const tC = tr.client.confirm;
   return (
     <button
       onClick={onOpen}
-      aria-label="Apri riepilogo ordine"
+      aria-label={tC.openSummary}
       style={{
         position: "fixed",
         right: 0,
@@ -818,7 +826,7 @@ function SideTotalTab({ accent, totalCents, onOpen }: { accent: string; totalCen
           writingMode: "vertical-rl",
         }}
       >
-        Totale
+        {tC.total}
       </span>
       <span style={{ fontSize: 13, fontWeight: 800, writingMode: "vertical-rl", letterSpacing: "0.01em" }}>
         € {formatPrice(totalCents)}
@@ -842,6 +850,8 @@ function FloatingTotalPill({
   isDark: boolean;
   onConfirm: () => void;
 }) {
+  const { tr } = useI18n();
+  const tC = tr.client.confirm;
   const bg = isDark ? "rgba(22,20,18,0.92)" : "rgba(255,253,246,0.92)";
   const textPri = isDark ? "#f2f0ed" : "#18130e";
   const textSec = isDark ? "#7a7470" : "#78716c";
@@ -952,6 +962,8 @@ function ReceiptDrawer({
   isDark: boolean;
   accent: string;
 }) {
+  const { tr } = useI18n();
+  const tC = tr.client.confirm;
   if (!open) return null;
 
   const paper = isDark ? "#1c1a17" : "#fffdf6";
@@ -1005,7 +1017,7 @@ function ReceiptDrawer({
         >
           <div style={{ display: "flex", alignItems: "center", gap: 8, color: ink, fontFamily: "'Space Grotesk', sans-serif" }}>
             <ReceiptIcon size={16} color={accent} />
-            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.02em" }}>Riepilogo ordine</span>
+            <span style={{ fontSize: 13, fontWeight: 700, letterSpacing: "0.02em" }}>{tC.summary}</span>
           </div>
           <button
             onClick={onClose}
@@ -1033,9 +1045,9 @@ function ReceiptDrawer({
             <div style={{ padding: "4px 18px 14px" }}>
               {/* Header scontrino */}
               <div style={{ textAlign: "center", marginBottom: 10 }}>
-                <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "0.05em" }}>RIEPILOGO ORDINE</div>
+                <div style={{ fontSize: 15, fontWeight: 700, letterSpacing: "0.05em" }}>{tC.summary.toUpperCase()}</div>
                 <div style={{ fontSize: 11, color: dim, marginTop: 4 }}>
-                  {tableNumber ? `Tavolo ${tableNumber}` : "Asporto"} · {totalItems} piatti
+                  {tableNumber ? `${tr.client.common.table} ${tableNumber}` : tC.takeaway} · {totalItems} {tC.dishesShort}
                 </div>
                 <div style={{ fontSize: 11, color: dim }}>
                   N. {orderCode} · {formatDateTime()}
@@ -1085,7 +1097,7 @@ function ReceiptDrawer({
                 <span>€ {formatPrice(totalCents)}</span>
               </div>
 
-              <div style={{ textAlign: "center", fontSize: 11, color: dim, marginTop: 16 }}>Grazie e buon appetito!</div>
+              <div style={{ textAlign: "center", fontSize: 11, color: dim, marginTop: 16 }}>{tC.thanks}</div>
             </div>
 
             <ZigzagEdge color={paper} flip />
@@ -1122,7 +1134,7 @@ function ReceiptDrawer({
               WebkitTapHighlightColor: "transparent",
             }}
           >
-            Conferma ordine
+            {tC.confirmOrder}
             <ChevronRight size={18} />
           </button>
         </div>
@@ -1136,6 +1148,8 @@ function ReceiptDrawer({
 const COMPACT_HEIGHT = 680;
 
 export default function ConfirmPage() {
+  const { tr } = useI18n();
+  const tC = tr.client.confirm;
   const params = useParams();
   const router = useRouter();
   const sessionId = params?.sessionId as string;
@@ -1491,24 +1505,23 @@ export default function ConfirmPage() {
           }
         }
 
-        // PATCH order → confirmed + metodo di pagamento + sconto
-        const updatePayload: Record<string, unknown> = {
-          status: "confirmed",
-          payment_method: method,
-          confirmed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          session_id: sessionId,
-        };
-        if (discountedTotal !== null) {
-          updatePayload.original_total_cents = effectiveTotalCents;
-          updatePayload.total_cents          = discountedTotal;
-          updatePayload.discount_cents       = discountCents;
-          updatePayload.coupon_code          = couponCode || null;
+        // PATCH order → confirmed + metodo di pagamento + sconto (via server API, service role)
+        const confirmRes = await fetch(`/api/orders/${effectiveOrderId}/confirm`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            paymentMethod: method,
+            sessionId,
+            discountedTotal,
+            originalTotalCents: discountedTotal !== null ? effectiveTotalCents : null,
+            discountCents: discountedTotal !== null ? discountCents : null,
+            couponCode: discountedTotal !== null ? (couponCode || null) : null,
+          }),
+        });
+        if (!confirmRes.ok) {
+          const errBody = await confirmRes.json().catch(() => ({}));
+          throw new Error(errBody.error || "Errore conferma ordine");
         }
-        await supabase
-          .from("orders")
-          .update(updatePayload)
-          .eq("id", effectiveOrderId);
 
         clearCart();
         setModalOpen(false);
@@ -1619,7 +1632,7 @@ export default function ConfirmPage() {
       >
         <style>{`@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&display=swap');`}</style>
         <ShoppingBag size={48} color={isDark ? "#3a3632" : "#d8d4c8"} />
-        <p style={{ fontSize: 17, fontWeight: 700, color: textPri, margin: 0 }}>Il carrello è vuoto</p>
+        <p style={{ fontSize: 17, fontWeight: 700, color: textPri, margin: 0 }}>{tC.cartEmpty}</p>
         <button
           onClick={() => router.push(`/order/${sessionId}`)}
           style={{
@@ -1655,16 +1668,16 @@ export default function ConfirmPage() {
             </svg>
           </div>
           <h2 style={{ fontSize: 22, fontWeight: 800, color: "#1c1917", marginBottom: 8, letterSpacing: "-0.01em" }}>
-            Ordine già in corso
+            {tC.orderInProgress}
           </h2>
           <p style={{ fontSize: 15, color: "#78716c", lineHeight: 1.6, marginBottom: 28 }}>
-            C'è già un ordine attivo per questo tavolo. Non è possibile inviarne un altro finché quello in corso non viene completato.
+            {tC.orderInProgressBody}
           </p>
           <button
             onClick={() => router.push(`/status/${sessionId}`)}
             style={{ background: accent, color: "#fff", border: "none", borderRadius: 50, padding: "14px 32px", fontSize: 16, fontWeight: 700, cursor: "pointer", boxShadow: `0 6px 20px ${accent}44` }}
           >
-            Vai allo stato dell'ordine
+            {tC.goToOrderStatus}
           </button>
         </div>
       </div>
@@ -1698,9 +1711,9 @@ export default function ConfirmPage() {
         </div>
         <div style={{ animation: "fadeUp 0.4s ease 0.15s both" }}>
           <p style={{ fontSize: 22, fontWeight: 800, color: textPri, margin: "0 0 6px", letterSpacing: "-0.01em" }}>
-            Ordine confermato!
+            {tC.orderConfirmed}
           </p>
-          <p style={{ fontSize: 14, color: textSec, margin: 0 }}>Stiamo portando il tuo ordine in cucina…</p>
+          <p style={{ fontSize: 14, color: textSec, margin: 0 }}>{tC.takingToKitchen}</p>
         </div>
       </div>
     );
@@ -1736,7 +1749,7 @@ export default function ConfirmPage() {
               letterSpacing: "-0.02em",
             }}
           >
-            Riepilogo ordine
+            {tC.summary}
           </h2>
         </div>
 
@@ -1785,10 +1798,10 @@ export default function ConfirmPage() {
                 }}
               >
                 <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                  <span style={{ fontSize: 15, fontWeight: 600, color: textSec }}>Totale</span>
+                  <span style={{ fontSize: 15, fontWeight: 600, color: textSec }}>{tC.total}</span>
                   {avgMinutes !== null && (
                     <span style={{ fontSize: 11, fontWeight: 800, color: textSec }}>
-                      ⏱ Tempo stimato: ~{avgMinutes} min
+                      ⏱ {tC.estimatedTimeShort}: ~{avgMinutes} min
                     </span>
                   )}
                 </div>
@@ -1818,7 +1831,7 @@ export default function ConfirmPage() {
                   WebkitTapHighlightColor: "transparent",
                 }}
               >
-                Conferma ordine
+                {tC.confirmOrder}
                 <ChevronRight size={20} />
               </button>
             </div>

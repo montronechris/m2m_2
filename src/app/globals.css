@@ -1,6 +1,7 @@
 @import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800;900&family=Playfair+Display:ital,wght@0,500;0,600;0,700;0,800;0,900;1,500;1,600&display=swap');
 @import "tailwindcss";
 @import "tw-animate-css";
+@import "./auth-panel.css";
 
 @custom-variant dark (&:is(.dark *));
 
@@ -149,6 +150,11 @@
   --color-brand-sky: oklch(0.6 0.15 235);        /* trust sky */
   --color-ink: oklch(0.22 0.03 50);              /* warm charcoal */
   --font-serif: "Playfair Display", "Georgia", "Times New Roman", serif;
+}
+
+/* Font unico per l'intero sito (tutte le pagine): Playfair Display invece del sans-serif di default. */
+body {
+  font-family: var(--font-serif);
 }
 
 /* Custom keyframes */
@@ -351,6 +357,12 @@
   .shadow-tt { box-shadow: 0 1px 3px oklch(0.22 0.03 50 / 0.08), 0 1px 2px oklch(0.22 0.03 50 / 0.04); }
   .shadow-ttHover { box-shadow: 0 8px 24px oklch(0.55 0.21 55 / 0.15); }
   .animate-ttFadeUp { animation: ttFadeUp 0.3s ease-out; }
+  .animate-ttFadeOut { animation: ttFadeOut 0.2s ease-in forwards; }
+}
+
+@keyframes ttFadeOut {
+  from { opacity: 1; transform: translateY(0) scale(1); }
+  to { opacity: 0; transform: translateY(6px) scale(0.98); }
 }
 
 

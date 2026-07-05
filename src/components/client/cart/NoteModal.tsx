@@ -3,6 +3,7 @@
 import React, { useEffect, useRef, useState, useCallback, useMemo } from "react";
 import { X, StickyNote, Save } from "lucide-react";
 import { buildPalette, DEFAULT_BRAND, type Palette } from "@/components/client/order/palette";
+import { useI18n } from "@/components/i18n/I18nProvider";
 
 type NoteModalProps = {
   isOpen: boolean;
@@ -17,6 +18,9 @@ const MAX_LEN = 300;
 const DRAG_THRESHOLD = 80;
 
 export function NoteModal({ isOpen, itemName, initialNote, brandColor, onClose, onSave }: NoteModalProps) {
+  const { tr } = useI18n();
+  const t = tr.client.modal;
+  const tCommon = tr.client.common;
   const T: Palette = useMemo(() => buildPalette(brandColor || DEFAULT_BRAND), [brandColor]);
   const [note, setNote] = useState(initialNote);
   const [dragY, setDragY] = useState(0);
@@ -134,11 +138,11 @@ export function NoteModal({ isOpen, itemName, initialNote, brandColor, onClose, 
               <StickyNote size={16} color="#fff" strokeWidth={2.4} />
             </div>
             <div style={{ minWidth: 0 }}>
-              <p style={{ fontSize: 10, fontWeight: 800, color: "#b45309", letterSpacing: "0.14em", textTransform: "uppercase", margin: 0 }}>Nota cucina</p>
+              <p style={{ fontSize: 10, fontWeight: 800, color: "#b45309", letterSpacing: "0.14em", textTransform: "uppercase", margin: 0 }}>{t.noteTitle}</p>
               <h2 style={{ fontSize: 16, fontWeight: 700, color: "#1a2236", margin: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{itemName}</h2>
             </div>
           </div>
-          <button onClick={triggerClose} aria-label="Chiudi" style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(0,0,0,0.06)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
+          <button onClick={triggerClose} aria-label={tCommon.close} style={{ width: 36, height: 36, borderRadius: "50%", background: "rgba(0,0,0,0.06)", border: "none", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
             <X size={16} color="#64748b" />
           </button>
         </div>
@@ -146,18 +150,18 @@ export function NoteModal({ isOpen, itemName, initialNote, brandColor, onClose, 
         {/* Body */}
         <div style={{ padding: "20px 20px 12px", flex: 1, overflow: "auto" }} onPointerDown={(e) => e.stopPropagation()}>
           <label style={{ display: "block", fontSize: 11, fontWeight: 800, color: "rgba(28,25,23,0.5)", letterSpacing: "0.12em", textTransform: "uppercase", marginBottom: 8 }}>
-            Istruzioni per la cucina
+            {t.noteInstructions}
           </label>
           <textarea
             value={note}
             onChange={(e) => setNote(e.target.value.slice(0, MAX_LEN))}
             rows={4}
             autoFocus
-            placeholder="es. senza cipolla, ben cotto, ecc."
+            placeholder={t.notePlaceholder}
             style={{ width: "100%", resize: "none", borderRadius: 16, border: `2px solid ${T.borderSoft}`, background: "rgba(255,255,255,0.9)", padding: "12px 14px", fontSize: 16, color: "#1a2236", outline: "none", fontFamily: "inherit", boxSizing: "border-box" }}
           />
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 6 }}>
-            <span style={{ fontSize: 11, color: "rgba(28,25,23,0.4)" }}>Suggerimenti: senza · ben cotto · piccante</span>
+            <span style={{ fontSize: 11, color: "rgba(28,25,23,0.4)" }}>{t.noteHints}</span>
             <span style={{ fontSize: 11, fontWeight: 600, color: isLow ? T.danger : "rgba(28,25,23,0.4)", fontVariantNumeric: "tabular-nums" }}>{note.length}/{MAX_LEN}</span>
           </div>
         </div>
@@ -165,11 +169,11 @@ export function NoteModal({ isOpen, itemName, initialNote, brandColor, onClose, 
         {/* Footer */}
         <div style={{ display: "flex", gap: 10, padding: "12px 20px 20px", borderTop: `1px solid ${T.borderSoft}`, background: "rgba(255,255,255,0.96)", flexShrink: 0 }} onPointerDown={(e) => e.stopPropagation()}>
           <button onClick={triggerClose} style={{ flex: 1, borderRadius: 16, border: `2px solid ${T.borderSoft}`, background: "#fff", padding: "12px 0", fontSize: 14, fontWeight: 700, color: "rgba(28,25,23,0.7)", cursor: "pointer" }}>
-            Annulla
+            {tCommon.cancel}
           </button>
           <button onClick={handleSave} style={{ flex: 2, borderRadius: 16, border: "none", background: T.btnBg, padding: "12px 0", fontSize: 14, fontWeight: 700, color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", gap: 8, boxShadow: T.btnShadow }}>
             <Save size={15} strokeWidth={2.4} />
-            Salva nota
+            {t.saveNote}
           </button>
         </div>
       </div>

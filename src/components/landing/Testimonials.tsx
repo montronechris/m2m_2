@@ -99,9 +99,9 @@ function ReviewCard({
 
 // Visual-only summary stats above the marquee (static numbers, not from i18n)
 const summaryStats = [
-  { value: '4.9', suffix: '/5', label: 'media voti' },
-  { value: '2.000', suffix: '+', label: 'recensioni' },
-  { value: '98', suffix: '%', label: 'consiglierebbe' },
+  { value: '4.8', suffix: '/5', label: 'media voti' },
+  { value: '48', suffix: '+', label: 'recensioni' },
+  { value: '94', suffix: '%', label: 'consiglierebbe' },
 ]
 
 export function Testimonials() {

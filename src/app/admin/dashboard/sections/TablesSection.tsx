@@ -3,7 +3,8 @@
 import { useEffect, useState } from 'react'
 import { QrCode, Plus, Copy, Trash2, AlertCircle, Check, X, Loader2, Download, Printer } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
-import { getTables, createTable, deleteTable, type Table } from '@/lib/admin-service'
+import { getTables, createTable, deleteTable, setTableActive, type Table } from '@/lib/admin-service'
+import { useI18n } from '@/components/i18n/I18nProvider'
 
 interface Props {
   ctx: RestaurantCtx
@@ -26,6 +27,8 @@ function buildOrderUrl(code: string): string {
 }
 
 export function TablesSection({ ctx }: Props) {
+  const { tr } = useI18n()
+  const T = tr.admin.tables
   const [tables, setTables] = useState<Table[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -44,7 +47,7 @@ export function TablesSection({ ctx }: Props) {
         if (active) setTables(data)
       })
       .catch((e) => {
-        if (active) setError(e.message ?? 'Errore nel caricamento tavoli')
+        if (active) setError(e.message ?? T.errorLoad)
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -66,9 +69,20 @@ export function TablesSection({ ctx }: Props) {
       setNewLabel('')
       setShowForm(false)
     } catch (e: any) {
-      setError(e.message ?? 'Errore nella creazione del tavolo')
+      setError(e.message ?? T.errorCreate)
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleToggleActive(t: Table) {
+    const next = !t.is_active
+    setTables((prev) => prev.map((x) => x.id === t.id ? { ...x, is_active: next } : x))
+    try {
+      await setTableActive(t.id, next)
+    } catch (e: any) {
+      setTables((prev) => prev.map((x) => x.id === t.id ? { ...x, is_active: !next } : x))
+      setError(e?.message ?? 'Errore')
     }
   }
 
@@ -82,7 +96,7 @@ export function TablesSection({ ctx }: Props) {
       setTables((prev) => prev.filter((t) => t.id !== id))
       setConfirmDelete(null)
     } catch (e: any) {
-      setError(e.message ?? 'Errore nell\'eliminazione')
+      setError(e.message ?? T.errorDelete)
     } finally {
       setDeletingId(null)
     }
@@ -110,7 +124,7 @@ export function TablesSection({ ctx }: Props) {
       document.body.removeChild(a)
       URL.revokeObjectURL(url)
     } catch (e: any) {
-      setError('Errore nel download del QR: ' + (e.message ?? ''))
+      setError(T.errorQrDownload(e.message ?? ''))
     } finally {
       setDownloadingId(null)
     }
@@ -124,7 +138,7 @@ export function TablesSection({ ctx }: Props) {
     win.document.write(`
       <html>
         <head>
-          <title>Stampa QR - ${t.label}</title>
+          <title>${T.printTitle(t.label)}</title>
           <style>
             body { display: flex; flex-direction: column; align-items: center; justify-content: center; height: 100vh; margin: 0; font-family: sans-serif; }
             img { width: 350px; height: 350px; }
@@ -163,7 +177,7 @@ export function TablesSection({ ctx }: Props) {
     return (
       <div className="grid place-items-center py-16 text-center">
         <AlertCircle className="mb-3 h-10 w-10 text-tt-danger" />
-        <p className="text-sm font-bold text-tt-ink">Errore</p>
+        <p className="text-sm font-bold text-tt-ink">{T.error}</p>
         <p className="mt-1 max-w-xs text-xs text-tt-muted">{error}</p>
       </div>
     )
@@ -175,14 +189,14 @@ export function TablesSection({ ctx }: Props) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="font-serif text-xl font-extrabold text-tt-ink">Tavoli</h2>
-          <p className="text-xs text-tt-muted">{tables.length} tavoli · {active} attivi</p>
+          <h2 className="font-serif text-xl font-extrabold text-tt-ink">{T.title}</h2>
+          <p className="text-xs text-tt-muted">{T.countF(tables.length, active)}</p>
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
           className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-4 py-2 text-sm font-bold text-white shadow-glow-amber transition hover:scale-105"
         >
-          <Plus className="h-4 w-4" /> Aggiungi tavolo
+          <Plus className="h-4 w-4" /> {T.addTable}
         </button>
       </div>
 
@@ -197,16 +211,16 @@ export function TablesSection({ ctx }: Props) {
         <div className="tt-card animate-ttFadeUp rounded-2xl border border-tt-line p-4 shadow-tt">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
             <div className="flex-1">
-              <label className="mb-1 block text-xs font-bold text-tt-ink">Nome tavolo</label>
+              <label className="mb-1 block text-xs font-bold text-tt-ink">{T.tableName}</label>
               <input
                 autoFocus
                 value={newLabel}
                 onChange={(e) => setNewLabel(e.target.value)}
                 onKeyDown={(e) => e.key === 'Enter' && handleAdd()}
-                placeholder="es. Tavolo 1, Esterno 2…"
+                placeholder={T.tableNamePlaceholder}
                 className="w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
               />
-              <p className="mt-1 text-[11px] text-tt-muted">Il codice QR verrà generato automaticamente</p>
+              <p className="mt-1 text-[11px] text-tt-muted">{T.qrAutoNote}</p>
             </div>
             <div className="flex gap-2">
               <button
@@ -215,7 +229,7 @@ export function TablesSection({ ctx }: Props) {
                 className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-4 py-2.5 text-sm font-bold text-white shadow-glow-amber transition hover:scale-105 disabled:opacity-60"
               >
                 {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                Crea
+                {T.create}
               </button>
               <button
                 onClick={() => { setShowForm(false); setNewLabel('') }}
@@ -232,8 +246,8 @@ export function TablesSection({ ctx }: Props) {
       {tables.length === 0 ? (
         <div className="tt-card rounded-2xl border border-dashed border-tt-line p-10 text-center shadow-tt">
           <QrCode className="mx-auto mb-3 h-10 w-10 text-tt-muted opacity-50" />
-          <p className="text-sm font-bold text-tt-ink">Nessun tavolo nel database</p>
-          <p className="mt-1 text-xs text-tt-muted">Crea il primo tavolo con "Aggiungi tavolo"</p>
+          <p className="text-sm font-bold text-tt-ink">{T.emptyDb}</p>
+          <p className="mt-1 text-xs text-tt-muted">{T.emptyDbHint}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -245,16 +259,25 @@ export function TablesSection({ ctx }: Props) {
               <div className="flex items-start justify-between">
                 <div>
                   <p className="text-sm font-bold text-tt-ink">{t.label}</p>
-                  <p className="text-[11px] text-tt-muted">{t.is_active ? 'Attivo' : 'Disattivato'}</p>
+                  <p className="text-[11px] text-tt-muted">{t.is_active ? T.active : T.disabled}</p>
                 </div>
                 <div className="flex items-center gap-1.5">
+                  <button
+                    onClick={() => handleToggleActive(t)}
+                    role="switch"
+                    aria-checked={t.is_active}
+                    title={t.is_active ? T.disabled : T.active}
+                    className={`relative h-6 w-11 shrink-0 rounded-full transition ${t.is_active ? 'bg-tt-pink' : 'bg-tt-line'}`}
+                  >
+                    <span className={`absolute top-0.5 h-5 w-5 rounded-full bg-white shadow transition-all ${t.is_active ? 'left-[22px]' : 'left-0.5'}`} />
+                  </button>
                   <button
                     onClick={() => printQR(t)}
                     className="tt-pill bg-emerald-500 text-white hover:bg-emerald-600"
                   >
-                    <Printer className="h-3 w-3" /> Stampa QR
+                    <Printer className="h-3 w-3" /> {T.printQr}
                   </button>
-                  <span className="tt-pill bg-tt-pink/10 text-tt-pink">Tavolo</span>
+                  <span className="tt-pill bg-tt-pink/10 text-tt-pink">{T.table}</span>
                 </div>
               </div>
 
@@ -262,12 +285,12 @@ export function TablesSection({ ctx }: Props) {
                 <QrCode className="h-8 w-8 shrink-0 text-tt-pink" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-mono text-xs font-bold text-tt-ink">{t.code}</p>
-                  <p className="text-[10px] text-tt-muted">Codice ordinazione</p>
+                  <p className="text-[10px] text-tt-muted">{T.orderCode}</p>
                 </div>
                 <button
                   onClick={() => copyCode(t)}
                   className="grid h-7 w-7 place-items-center rounded-lg text-tt-muted transition hover:bg-tt-surfaceAlt2 hover:text-tt-ink"
-                  title="Copia codice"
+                  title={T.copyCode}
                 >
                   {copiedId === t.id ? <Check className="h-3.5 w-3.5 text-tt-success" /> : <Copy className="h-3.5 w-3.5" />}
                 </button>
@@ -280,13 +303,13 @@ export function TablesSection({ ctx }: Props) {
                   className="flex items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-brand-amber to-brand-terra py-1.5 text-xs font-bold text-white shadow-glow-amber transition hover:scale-105 disabled:opacity-60"
                 >
                   {downloadingId === t.id ? <Loader2 className="h-3 w-3 animate-spin" /> : <Download className="h-3 w-3" />}
-                  Scarica QR
+                  {T.downloadQr}
                 </button>
                 <button
                   onClick={() => setConfirmDelete(t)}
                   className="flex items-center justify-center gap-1.5 rounded-full border border-tt-danger/30 bg-tt-danger/5 py-1.5 text-xs font-bold text-tt-danger transition hover:bg-tt-danger/10"
                 >
-                  <Trash2 className="h-3 w-3" /> Elimina
+                  <Trash2 className="h-3 w-3" /> {T.delete}
                 </button>
               </div>
             </div>
@@ -307,10 +330,10 @@ export function TablesSection({ ctx }: Props) {
             <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-tt-danger/15 text-tt-danger">
               <Trash2 className="h-7 w-7" />
             </div>
-            <h3 className="font-serif text-lg font-extrabold text-tt-ink">Eliminare il tavolo?</h3>
+            <h3 className="font-serif text-lg font-extrabold text-tt-ink">{T.deleteTitle}</h3>
             <p className="mt-2 text-sm text-tt-muted">
-              Stai per eliminare <span className="font-bold text-tt-ink">{confirmDelete.label}</span> ({confirmDelete.code}).
-              Questa azione è irreversibile.
+              {T.deletePrefix} <span className="font-bold text-tt-ink">{confirmDelete.label}</span> ({confirmDelete.code}).
+              {T.deleteIrreversible}
             </p>
             <div className="mt-5 flex gap-2">
               <button
@@ -319,13 +342,13 @@ export function TablesSection({ ctx }: Props) {
                 className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-tt-danger py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-60"
               >
                 {deletingId === confirmDelete.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                Elimina definitivamente
+                {T.deletePermanently}
               </button>
               <button
                 onClick={() => setConfirmDelete(null)}
                 className="rounded-full border border-tt-line bg-white px-4 py-2.5 text-sm font-bold text-tt-muted transition hover:text-tt-ink"
               >
-                Annulla
+                {T.cancel}
               </button>
             </div>
           </div>

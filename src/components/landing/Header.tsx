@@ -62,12 +62,6 @@ export function Header() {
         scrolled ? 'py-2' : 'py-4'
       )}
     >
-      {/* Promo countdown strip — sits on top of the nav bar inside the same fixed stack
-          so they never overlap (previously the promo was rendered in <main> at y=0 and
-          got covered by this fixed header). */}
-      <div className="mx-auto max-w-7xl px-3 sm:px-6 lg:px-8">
-        <PromoCountdown />
-      </div>
       <div className="mx-auto max-w-6xl px-4">
         <div
           className={cn(
@@ -154,14 +148,22 @@ export function Header() {
             </Button>
           </div>
 
-          {/* Mobile toggle */}
-          <button
-            onClick={() => setOpen((v) => !v)}
-            className="lift-hover grid h-10 w-10 place-items-center rounded-xl border border-ink/10 bg-white/60 lg:hidden"
-            aria-label="Menu"
-          >
-            {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-          </button>
+          {/* Mobile: language switcher + toggle */}
+          <div className="flex items-center gap-2 lg:hidden">
+            <LanguageSwitcher />
+            <button
+              onClick={() => setOpen((v) => !v)}
+              className="lift-hover grid h-10 w-10 place-items-center rounded-xl border border-ink/10 bg-white/60"
+              aria-label="Menu"
+            >
+              {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+            </button>
+          </div>
+        </div>
+
+        {/* Promo countdown — sits just below the nav bar, still inside the fixed stack */}
+        <div className="mt-2">
+          <PromoCountdown />
         </div>
 
         {/* Mobile menu */}
@@ -222,6 +224,14 @@ export function Header() {
                 >
                   <Link href="/#prezzi" onClick={() => setOpen(false)}>
                     {n.cta}
+                  </Link>
+                </Button>
+                <Button
+                  asChild
+                  className="lift-hover mt-2 gap-1.5 rounded-full bg-ink font-semibold text-white hover:bg-ink/90"
+                >
+                  <Link href="/login" onClick={() => setOpen(false)}>
+                    {n.loginRegister}
                   </Link>
                 </Button>
               </div>

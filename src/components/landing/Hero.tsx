@@ -100,7 +100,7 @@ export function Hero() {
               {h.title2}
               <br />
               <span className="relative inline-block">
-                <span className="text-gradient-warm text-lift-strong animate-gradient-pan">{h.titleHighlight}</span>
+                <span className="text-lift-strong" style={{ color: 'oklch(0.62 0.19 50)' }}>{h.titleHighlight}</span>
                 <svg
                   className="absolute -bottom-2 left-0 w-full"
                   viewBox="0 0 300 12"

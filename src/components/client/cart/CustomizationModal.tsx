@@ -16,6 +16,7 @@ import { Dialog, DialogContent, DialogTitle, DialogDescription } from "@/compone
 import { X, Check, SlidersHorizontal } from "lucide-react";
 import type { ModalOption, CartCustomization } from "@/lib/api-service";
 import { buildPalette, DEFAULT_BRAND, type Palette } from "@/components/client/order/palette";
+import { useI18n } from "@/components/i18n/I18nProvider";
 
 type CustomizationModalProps = {
   isOpen: boolean;
@@ -63,6 +64,9 @@ export function CustomizationModal({
   onClose,
   onConfirm,
 }: CustomizationModalProps) {
+  const { tr } = useI18n();
+  const t = tr.client.modal;
+  const tCommon = tr.client.common;
   const T: Palette = useMemo(() => buildPalette(brandColor || DEFAULT_BRAND), [brandColor]);
   const [state, setState] = useState<Record<string, OptionState>>({});
 
@@ -158,7 +162,7 @@ export function CustomizationModal({
       >
         <DialogTitle className="sr-only">{itemName}</DialogTitle>
         <DialogDescription className="sr-only">
-          Personalizza il piatto
+          {t.customizeTitle}
         </DialogDescription>
 
         {/* Header — brand-tinted icon + serif item name */}
@@ -184,7 +188,7 @@ export function CustomizationModal({
                 className="text-[10px] font-extrabold uppercase tracking-[0.14em]"
                 style={{ color: T.accent }}
               >
-                Personalizza
+                {t.customizeTitle}
               </p>
               <h2 className="truncate font-serif text-lg font-bold leading-tight text-ink text-lift">
                 {itemName}
@@ -193,7 +197,7 @@ export function CustomizationModal({
           </div>
           <button
             onClick={onClose}
-            aria-label="Chiudi"
+            aria-label={tCommon.close}
             className="grid h-9 w-9 shrink-0 place-items-center rounded-full bg-ink/5 text-ink/60 transition hover:bg-ink/10 active:scale-90"
           >
             <X className="h-4 w-4" />
@@ -204,7 +208,7 @@ export function CustomizationModal({
         <div className="max-h-[58vh] space-y-5 overflow-y-auto px-5 py-5">
           {options.length === 0 && (
             <p className="py-6 text-center text-sm text-ink/50">
-              Nessuna personalizzazione disponibile.
+              {t.noCustomizations}
             </p>
           )}
           {options.map((opt) => {
@@ -220,11 +224,11 @@ export function CustomizationModal({
                         className="rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
                         style={{ background: T.dangerBg, color: T.danger }}
                       >
-                        Obbligatorio
+                        {t.required}
                       </span>
                     ) : (
                       <span className="rounded-full bg-ink/5 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-ink/40">
-                        Opzionale
+                        {t.optional}
                       </span>
                     )}
                   </div>
@@ -232,7 +236,7 @@ export function CustomizationModal({
                     className="shrink-0 rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide"
                     style={{ background: T.accentBg, color: T.accent }}
                   >
-                    {isMulti ? "Multipla" : "Singola"}
+                    {isMulti ? t.multiple : t.single}
                   </span>
                 </div>
                 <div className="space-y-2">
@@ -310,13 +314,13 @@ export function CustomizationModal({
           >
             <span className="flex items-center gap-2">
               <Check size={16} strokeWidth={2.6} />
-              Conferma
+              {tCommon.confirm}
             </span>
             <span className="tabular-nums text-base">{formatPrice(totalCents)} €</span>
           </button>
           {!requiredSatisfied && (
             <p className="mt-2 text-center text-xs text-ink/50">
-              Seleziona tutte le opzioni obbligatorie per continuare
+              {t.selectRequired}
             </p>
           )}
         </div>

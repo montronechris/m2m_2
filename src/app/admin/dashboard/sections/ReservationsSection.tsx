@@ -41,6 +41,7 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import { useToast } from '@/hooks/use-toast'
+import { useI18n } from '@/components/i18n/I18nProvider'
 
 interface Props {
   ctx: RestaurantCtx
@@ -226,45 +227,32 @@ function initials(name: string): string {
     .join('')
 }
 
-const STATUS_META: Record<
-  ReservationStatus,
-  { label: string; pill: string; dot: string }
-> = {
-  confirmed: {
-    label: 'Confermata',
-    pill: 'tt-pill-success',
-    dot: 'bg-tt-success',
-  },
-  pending: {
-    label: 'In attesa',
-    pill: 'tt-pill-warning',
-    dot: 'bg-tt-warning',
-  },
-  cancelled: {
-    label: 'Cancellata',
-    pill: 'tt-pill-danger',
-    dot: 'bg-tt-danger',
-  },
-  completed: {
-    label: 'Completata',
-    pill: 'tt-pill-info',
-    dot: 'bg-tt-cyan',
-  },
+type StatusMetaMap = Record<ReservationStatus, { label: string; pill: string; dot: string }>
+
+function makeStatusMeta(t: any): StatusMetaMap {
+  return {
+    confirmed: { label: t.confirmed, pill: 'tt-pill-success', dot: 'bg-tt-success' },
+    pending: { label: t.pending, pill: 'tt-pill-warning', dot: 'bg-tt-warning' },
+    cancelled: { label: t.cancelled, pill: 'tt-pill-danger', dot: 'bg-tt-danger' },
+    completed: { label: t.completed, pill: 'tt-pill-info', dot: 'bg-tt-cyan' },
+  }
 }
 
-const FILTERS: { key: FilterKey; label: string; pill: string }[] = [
-  { key: 'all', label: 'Tutte', pill: 'tt-pill' },
-  { key: 'confirmed', label: 'Confermate', pill: 'tt-pill-success' },
-  { key: 'pending', label: 'In attesa', pill: 'tt-pill-warning' },
-  { key: 'cancelled', label: 'Cancellate', pill: 'tt-pill-danger' },
-  { key: 'completed', label: 'Completate', pill: 'tt-pill-info' },
-]
+function makeFilters(t: any): { key: FilterKey; label: string; pill: string }[] {
+  return [
+    { key: 'all', label: t.filterAll, pill: 'tt-pill' },
+    { key: 'confirmed', label: t.filterConfirmed, pill: 'tt-pill-success' },
+    { key: 'pending', label: t.filterPending, pill: 'tt-pill-warning' },
+    { key: 'cancelled', label: t.filterCancelled, pill: 'tt-pill-danger' },
+    { key: 'completed', label: t.filterCompleted, pill: 'tt-pill-info' },
+  ]
+}
 
 const TIMELINE_SLOTS = ['12:00', '13:00', '14:00', '19:00', '20:00', '21:00', '22:00']
 
-function formatPrettyDate(iso: string): string {
+function formatPrettyDate(iso: string, locale = 'it-IT'): string {
   const d = new Date(iso + 'T00:00:00')
-  return d.toLocaleDateString('it-IT', {
+  return d.toLocaleDateString(locale, {
     weekday: 'short',
     day: '2-digit',
     month: 'short',
@@ -309,7 +297,9 @@ function SkeletonView() {
 
 // ─── Empty state ───────────────────────────────────────────────────────────────
 
-function EmptyState({ filterLabel }: { filterLabel: string }) {
+function EmptyState({ filterLabel, isAll }: { filterLabel: string; isAll: boolean }) {
+  const { tr } = useI18n()
+  const t = tr.admin.reservations
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }}
@@ -319,16 +309,20 @@ function EmptyState({ filterLabel }: { filterLabel: string }) {
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-brand-amber/15 to-brand-terra/15 ring-1 ring-tt-line">
         <CalendarCheck className="h-8 w-8 text-brand-terra" />
       </div>
-      <p className="tt-section-title">Nessuna prenotazione</p>
+      <p className="tt-section-title">{t.empty}</p>
       <p className="max-w-sm text-sm text-tt-muted">
-        Non ci sono prenotazioni {filterLabel !== 'Tutte' ? `nello stato &ldquo;${filterLabel}&rdquo;` : 'per oggi'}.
-        Crea una nuova prenotazione per riempire la sala.
+        {isAll ? t.emptyDescToday : t.emptyDescIn(filterLabel)}
       </p>
     </motion.div>
   )
 }
 
 // ─── KPI card ──────────────────────────────────────────────────────────────────
+
+function VsYesterdayLabel() {
+  const { tr } = useI18n()
+  return <span className="text-tt-muted">{tr.admin.reservations.vsYesterday}</span>
+}
 
 function KpiCard({
   icon,
@@ -372,7 +366,7 @@ function KpiCard({
           <span className={trendUp ? 'text-tt-success' : 'text-tt-danger'}>
             {trend}
           </span>
-          <span className="text-tt-muted">vs ieri</span>
+          <VsYesterdayLabel />
         </div>
       )}
     </div>
@@ -382,6 +376,8 @@ function KpiCard({
 // ─── Timeline ──────────────────────────────────────────────────────────────────
 
 function Timeline({ reservations }: { reservations: Reservation[] }) {
+  const { tr } = useI18n()
+  const t = tr.admin.reservations
   const today = todayISO()
   const todays = reservations.filter((r) => r.date === today && r.status !== 'cancelled')
   const maxParty = Math.max(2, ...todays.map((r) => r.partySize))
@@ -391,10 +387,10 @@ function Timeline({ reservations }: { reservations: Reservation[] }) {
       <div className="mb-4 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
           <CalendarClock className="h-5 w-5 text-brand-terra" />
-          <p className="tt-section-title">Timeline di oggi</p>
+          <p className="tt-section-title">{t.timelineToday}</p>
         </div>
         <span className="tt-pill tabular text-xs">
-          {todays.length} prenotazioni
+          {todays.length} {t.reservationsCount}
         </span>
       </div>
       <div className="relative">
@@ -422,7 +418,7 @@ function Timeline({ reservations }: { reservations: Reservation[] }) {
                         ? 'linear-gradient(135deg,#d4d4d8,#a1a1aa)'
                         : 'linear-gradient(135deg,var(--brand-amber),var(--brand-terra))',
                   }}
-                  title={`${slot} — ${atSlot.length} prenotazioni, ${slotParty} coperti`}
+                  title={t.timelineTooltip(slot, atSlot.length, slotParty)}
                 >
                   {atSlot.length > 0 && (
                     <span className="tabular text-[10px] font-bold text-white">
@@ -459,7 +455,9 @@ function ReservationCard({
   onEdit: () => void
   onDelete: () => void
 }) {
-  const meta = STATUS_META[r.status]
+  const { tr } = useI18n()
+  const t = tr.admin.reservations
+  const meta = makeStatusMeta(t)[r.status]
   const past = isPastTime(r.date, r.time)
 
   return (
@@ -494,7 +492,7 @@ function ReservationCard({
         <div className="flex flex-1 flex-wrap items-center gap-x-4 gap-y-1.5 text-xs sm:text-sm">
           <span className="inline-flex items-center gap-1.5 font-semibold text-tt-ink">
             <Calendar className="h-4 w-4 text-brand-terra" />
-            <span className="tabular">{formatPrettyDate(r.date)}</span>
+            <span className="tabular">{formatPrettyDate(r.date, t.locale)}</span>
           </span>
           <span className="inline-flex items-center gap-1.5 font-semibold text-tt-ink">
             <Clock className="h-4 w-4 text-brand-terra" />
@@ -503,7 +501,7 @@ function ReservationCard({
           <span className="inline-flex items-center gap-1.5 font-semibold text-tt-ink">
             <Users className="h-4 w-4 text-brand-terra" />
             <span className="tabular">{r.partySize}</span>
-            <span className="text-tt-muted">coperti</span>
+            <span className="text-tt-muted">{t.guestsSuffix}</span>
           </span>
           <span className="inline-flex items-center gap-1.5 font-semibold text-tt-ink">
             <span className={`status-dot ${meta.dot}`} />
@@ -522,7 +520,7 @@ function ReservationCard({
                 onClick={onConfirm}
                 className="tt-btn-sheen inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-brand-emerald to-emerald-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:scale-105"
               >
-                <Check className="h-3.5 w-3.5" /> Conferma
+                <Check className="h-3.5 w-3.5" /> {t.confirm}
               </button>
             )}
             {r.status === 'confirmed' && past && (
@@ -530,7 +528,7 @@ function ReservationCard({
                 onClick={onComplete}
                 className="tt-btn-sheen inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-brand-sky to-sky-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:scale-105"
               >
-                <CheckCircle2 className="h-3.5 w-3.5" /> Completa
+                <CheckCircle2 className="h-3.5 w-3.5" /> {t.complete}
               </button>
             )}
             {(r.status === 'confirmed' || r.status === 'pending') && (
@@ -538,22 +536,22 @@ function ReservationCard({
                 onClick={onCancel}
                 className="tt-btn-sheen inline-flex items-center gap-1 rounded-full bg-gradient-to-r from-brand-rose to-rose-600 px-3 py-1.5 text-xs font-bold text-white shadow-sm transition hover:scale-105"
               >
-                <X className="h-3.5 w-3.5" /> Cancella
+                <X className="h-3.5 w-3.5" /> {t.cancelAction}
               </button>
             )}
             <button
               onClick={onEdit}
               className="inline-flex items-center gap-1 rounded-full border border-tt-line bg-white/60 px-3 py-1.5 text-xs font-bold text-tt-ink transition hover:scale-105 hover:border-tt-pink/40 hover:bg-tt-pinkSoft"
-              title="Modifica"
+              title={t.edit}
             >
-              <Pencil className="h-3.5 w-3.5" /> Modifica
+              <Pencil className="h-3.5 w-3.5" /> {t.edit}
             </button>
             <button
               onClick={onDelete}
               className="inline-flex items-center gap-1 rounded-full border border-tt-line bg-white/60 px-3 py-1.5 text-xs font-bold text-tt-danger transition hover:scale-105 hover:bg-tt-danger/10"
-              title="Elimina"
+              title={t.delete}
             >
-              <Trash2 className="h-3.5 w-3.5" /> Elimina
+              <Trash2 className="h-3.5 w-3.5" /> {t.delete}
             </button>
           </div>
         </div>
@@ -606,6 +604,8 @@ function ReservationFormDialog({
   initial: Reservation | null
   mode: 'create' | 'edit'
 }) {
+  const { tr } = useI18n()
+  const t = tr.admin.reservations
   const [form, setForm] = useState<FormState>(EMPTY_FORM)
   const [errors, setErrors] = useState<Partial<Record<keyof FormState, string>>>({})
 
@@ -635,14 +635,14 @@ function ReservationFormDialog({
 
   function validate(): boolean {
     const e: Partial<Record<keyof FormState, string>> = {}
-    if (!form.guestName.trim()) e.guestName = 'Nome obbligatorio'
-    if (!form.phone.trim()) e.phone = 'Telefono obbligatorio'
-    if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) e.email = 'Email non valida'
-    if (!form.date) e.date = 'Data obbligatoria'
-    if (!form.time) e.time = 'Ora obbligatoria'
-    if (!form.partySize || form.partySize < 1) e.partySize = 'Minimo 1'
-    if (form.partySize > 30) e.partySize = 'Massimo 30'
-    if (!form.tableLabel) e.tableLabel = 'Tavolo obbligatorio'
+    if (!form.guestName.trim()) e.guestName = t.errName
+    if (!form.phone.trim()) e.phone = t.errPhone
+    if (form.email && !/^\S+@\S+\.\S+$/.test(form.email)) e.email = t.errEmail
+    if (!form.date) e.date = t.errDate
+    if (!form.time) e.time = t.errTime
+    if (!form.partySize || form.partySize < 1) e.partySize = t.errPartyMin
+    if (form.partySize > 30) e.partySize = t.errPartyMax
+    if (!form.tableLabel) e.tableLabel = t.errTableReq
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -672,23 +672,21 @@ function ReservationFormDialog({
         <DialogHeader className="relative border-b border-tt-line px-6 pb-4 pt-6">
           <DialogTitle className="flex items-center gap-2 text-xl font-extrabold text-tt-ink">
             <CalendarCheck className="h-5 w-5 text-brand-terra" />
-            {mode === 'create' ? 'Nuova prenotazione' : 'Modifica prenotazione'}
+            {mode === 'create' ? t.newReservation : t.editReservation}
           </DialogTitle>
           <DialogDescription className="text-tt-muted">
-            {mode === 'create'
-              ? 'Inserisci i dettagli della prenotazione.'
-              : 'Aggiorna i dettagli della prenotazione.'}
+            {mode === 'create' ? t.createDesc : t.editDesc}
           </DialogDescription>
         </DialogHeader>
 
         <div className="relative space-y-4 px-6 py-5">
           <div>
-            <label className={labelCls}>Nome ospite *</label>
+            <label className={labelCls}>{t.guestName}</label>
             <input
               className={inputCls}
               value={form.guestName}
               onChange={(e) => set('guestName', e.target.value)}
-              placeholder="Mario Rossi"
+              placeholder={t.guestNamePh}
             />
             {errors.guestName && (
               <p className="mt-1 text-xs font-semibold text-tt-danger">{errors.guestName}</p>
@@ -697,24 +695,24 @@ function ReservationFormDialog({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             <div>
-              <label className={labelCls}>Telefono *</label>
+              <label className={labelCls}>{t.phone}</label>
               <input
                 className={inputCls}
                 value={form.phone}
                 onChange={(e) => set('phone', e.target.value)}
-                placeholder="+39 333 1234567"
+                placeholder={t.phonePh}
               />
               {errors.phone && (
                 <p className="mt-1 text-xs font-semibold text-tt-danger">{errors.phone}</p>
               )}
             </div>
             <div>
-              <label className={labelCls}>Email</label>
+              <label className={labelCls}>{t.email}</label>
               <input
                 className={inputCls}
                 value={form.email}
                 onChange={(e) => set('email', e.target.value)}
-                placeholder="mario@email.it"
+                placeholder={t.emailPh}
               />
               {errors.email && (
                 <p className="mt-1 text-xs font-semibold text-tt-danger">{errors.email}</p>
@@ -724,7 +722,7 @@ function ReservationFormDialog({
 
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
             <div>
-              <label className={labelCls}>Data *</label>
+              <label className={labelCls}>{t.date}</label>
               <input
                 type="date"
                 className={`${inputCls} tabular`}
@@ -736,7 +734,7 @@ function ReservationFormDialog({
               )}
             </div>
             <div>
-              <label className={labelCls}>Ora *</label>
+              <label className={labelCls}>{t.time}</label>
               <input
                 type="time"
                 className={`${inputCls} tabular`}
@@ -748,7 +746,7 @@ function ReservationFormDialog({
               )}
             </div>
             <div>
-              <label className={labelCls}>Coperti *</label>
+              <label className={labelCls}>{t.guests}</label>
               <input
                 type="number"
                 min={1}
@@ -764,15 +762,15 @@ function ReservationFormDialog({
           </div>
 
           <div>
-            <label className={labelCls}>Tavolo *</label>
+            <label className={labelCls}>{t.table} *</label>
             <select
               className={inputCls}
               value={form.tableLabel}
               onChange={(e) => set('tableLabel', e.target.value)}
             >
-              {MOCK_TABLES.map((t) => (
-                <option key={t} value={t}>
-                  {t}
+              {MOCK_TABLES.map((tbl) => (
+                <option key={tbl} value={tbl}>
+                  {tbl}
                 </option>
               ))}
             </select>
@@ -782,12 +780,12 @@ function ReservationFormDialog({
           </div>
 
           <div>
-            <label className={labelCls}>Note</label>
+            <label className={labelCls}>{t.notes}</label>
             <textarea
               className={`${inputCls} min-h-[80px] resize-y`}
               value={form.notes}
               onChange={(e) => set('notes', e.target.value)}
-              placeholder="Allergie, occasioni speciali, richieste..."
+              placeholder={t.notesPh}
             />
           </div>
         </div>
@@ -797,7 +795,7 @@ function ReservationFormDialog({
             onClick={onClose}
             className="inline-flex items-center gap-1 rounded-full border border-tt-line bg-white/60 px-4 py-2 text-sm font-bold text-tt-ink transition hover:bg-tt-surfaceAlt"
           >
-            <X className="h-4 w-4" /> Annulla
+            <X className="h-4 w-4" /> {t.cancel}
           </button>
           <button
             onClick={handleSubmit}
@@ -805,11 +803,11 @@ function ReservationFormDialog({
           >
             {mode === 'create' ? (
               <>
-                <Plus className="h-4 w-4" /> Crea prenotazione
+                <Plus className="h-4 w-4" /> {t.createReservation}
               </>
             ) : (
               <>
-                <Check className="h-4 w-4" /> Salva modifiche
+                <Check className="h-4 w-4" /> {t.saveChanges}
               </>
             )}
           </button>
@@ -823,6 +821,9 @@ function ReservationFormDialog({
 
 export function ReservationsSection({ ctx: _ctx }: Props) {
   const { toast } = useToast()
+  const { tr } = useI18n()
+  const t = tr.admin.reservations
+  const FILTERS = makeFilters(t)
   const [loading, setLoading] = useState(true)
   const [reservations, setReservations] = useState<Reservation[]>([])
   const [filter, setFilter] = useState<FilterKey>('all')
@@ -884,15 +885,9 @@ export function ReservationsSection({ ctx: _ctx }: Props) {
 
   function updateStatus(id: string, status: ReservationStatus) {
     setReservations((prev) => prev.map((r) => (r.id === id ? { ...r, status } : r)))
-    const labels: Record<ReservationStatus, string> = {
-      confirmed: 'confermata',
-      pending: 'in attesa',
-      cancelled: 'cancellata',
-      completed: 'completata',
-    }
     toast({
-      title: 'Prenotazione aggiornata',
-      description: `Stato impostato su "${labels[status]}".`,
+      title: t.toastUpdated,
+      description: t.toastStatusSet(t.statusLC[status]),
     })
   }
 
@@ -902,8 +897,8 @@ export function ReservationsSection({ ctx: _ctx }: Props) {
     setDialogOpen(false)
     setEditing(null)
     toast({
-      title: 'Prenotazione creata',
-      description: `${data.guestName} — ${data.partySize} coperti alle ${data.time}.`,
+      title: t.toastCreated,
+      description: t.toastCreatedDesc(data.guestName, data.partySize, data.time),
     })
   }
 
@@ -917,8 +912,8 @@ export function ReservationsSection({ ctx: _ctx }: Props) {
     setDialogOpen(false)
     setEditing(null)
     toast({
-      title: 'Prenotazione aggiornata',
-      description: `Modifiche salvate per ${data.guestName}.`,
+      title: t.toastUpdated,
+      description: t.toastEditSaved(data.guestName),
     })
   }
 
@@ -936,8 +931,8 @@ export function ReservationsSection({ ctx: _ctx }: Props) {
     if (!deleting) return
     setReservations((prev) => prev.filter((r) => r.id !== deleting.id))
     toast({
-      title: 'Prenotazione eliminata',
-      description: `${deleting.guestName} rimosso dalla lista.`,
+      title: t.toastDeleted,
+      description: t.toastDeletedDesc(deleting.guestName),
     })
     setDeleting(null)
   }
@@ -950,7 +945,7 @@ export function ReservationsSection({ ctx: _ctx }: Props) {
     )
   }
 
-  const activeFilterLabel = FILTERS.find((f) => f.key === filter)?.label ?? 'Tutte'
+  const activeFilterLabel = FILTERS.find((f) => f.key === filter)?.label ?? t.filterAll
 
   return (
     <div className="animate-ttFadeUp space-y-6">
@@ -958,20 +953,20 @@ export function ReservationsSection({ ctx: _ctx }: Props) {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
         <div>
           <p className="eyebrow text-xs font-bold uppercase tracking-widest text-brand-terra">
-            Gestione sala
+            {t.hallManagement}
           </p>
           <h2 className="tt-section-title text-2xl font-extrabold text-tt-ink sm:text-3xl">
-            Prenotazioni
+            {t.title}
           </h2>
           <p className="mt-1 text-sm text-tt-muted">
-            Gestisci le prenotazioni dei tavoli
+            {t.subtitleManage}
           </p>
         </div>
         <button
           onClick={handleNewClick}
           className="tt-btn-sheen inline-flex items-center gap-2 self-start rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-5 py-2.5 text-sm font-bold text-white shadow-tt transition hover:scale-105"
         >
-          <Plus className="h-4 w-4" /> Nuova prenotazione
+          <Plus className="h-4 w-4" /> {t.newReservation}
         </button>
       </div>
 
@@ -979,7 +974,7 @@ export function ReservationsSection({ ctx: _ctx }: Props) {
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <KpiCard
           icon={<CalendarCheck className="h-5 w-5" />}
-          label="Prenotazioni oggi"
+          label={t.kpiToday}
           value={kpis.todayCount}
           trend="+12%"
           trendUp
@@ -987,7 +982,7 @@ export function ReservationsSection({ ctx: _ctx }: Props) {
         />
         <KpiCard
           icon={<Users className="h-5 w-5" />}
-          label="Coperti oggi"
+          label={t.kpiGuests}
           value={kpis.guestsToday}
           trend="+8%"
           trendUp
@@ -995,7 +990,7 @@ export function ReservationsSection({ ctx: _ctx }: Props) {
         />
         <KpiCard
           icon={<CalendarClock className="h-5 w-5" />}
-          label="Tavoli disponibili"
+          label={t.kpiAvailableTables}
           value={kpis.availableTables}
           trend={`${kpis.availableTables}/${TOTAL_TABLES}`}
           trendUp
@@ -1003,7 +998,7 @@ export function ReservationsSection({ ctx: _ctx }: Props) {
         />
         <KpiCard
           icon={<XCircle className="h-5 w-5" />}
-          label="No-show rate"
+          label={t.kpiNoShow}
           value={`${kpis.noShowRate.toFixed(1)}%`}
           trend="-2.4%"
           trendUp
@@ -1043,7 +1038,7 @@ export function ReservationsSection({ ctx: _ctx }: Props) {
 
       {/* Reservations list */}
       {filtered.length === 0 ? (
-        <EmptyState filterLabel={activeFilterLabel} />
+        <EmptyState filterLabel={activeFilterLabel} isAll={filter === 'all'} />
       ) : (
         <div className="tt-scroll max-h-[640px] space-y-3 overflow-y-auto pr-1">
           <AnimatePresence initial={false}>
@@ -1080,23 +1075,23 @@ export function ReservationsSection({ ctx: _ctx }: Props) {
           <AlertDialogHeader>
             <AlertDialogTitle className="flex items-center gap-2 text-lg font-extrabold text-tt-ink">
               <Trash2 className="h-5 w-5 text-tt-danger" />
-              Elimina prenotazione
+              {t.deleteTitle}
             </AlertDialogTitle>
             <AlertDialogDescription className="text-tt-muted">
               {deleting
-                ? `Sei sicuro di voler eliminare la prenotazione di "${deleting.guestName}" (${deleting.date} alle ${deleting.time})? L'operazione non è reversibile.`
+                ? t.deleteConfirmMsg(deleting.guestName, deleting.date, deleting.time)
                 : ''}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter className="gap-2">
             <AlertDialogCancel className="rounded-full border-tt-line bg-white/60 px-5 py-2 text-sm font-bold text-tt-ink hover:bg-tt-surfaceAlt">
-              Annulla
+              {t.cancel}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={handleDeleteConfirm}
               className="rounded-full bg-gradient-to-r from-brand-rose to-rose-600 px-5 py-2 text-sm font-bold text-white shadow-tt hover:scale-105"
             >
-              Elimina
+              {t.delete}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

@@ -18,6 +18,8 @@ import { motion, AnimatePresence } from "framer-motion";
 import CustomizationModal from "@/components/client/cart/CustomizationModal";
 import NoteModal from "@/components/client/cart/NoteModal";
 import { supabase } from "@/lib/supabase";
+import { useI18n } from "@/components/i18n/I18nProvider";
+import { LanguageSwitcher } from "@/components/landing/LanguageSwitcher";
 
 const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const API_KEY      = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
@@ -203,6 +205,9 @@ function CartSkeleton({ T }: { T: ReturnType<typeof buildPalette> }) {
 }
 
 export default function CartPage() {
+  const { tr } = useI18n();
+  const tCart = tr.client.cart;
+  const tCommon = tr.client.common;
   const router = useRouter();
   const items          = useCartStore((s) => s.items);
   const totalCents     = useCartStore((s) => s.totalCents());
@@ -349,7 +354,7 @@ export default function CartPage() {
     const maxAfter = Math.max(...portateAfterMove);
     for (let p = 1; p < maxAfter; p++) {
       if (!portateAfterMove.has(p)) {
-        showPortataError(`Non puoi spostare: la portata ${p} resterebbe vuota`);
+        showPortataError(tCart.cantMoveEmpty.replace('{p}', String(p)));
         return;
       }
     }
@@ -371,7 +376,7 @@ export default function CartPage() {
       .map(([p, groupItems]) => ({ portata: Number(p), items: mergeDuplicateItems(groupItems) }));
   }, [items]);
 
-  const portataLabels: Record<number, string> = { 1: "1ª Portata", 2: "2ª Portata", 3: "3ª Portata", 4: "4ª Portata" };
+  const portataLabels: Record<number, string> = { 1: tCart.courseLabel1, 2: tCart.courseLabel2, 3: tCart.courseLabel3, 4: tCart.courseLabel4 };
 
   // Conteggio reale dei piatti: somma delle quantità, non il numero di righe/card
   // (es. "Acqua x3" + "Agnello x1" → 4 piatti, non 2).
@@ -426,11 +431,9 @@ export default function CartPage() {
 
     (async () => {
       try {
-        const { data } = await supabase
-          .from("menu_items")
-          .select("id, image_url")
-          .in("id", unchecked);
-        const rows: { id: string; image_url: string | null }[] = data ?? [];
+        const res = await fetch(`/api/menu-items/images?ids=${encodeURIComponent(unchecked.join(","))}`);
+        const json = res.ok ? await res.json() : { items: [] };
+        const rows: { id: string; image_url: string | null }[] = json.items ?? [];
         setItemImages((prev) => {
           const next = { ...prev };
           unchecked.forEach((id) => {
@@ -513,11 +516,8 @@ useEffect(() => {
   if (sess?.restaurantId) {
     (async () => {
       try {
-        const { data } = await supabase
-          .from("restaurants")
-          .select("brand_color, background_type, background_image_url")
-          .eq("id", sess.restaurantId)
-          .single();
+        const res = await fetch(`/api/restaurant/${sess.restaurantId}`);
+        const data = res.ok ? await res.json() : null;
         if (data?.brand_color) {
           setBrandColor(data.brand_color);
           try { localStorage.setItem(`brand_color_${sess.restaurantId}`, data.brand_color); } catch {}
@@ -652,7 +652,7 @@ initFromDB(
   const handleConfirmDelete = (orderItemIds: string[], itemName: string, portata: number, portataItemsCount: number, e: React.MouseEvent) => {
     e.stopPropagation();
     if (portataItemsCount === 1 && portata === 1) {
-      showPortataError(`Questo è l'unico piatto della 1ª Portata. Non puoi eliminarlo.`);
+      showPortataError(tCart.onlyItemInCourse);
       return;
     }
     const isLast = items.length === orderItemIds.length;
@@ -691,7 +691,7 @@ initFromDB(
   const handleOpenCustomization = async (menuItemId: string, customizationsKey: string) => {
     try {
       const options = await getMenuItemOptions(menuItemId);
-      if (options.length === 0) { setError("Nessuna personalizzazione disponibile per questo piatto"); return; }
+      if (options.length === 0) { setError(tCart.noCustomizationsForItem); return; }
       const item = items.find(
         (i) => i.menuItemId === menuItemId && JSON.stringify(i.customizations) === customizationsKey
       );
@@ -699,7 +699,7 @@ initFromDB(
       setCustomizingItem({ menuItemId: item.menuItemId, name: item.name, basePriceCents: item.priceCents, customizationsKey });
       setItemOptions(options);
       setShowCustomization(true);
-    } catch { setError("Impossibile caricare le opzioni"); }
+    } catch { setError(tCart.cannotLoadOptions); }
   };
 
   const handleCustomizationConfirm = async (customizations: CartCustomization[]) => {
@@ -738,10 +738,10 @@ initFromDB(
               <CheckCircle size={38} color="#fff" strokeWidth={2.4} />
             </div>
           </div>
-          <p style={{ color: T.accent, fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", margin: "0 0 8px" }}>Comanda inviata</p>
-          <h2 className="font-serif text-lift" style={{ fontSize: 28, fontWeight: 700, color: T.text, margin: "0 0 12px" }}>Ordine inviato!</h2>
+          <p style={{ color: T.accent, fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", margin: "0 0 8px" }}>{tCart.orderSentEyebrow}</p>
+          <h2 className="font-serif text-lift" style={{ fontSize: 28, fontWeight: 700, color: T.text, margin: "0 0 12px" }}>{tCart.orderSentTitle}</h2>
           <p style={{ color: T.textMuted, fontSize: 15, lineHeight: 1.6, margin: "0 0 8px" }}>
-            La cucina ha ricevuto la tua comanda. Tra poco sarà al tuo tavolo.
+            {tCart.kitchenReceived}
           </p>
           <div style={{ display: "inline-flex", alignItems: "center", gap: 6, color: T.textMuted, fontSize: 13, opacity: 0.7, marginTop: 6 }}>
             <Loader2 size={12} style={{ animation: "qroSpin 0.9s linear infinite" }} />
@@ -761,13 +761,13 @@ initFromDB(
           <div style={{ width: 72, height: 72, borderRadius: "50%", background: T.amberBg, border: `1.5px solid rgba(245,158,11,0.25)`, display: "flex", alignItems: "center", justifyContent: "center", margin: "0 auto 20px" }}>
             <AlertCircle size={34} color={T.amber} strokeWidth={2} />
           </div>
-          <p style={{ color: T.amber, fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", margin: "0 0 6px" }}>Sessione non valida</p>
-          <h2 className="font-serif text-lift" style={{ fontSize: 24, fontWeight: 700, color: T.text, margin: "0 0 10px" }}>Sessione scaduta</h2>
-          <p style={{ color: T.textMuted, fontSize: 14, lineHeight: 1.55, marginBottom: 28 }}>Scansiona di nuovo il QR code al tavolo per iniziare un nuovo ordine.</p>
+          <p style={{ color: T.amber, fontSize: 11, fontWeight: 800, letterSpacing: "0.14em", textTransform: "uppercase", margin: "0 0 6px" }}>{tCart.sessionInvalidEyebrow}</p>
+          <h2 className="font-serif text-lift" style={{ fontSize: 24, fontWeight: 700, color: T.text, margin: "0 0 10px" }}>{tCart.sessionExpired}</h2>
+          <p style={{ color: T.textMuted, fontSize: 14, lineHeight: 1.55, marginBottom: 28 }}>{tCart.sessionScanAgain}</p>
           <Link href="/" style={{ textDecoration: "none" }}>
             <button style={{ width: "100%", padding: "14px", borderRadius: 14, background: T.btnBg, border: "none", color: "#fff", fontWeight: 700, fontSize: 15, cursor: "pointer", boxShadow: T.btnShadow, display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
               <ArrowLeft size={16} />
-              Torna alla home
+              {tCart.backHome}
             </button>
           </Link>
         </div>
@@ -848,13 +848,13 @@ initFromDB(
               <ShoppingBag size={34} color="#fff" strokeWidth={1.8} />
             </div>
           </div>
-          <p style={{ color: T.accent, fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", margin: "0 0 6px" }}>Niente nel carrello</p>
-          <h2 className="font-serif text-lift" style={{ fontSize: 26, fontWeight: 700, color: T.text, margin: "0 0 10px" }}>Il carrello è vuoto</h2>
-          <p style={{ color: T.textMuted, fontSize: 14, lineHeight: 1.55, marginBottom: 28, padding: "0 8px" }}>Aggiungi qualche piatto dal menù per procedere con l&apos;ordine.</p>
+          <p style={{ color: T.accent, fontSize: 11, fontWeight: 800, letterSpacing: "0.16em", textTransform: "uppercase", margin: "0 0 6px" }}>{tCart.emptyEyebrow}</p>
+          <h2 className="font-serif text-lift" style={{ fontSize: 26, fontWeight: 700, color: T.text, margin: "0 0 10px" }}>{tCart.empty}</h2>
+          <p style={{ color: T.textMuted, fontSize: 14, lineHeight: 1.55, marginBottom: 28, padding: "0 8px" }}>{tCart.emptyLong}</p>
           <button
             className={navigating ? "nav-btn-pressed" : ""}
             onClick={handleGoToMenu}
-            aria-label="Sfoglia il menù"
+            aria-label={tCart.browseMenu}
             style={{
               width: "100%", padding: "14px 16px", borderRadius: 14,
               background: T.btnBg, border: "none", color: "#fff",
@@ -866,7 +866,7 @@ initFromDB(
             }}
           >
             <UtensilsCrossed size={16} />
-            Sfoglia il menù
+            {tCart.browseMenu}
             <ChevronRight size={16} strokeWidth={2.5} style={{ marginLeft: -2 }} />
           </button>
         </div>
@@ -1168,7 +1168,7 @@ initFromDB(
         <Link
           href={menuHref}
           className="menu-btn"
-          aria-label="Torna al menù"
+          aria-label={tCart.backToMenuAria}
           style={{ display: "flex", alignItems: "center", gap: 8, color: T.textMuted, textDecoration: "none", fontSize: 13, fontWeight: 700, letterSpacing: "-0.01em" }}
         >
           <div className="menu-btn-icon" style={{
@@ -1204,17 +1204,20 @@ initFromDB(
             }} />
             <ArrowLeft size={16} strokeWidth={2.5} color="#fff" style={{ position: "relative", zIndex: 1 }} />
           </div>
-          <span style={{ display: "inline-block" }}>Menù</span>
+          <span style={{ display: "inline-block" }}>{tCart.menuLabel}</span>
         </Link>
         <div style={{ display: "flex", alignItems: "center", gap: 8, position: "absolute", left: "50%", transform: "translateX(-50%)" }}>
           <div style={{ width: 28, height: 28, borderRadius: 9, background: T.accentBg, display: "flex", alignItems: "center", justifyContent: "center" }}>
             <ChefHat size={15} color={T.accent} />
           </div>
-          <span className="font-serif" style={{ fontWeight: 700, fontSize: 18, color: T.text, letterSpacing: "-0.02em" }}>Il tuo carrello</span>
+          <span className="font-serif" style={{ fontWeight: 700, fontSize: 18, color: T.text, letterSpacing: "-0.02em" }}>{tCart.yourCart}</span>
         </div>
+        {/* Language + dish count */}
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <LanguageSwitcher />
         {/* Dish count badge */}
         <div
-          aria-label={`${totalDishesCount} ${totalDishesCount === 1 ? "piatto nel carrello" : "piatti nel carrello"}`}
+          aria-label={`${totalDishesCount} ${totalDishesCount === 1 ? tCart.dishInCart : tCart.dishesInCart}`}
           style={{
             minWidth: 32, height: 32, padding: "0 10px",
             borderRadius: 999,
@@ -1227,6 +1230,7 @@ initFromDB(
         >
           <ShoppingBag size={13} strokeWidth={2.4} />
           {totalDishesCount}
+        </div>
         </div>
       </div>
 
@@ -1258,7 +1262,7 @@ initFromDB(
                   </div>
                   {/* Etichetta */}
                   <span style={{ flex: 1, fontSize: 12, fontWeight: 800, color: T.accent, letterSpacing: "0.10em", textTransform: "uppercase" }}>
-                    {portataLabels[portata] || `${portata === 1 ? "Prima" : portata === 2 ? "Seconda" : portata === 3 ? "Terza" : portata === 4 ? "Quarta" : `${portata}ª`} Portata`}
+                    {portataLabels[portata] || `${portata === 1 ? tCart.courseFirst : portata === 2 ? tCart.courseSecond : portata === 3 ? tCart.courseThird : portata === 4 ? tCart.courseFourth : `${portata}ª`} ${tCart.courseWord}`}
                   </span>
                   {/* Totale portata */}
                   <span style={{ fontSize: 13, fontWeight: 700, color: T.accent, fontVariantNumeric: "tabular-nums", flexShrink: 0 }}>
@@ -1353,14 +1357,14 @@ initFromDB(
                         <button
                           onClick={() => pressBtn(`${primaryId}-nota`, () => handleOpenNote(primaryId, item.name, item.note ?? ""))}
                           style={{ fontSize: 11, color: "#93b4d8", fontWeight: 600, background: "none", border: "none", cursor: "pointer", padding: 0, flexShrink: 0, textDecoration: "underline" }}
-                        >Modifica</button>
+                        >{tCart.edit}</button>
                       </div>
                     ) : (
                       <div style={{ marginTop: 4 }}>
                         <button
                           onClick={() => pressBtn(`${primaryId}-nota`, () => handleOpenNote(primaryId, item.name, ""))}
                           style={{ fontSize: 11, color: "#93b4d8", fontWeight: 600, background: "none", border: "none", cursor: "pointer", padding: 0, textDecoration: "underline" }}
-                        >+ Aggiungi nota</button>
+                        >{tCart.addNote}</button>
                       </div>
                     )}
                   </div>
@@ -1380,7 +1384,7 @@ initFromDB(
                         if (item.portataLocked) return;
                         setShowPortataSelector(showPortataSelector === primaryId ? null : primaryId);
                       }}
-                      aria-label={item.portataLocked ? `Portata ${item.portata ?? 1}, non modificabile` : `Cambia portata, attuale ${item.portata ?? 1}`}
+                      aria-label={item.portataLocked ? `${tCart.courseWord} ${item.portata ?? 1}, ${tCart.courseNotEditable}` : `${tCart.changeCourse} ${item.portata ?? 1}`}
                       style={{
                         display: "flex", alignItems: "center", gap: 4,
                         padding: "7px 11px", borderRadius: 12,
@@ -1402,7 +1406,7 @@ initFromDB(
                     {!item.portataLocked && showPortataSelector === primaryId && (
                       <div className="portata-selector" onClick={(e) => e.stopPropagation()} style={{ position: "absolute", bottom: "calc(100% + 6px)", left: 0, background: "#fff", border: "1px solid #dde6f5", borderRadius: 14, padding: 5, boxShadow: "0 10px 36px rgba(0,0,0,0.14)", zIndex: 100, display: "flex", gap: 4, minWidth: "max-content" }}>
                         {Array.from({ length: selectablePortate }, (_, i) => i + 1).filter((p) => p > portataFloor).map((p) => (
-                          <button key={p} className="portata-option" onClick={(e) => { e.stopPropagation(); handlePortataChange(primaryId, p, item); }} aria-label={`Sposta alla portata ${p}`}
+                          <button key={p} className="portata-option" onClick={(e) => { e.stopPropagation(); handlePortataChange(primaryId, p, item); }} aria-label={`${tCart.moveToCourse} ${p}`}
                             style={{ width: 38, height: 38, borderRadius: 11, display: "flex", alignItems: "center", justifyContent: "center", border: (item.portata ?? 1) === p ? `2px solid ${T.accent}` : "1px solid #dde6f5", background: (item.portata ?? 1) === p ? T.accentBg : "transparent", cursor: "pointer", fontSize: 14, fontWeight: 800, color: (item.portata ?? 1) === p ? T.accent : "#64748b" }}>
                             {p}
                           </button>
@@ -1414,7 +1418,7 @@ initFromDB(
 
                   {/* Blocco [-] 1 [+] unificato */}
                   <div style={{ display: "flex", alignItems: "center", background: "#f1f4f8", border: "1.5px solid #dde6f5", borderRadius: 10, overflow: "hidden" }}>
-                    <button className="btn-stepper" onPointerDown={(e) => { e.preventDefault(); if (qty > 1) handleStepperChange(primaryId, qty, -1); }} disabled={qty <= 1} aria-label="Diminuisci quantità"
+                    <button className="btn-stepper" onPointerDown={(e) => { e.preventDefault(); if (qty > 1) handleStepperChange(primaryId, qty, -1); }} disabled={qty <= 1} aria-label={tCart.decreaseQty}
                       style={{ width: 34, height: 34, background: "none", border: "none", borderRight: "1.5px solid #dde6f5", cursor: qty <= 1 ? "not-allowed" : "pointer", color: qty <= 1 ? "#b0bdd0" : T.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       <Minus size={14} strokeWidth={2.4} />
                     </button>
@@ -1432,14 +1436,14 @@ initFromDB(
                         );
                       })()}
                     </span>
-                    <button className="btn-stepper" onPointerDown={(e) => { e.preventDefault(); handleStepperChange(primaryId, qty, 1); }} aria-label="Aumenta quantità"
+                    <button className="btn-stepper" onPointerDown={(e) => { e.preventDefault(); handleStepperChange(primaryId, qty, 1); }} aria-label={tCart.increaseQty}
                       style={{ width: 34, height: 34, background: "none", border: "none", borderLeft: "1.5px solid #dde6f5", cursor: "pointer", color: T.accent, display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                       <Plus size={14} strokeWidth={2.4} />
                     </button>
                   </div>
 
                   {/* Cestino */}
-                  <button onClick={(e) => handleConfirmDelete(item.orderItemIds, item.name, portata, portataItems.length, e)} disabled={!!confirmingId} aria-label={`Elimina ${item.name}`}
+                  <button onClick={(e) => handleConfirmDelete(item.orderItemIds, item.name, portata, portataItems.length, e)} disabled={!!confirmingId} aria-label={`${tCart.deleteAria} ${item.name}`}
                     style={{ width: 34, height: 34, borderRadius: 10, background: "transparent", border: "none", cursor: confirmingId ? "not-allowed" : "pointer", color: "#e53e3e", display: "flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}>
                     <Trash2 size={15} strokeWidth={2.2} />
                   </button>
@@ -1451,9 +1455,9 @@ initFromDB(
                     <button
                       className={`btn-action${activeBtn === `${primaryId}-personalizza` ? " btn-pressed" : ""}`}
                       onClick={() => pressBtn(`${primaryId}-personalizza`, () => handleOpenCustomization(item.menuItemId, customizationsKey))}
-                      aria-label="Personalizza il piatto"
+                      aria-label={tCart.customizeAria}
                       style={{ display: "flex", alignItems: "center", gap: 5, padding: "7px 13px", background: "#f4f6fa", border: "1.5px solid #dde6f5", borderRadius: 999, color: "#64748b", fontSize: 12, fontWeight: 600, cursor: "pointer" }}>
-                      <Settings size={12} strokeWidth={2.2} /> Personalizza
+                      <Settings size={12} strokeWidth={2.2} /> {tCart.customize}
                     </button>
                   </div>
                 )}
@@ -1500,7 +1504,7 @@ initFromDB(
             <div style={{ width: 22, height: 22, borderRadius: "50%", background: "rgba(239,68,68,0.18)", display: "flex", alignItems: "center", justifyContent: "center" }}>
               <Trash2 size={12} color="#f87171" />
             </div>
-            <span><span style={{ color: "#f87171", fontWeight: 700 }}>{deletedName}</span> eliminato</span>
+            <span><span style={{ color: "#f87171", fontWeight: 700 }}>{deletedName}</span> {tCart.deleted}</span>
           </motion.div>
         )}
       </AnimatePresence>
@@ -1560,7 +1564,7 @@ initFromDB(
               {/* Left: dish count */}
               <div style={{ display: "flex", flexDirection: "column", gap: 1, flexShrink: 0 }}>
                 <span style={{ color: T.textMuted, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", lineHeight: 1.1 }}>
-                  {totalDishesCount === 1 ? "piatto" : "piatti"}
+                  {totalDishesCount === 1 ? tCart.dish : tCart.dishes}
                 </span>
                 <div style={{ display: "flex", alignItems: "center", gap: 5, color: T.textMuted }}>
                   <ShoppingBag size={13} color={T.accent} strokeWidth={2.4} />
@@ -1571,7 +1575,7 @@ initFromDB(
               <div aria-hidden style={{ width: 1, height: 32, background: T.borderSoft, flexShrink: 0 }} />
               {/* Center: Totale */}
               <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 1 }}>
-                <span style={{ color: T.textMuted, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", lineHeight: 1.1 }}>Totale</span>
+                <span style={{ color: T.textMuted, fontSize: 10, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", lineHeight: 1.1 }}>{tCart.total}</span>
                 <span style={{ fontWeight: 900, fontSize: 24, color: T.text, letterSpacing: "-0.03em", fontVariantNumeric: "tabular-nums", lineHeight: 1 }}>
                   {formatPrice(totalCents)} <span style={{ fontSize: 16, fontWeight: 700, color: T.textMuted }}>€</span>
                 </span>
@@ -1579,7 +1583,7 @@ initFromDB(
               {/* Right: Vai alla cassa */}
               <Link
                 href={sessionId ? `/confirm/${sessionId}` : "#"}
-                aria-label="Vai alla cassa"
+                aria-label={tCart.checkout}
                 style={{
                   padding: "14px 18px",
                   borderRadius: 999,
@@ -1594,7 +1598,7 @@ initFromDB(
                   transition: "transform 0.15s, box-shadow 0.2s",
                 }}
               >
-                <span style={{ whiteSpace: "nowrap" }}>Vai alla cassa</span>
+                <span style={{ whiteSpace: "nowrap" }}>{tCart.checkout}</span>
                 <ChevronRight size={18} strokeWidth={2.6} />
               </Link>
             </div>

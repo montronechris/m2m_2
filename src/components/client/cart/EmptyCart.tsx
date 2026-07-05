@@ -5,12 +5,15 @@
 import { ShoppingCart } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import Link from "next/link";
+import { useI18n } from "@/components/i18n/I18nProvider";
 
 interface EmptyCartProps {
   menuHref: string;
 }
 
 export function EmptyCart({ menuHref }: EmptyCartProps) {
+  const { tr } = useI18n();
+  const t = tr.client.cart;
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50 p-4">
       <div className="bg-white p-8 rounded-2xl shadow-lg max-w-md w-full text-center space-y-5">
@@ -18,14 +21,14 @@ export function EmptyCart({ menuHref }: EmptyCartProps) {
           <ShoppingCart className="w-8 h-8" />
         </div>
         <h2 className="text-2xl font-bold text-gray-900">
-          Il carrello è vuoto
+          {t.empty}
         </h2>
         <p className="text-gray-600">
-          Aggiungi qualche piatto dal menu per procedere con l'ordine.
+          {t.emptyDesc}
         </p>
         <Link href={menuHref}>
           <Button className="w-full mt-2 bg-gray-900 hover:bg-green-600 transition-colors">
-            Torna al Menu
+            {t.backToMenu}
           </Button>
         </Link>
       </div>

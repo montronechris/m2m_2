@@ -37,6 +37,7 @@ export interface RestaurantCtx {
   userId: string
   userFirstName: string
   userLastName: string
+  userAvatarUrl: string | null
   userEmail: string
   role: string
   rolePermissions: RolePermissions | null

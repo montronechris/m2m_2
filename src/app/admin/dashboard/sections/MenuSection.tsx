@@ -12,6 +12,7 @@ import {
   type MenuItem,
   type MenuCategory,
 } from '@/lib/admin-service'
+import { useI18n } from '@/components/i18n/I18nProvider'
 
 interface Props {
   ctx: RestaurantCtx
@@ -19,6 +20,8 @@ interface Props {
 }
 
 export function MenuSection({ ctx }: Props) {
+  const { tr } = useI18n()
+  const t = tr.admin.menu
   const [q, setQ] = useState('')
   const [items, setItems] = useState<MenuItem[]>([])
   const [categories, setCategories] = useState<MenuCategory[]>([])
@@ -49,7 +52,7 @@ export function MenuSection({ ctx }: Props) {
       })
       .catch((e) => {
         if (active) {
-          setError(e.message ?? 'Errore nel caricamento menu')
+          setError(e.message ?? t.errorLoad)
           setLoading(false)
         }
       })
@@ -62,7 +65,7 @@ export function MenuSection({ ctx }: Props) {
     (i) => i.name.toLowerCase().includes(q.toLowerCase()) || (i.category_id ?? '').toLowerCase().includes(q.toLowerCase())
   )
 
-  const categoryName = (catId: string) => categories.find((c) => c.id === catId)?.name ?? 'Senza categoria'
+  const categoryName = (catId: string) => categories.find((c) => c.id === catId)?.name ?? t.noCategory
 
   async function toggleAvail(item: MenuItem) {
     const next = !item.is_available
@@ -87,7 +90,7 @@ export function MenuSection({ ctx }: Props) {
     setError(null)
     try {
       const priceCents = Math.round(parseFloat(form.price.replace(',', '.')) * 100)
-      if (isNaN(priceCents) || priceCents < 0) throw new Error('Prezzo non valido')
+      if (isNaN(priceCents) || priceCents < 0) throw new Error(t.invalidPrice)
 
       let imageUrl: string | null = null
       if (photoFile) {
@@ -115,7 +118,7 @@ export function MenuSection({ ctx }: Props) {
       setPhotoPreview('')
       setShowForm(false)
     } catch (e: any) {
-      setError(e.message ?? 'Errore nella creazione del piatto')
+      setError(e.message ?? t.errorCreate)
     } finally {
       setSaving(false)
     }
@@ -143,7 +146,7 @@ export function MenuSection({ ctx }: Props) {
     return (
       <div className="grid place-items-center py-16 text-center">
         <AlertCircle className="mb-3 h-10 w-10 text-tt-danger" />
-        <p className="text-sm font-bold text-tt-ink">Errore</p>
+        <p className="text-sm font-bold text-tt-ink">{t.error}</p>
         <p className="mt-1 max-w-xs text-xs text-tt-muted">{error}</p>
       </div>
     )
@@ -153,16 +156,16 @@ export function MenuSection({ ctx }: Props) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="font-serif text-xl font-extrabold text-tt-ink">Menu</h2>
+          <h2 className="font-serif text-xl font-extrabold text-tt-ink">{t.title}</h2>
           <p className="text-xs text-tt-muted">
-            {items.length} piatti · {items.filter((i) => i.is_available).length} disponibili
+            {t.countF(items.length, items.filter((i) => i.is_available).length)}
           </p>
         </div>
         <button
           onClick={() => setShowForm((v) => !v)}
           className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-4 py-2 text-sm font-bold text-white shadow-glow-amber transition hover:scale-105"
         >
-          <Plus className="h-4 w-4" /> Nuovo piatto
+          <Plus className="h-4 w-4" /> {t.newDish}
         </button>
       </div>
 
@@ -171,7 +174,7 @@ export function MenuSection({ ctx }: Props) {
         <input
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Cerca piatto o categoria…"
+          placeholder={t.searchPlaceholder}
           className="w-full rounded-2xl border border-tt-line bg-white py-3 pl-10 pr-4 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
         />
       </div>
@@ -180,7 +183,7 @@ export function MenuSection({ ctx }: Props) {
       {showForm && (
         <div className="tt-card animate-ttFadeUp rounded-2xl border border-tt-line p-4 shadow-tt">
           <div className="mb-3 flex items-center justify-between">
-            <h3 className="text-sm font-bold text-tt-ink">Nuovo piatto</h3>
+            <h3 className="text-sm font-bold text-tt-ink">{t.newDish}</h3>
             <button
               onClick={() => { setShowForm(false); setError(null); setPhotoFile(null); setPhotoPreview('') }}
               className="grid h-8 w-8 place-items-center rounded-full bg-tt-surfaceAlt2 text-tt-muted transition hover:text-tt-ink"
@@ -192,7 +195,7 @@ export function MenuSection({ ctx }: Props) {
           <div className="grid gap-3 sm:grid-cols-2">
             {/* Photo upload */}
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-bold text-tt-ink">Foto piatto</label>
+              <label className="mb-1 block text-xs font-bold text-tt-ink">{t.dishPhoto}</label>
               <div className="flex items-center gap-3">
                 <div className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-xl border border-dashed border-tt-line bg-tt-surfaceAlt">
                   {photoPreview ? (
@@ -203,7 +206,7 @@ export function MenuSection({ ctx }: Props) {
                 </div>
                 <label className="flex cursor-pointer items-center gap-1.5 rounded-full border border-tt-line bg-white px-3 py-2 text-xs font-semibold text-tt-muted transition hover:text-tt-ink">
                   <Upload className="h-3.5 w-3.5" />
-                  {photoFile ? 'Cambia foto' : 'Carica foto'}
+                  {photoFile ? t.changePhoto : t.uploadPhoto}
                   <input type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
                 </label>
                 {photoFile && (
@@ -211,40 +214,40 @@ export function MenuSection({ ctx }: Props) {
                     onClick={() => { setPhotoFile(null); setPhotoPreview('') }}
                     className="text-xs font-semibold text-tt-danger hover:underline"
                   >
-                    Rimuovi
+                    {t.remove}
                   </button>
                 )}
               </div>
             </div>
 
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-bold text-tt-ink">Nome *</label>
+              <label className="mb-1 block text-xs font-bold text-tt-ink">{t.name}</label>
               <input
                 value={form.name}
                 onChange={(e) => setForm({ ...form, name: e.target.value })}
-                placeholder="es. Tagliatelle al ragù"
+                placeholder={t.namePlaceholder}
                 className="w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-bold text-tt-ink">Prezzo (€) *</label>
+              <label className="mb-1 block text-xs font-bold text-tt-ink">{t.price}</label>
               <input
                 inputMode="decimal"
                 value={form.price}
                 onChange={(e) => setForm({ ...form, price: e.target.value })}
-                placeholder="es. 12,50"
+                placeholder={t.pricePlaceholder}
                 className="w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-bold text-tt-ink">Categoria</label>
+              <label className="mb-1 block text-xs font-bold text-tt-ink">{t.category}</label>
               <div className="relative">
                 <select
                   value={form.category_id}
                   onChange={(e) => setForm({ ...form, category_id: e.target.value })}
                   className="w-full appearance-none rounded-xl border border-tt-line bg-white px-3 py-2.5 pr-9 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
                 >
-                  <option value="">— Seleziona categoria —</option>
+                  <option value="">{t.selectCategory}</option>
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}{c.is_drink ? ' 🥤' : ''}
@@ -254,16 +257,16 @@ export function MenuSection({ ctx }: Props) {
                 <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-tt-muted" />
               </div>
               {categories.length === 0 && (
-                <p className="mt-1 text-[11px] text-tt-muted">Nessuna categoria nel database</p>
+                <p className="mt-1 text-[11px] text-tt-muted">{t.noCategoriesDb}</p>
               )}
             </div>
             <div className="sm:col-span-2">
-              <label className="mb-1 block text-xs font-bold text-tt-ink">Descrizione</label>
+              <label className="mb-1 block text-xs font-bold text-tt-ink">{t.description}</label>
               <textarea
                 rows={2}
                 value={form.description}
                 onChange={(e) => setForm({ ...form, description: e.target.value })}
-                placeholder="Ingredienti, note…"
+                placeholder={t.descriptionPlaceholder}
                 className="w-full resize-none rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
               />
             </div>
@@ -275,7 +278,7 @@ export function MenuSection({ ctx }: Props) {
                   onChange={(e) => setForm({ ...form, is_vegetarian: e.target.checked })}
                   className="h-4 w-4 accent-emerald-600"
                 />
-                <Leaf className="h-4 w-4 text-emerald-600" /> Vegetariano
+                <Leaf className="h-4 w-4 text-emerald-600" /> {t.vegetarian}
               </label>
               <label className="flex cursor-pointer items-center gap-2 text-sm text-tt-ink">
                 <input
@@ -284,7 +287,7 @@ export function MenuSection({ ctx }: Props) {
                   onChange={(e) => setForm({ ...form, is_gluten_free: e.target.checked })}
                   className="h-4 w-4 accent-amber-600"
                 />
-                <WheatOff className="h-4 w-4 text-amber-600" /> Senza glutine
+                <WheatOff className="h-4 w-4 text-amber-600" /> {t.glutenFree}
               </label>
             </div>
           </div>
@@ -298,13 +301,13 @@ export function MenuSection({ ctx }: Props) {
               className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-5 py-2.5 text-sm font-bold text-white shadow-glow-amber transition hover:scale-105 disabled:opacity-60"
             >
               {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-              Crea piatto
+              {t.createDish}
             </button>
             <button
               onClick={() => { setShowForm(false); setError(null); setPhotoFile(null); setPhotoPreview('') }}
               className="rounded-full border border-tt-line bg-white px-4 py-2.5 text-sm font-bold text-tt-muted transition hover:text-tt-ink"
             >
-              Annulla
+              {t.cancel}
             </button>
           </div>
         </div>
@@ -314,7 +317,7 @@ export function MenuSection({ ctx }: Props) {
       {filtered.length === 0 ? (
         <div className="py-12 text-center text-sm text-tt-muted">
           <Utensils className="mx-auto mb-2 h-8 w-8 opacity-40" />
-          Nessun piatto nel database. Crea il primo piatto con "Nuovo piatto".
+          {t.emptyDb}
         </div>
       ) : (
         <div className="space-y-2.5">
@@ -354,7 +357,7 @@ export function MenuSection({ ctx }: Props) {
                   onClick={() => toggleAvail(it)}
                   className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-bold transition ${it.is_available ? 'bg-tt-success/15 text-tt-success' : 'bg-tt-muted/15 text-tt-muted'}`}
                 >
-                  {it.is_available ? 'Disponibile' : 'Esaurito'}
+                  {it.is_available ? t.available : t.soldOut}
                 </button>
                 <button className="grid h-8 w-8 shrink-0 place-items-center rounded-lg text-tt-muted transition hover:bg-tt-surfaceAlt2 hover:text-tt-ink">
                   <Pencil className="h-4 w-4" />

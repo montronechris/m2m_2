@@ -4,24 +4,26 @@ import { useEffect, useState } from 'react'
 import { Palette, Save, CheckCircle2, Globe, Phone, MapPin, Instagram, MessageSquare, AlertCircle, ImageIcon, Trash2 } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
 import { getBranding, updateBranding, type BrandingData } from '@/lib/admin-service'
+import { useI18n } from '@/components/i18n/I18nProvider'
 
 interface Props {
   ctx: RestaurantCtx
   theme: ThemeMode
 }
 
-const swatches = [
-  { name: 'Ambra', color: '#d97706' },
-  { name: 'Smeraldo', color: '#059669' },
-  { name: 'Blu', color: '#2563eb' },
-  { name: 'Viola', color: '#7c3aed' },
-  { name: 'Giallo', color: '#eab308' },
-  { name: 'Rosa', color: '#e11d48' },
-  { name: 'Teal', color: '#0d9488' },
-  { name: 'Arancio', color: '#ea580c' },
-]
-
 export function BrandingSection({ ctx }: Props) {
+  const { tr } = useI18n()
+  const t = tr.admin.branding
+  const swatches = [
+    { name: t.swAmber, color: '#d97706' },
+    { name: t.swEmerald, color: '#059669' },
+    { name: t.swBlue, color: '#2563eb' },
+    { name: t.swPurple, color: '#7c3aed' },
+    { name: t.swYellow, color: '#eab308' },
+    { name: t.swPink, color: '#e11d48' },
+    { name: t.swTeal, color: '#0d9488' },
+    { name: t.swOrange, color: '#ea580c' },
+  ]
   const [data, setData] = useState<BrandingData | null>(null)
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -35,7 +37,7 @@ export function BrandingSection({ ctx }: Props) {
         if (active) setData(d)
       })
       .catch((e) => {
-        if (active) setError(e.message ?? 'Errore nel caricamento branding')
+        if (active) setError(e.message ?? t.errorLoad)
       })
     return () => {
       active = false
@@ -84,7 +86,7 @@ export function BrandingSection({ ctx }: Props) {
       setSaved(true)
       setTimeout(() => setSaved(false), 2200)
     } catch (e: any) {
-      setError(e.message ?? 'Errore nel salvataggio')
+      setError(e.message ?? t.errorSave)
     } finally {
       setSaving(false)
     }
@@ -94,7 +96,7 @@ export function BrandingSection({ ctx }: Props) {
     return (
       <div className="grid place-items-center py-16 text-center">
         <AlertCircle className="mb-3 h-10 w-10 text-tt-danger" />
-        <p className="text-sm font-bold text-tt-ink">Errore</p>
+        <p className="text-sm font-bold text-tt-ink">{t.error}</p>
         <p className="mt-1 max-w-xs text-xs text-tt-muted">{error}</p>
       </div>
     )
@@ -118,8 +120,8 @@ export function BrandingSection({ ctx }: Props) {
             <Palette className="h-5 w-5" />
           </span>
           <div>
-            <h2 className="font-serif text-xl font-extrabold text-tt-ink">Branding</h2>
-            <p className="text-xs text-tt-muted">Personalizza l'identità del tuo ristorante</p>
+            <h2 className="font-serif text-xl font-extrabold text-tt-ink">{t.title}</h2>
+            <p className="text-xs text-tt-muted">{t.subtitle}</p>
           </div>
         </div>
         <button
@@ -128,7 +130,7 @@ export function BrandingSection({ ctx }: Props) {
           className="flex items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-4 py-2 text-sm font-bold text-white shadow-glow-amber transition hover:scale-105 disabled:opacity-60"
         >
           {saved ? <CheckCircle2 className="h-4 w-4" /> : <Save className="h-4 w-4" />}
-          {saved ? 'Salvato!' : saving ? 'Salvataggio…' : 'Salva modifiche'}
+          {saved ? t.saved : saving ? t.saving : t.saveChanges}
         </button>
       </div>
 
@@ -146,10 +148,10 @@ export function BrandingSection({ ctx }: Props) {
       )}
 
       <div className="tt-card rounded-2xl border border-tt-line p-5 shadow-tt">
-        <p className="tt-section-title">Identità visiva</p>
+        <p className="tt-section-title">{t.visualIdentity}</p>
         <div className="space-y-3">
           <div>
-            <label className="mb-1 block text-xs font-bold text-tt-ink">Nome ristorante</label>
+            <label className="mb-1 block text-xs font-bold text-tt-ink">{t.name}</label>
             <input
               value={data.name}
               onChange={(e) => set('name', e.target.value)}
@@ -157,7 +159,7 @@ export function BrandingSection({ ctx }: Props) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-bold text-tt-ink">Tagline</label>
+            <label className="mb-1 block text-xs font-bold text-tt-ink">{t.tagline}</label>
             <input
               value={data.tagline}
               onChange={(e) => set('tagline', e.target.value)}
@@ -165,7 +167,7 @@ export function BrandingSection({ ctx }: Props) {
             />
           </div>
           <div>
-            <label className="mb-2 block text-xs font-bold text-tt-ink">Colore brand</label>
+            <label className="mb-2 block text-xs font-bold text-tt-ink">{t.brandColor}</label>
             <div className="flex flex-wrap gap-2">
               {swatches.map((s) => (
                 <button
@@ -182,11 +184,11 @@ export function BrandingSection({ ctx }: Props) {
       </div>
 
       <div className="tt-card rounded-2xl border border-tt-line p-5 shadow-tt">
-        <p className="tt-section-title">Messaggi ai clienti</p>
+        <p className="tt-section-title">{t.customerMessages}</p>
         <div className="space-y-3">
           <div>
             <label className="mb-1 flex items-center gap-1.5 text-xs font-bold text-tt-ink">
-              <MessageSquare className="h-3.5 w-3.5 text-tt-pink" /> Messaggio di benvenuto
+              <MessageSquare className="h-3.5 w-3.5 text-tt-pink" /> {t.welcomeMessage}
             </label>
             <textarea
               rows={2}
@@ -197,7 +199,7 @@ export function BrandingSection({ ctx }: Props) {
           </div>
           <div>
             <label className="mb-1 flex items-center gap-1.5 text-xs font-bold text-tt-ink">
-              <MessageSquare className="h-3.5 w-3.5 text-tt-pink" /> Messaggio di conferma ordine
+              <MessageSquare className="h-3.5 w-3.5 text-tt-pink" /> {t.confirmMessage}
             </label>
             <textarea
               rows={2}
@@ -210,22 +212,22 @@ export function BrandingSection({ ctx }: Props) {
       </div>
 
       <div className="tt-card rounded-2xl border border-tt-line p-5 shadow-tt">
-        <p className="tt-section-title">Sfondo pagina cliente</p>
+        <p className="tt-section-title">{t.customerBackground}</p>
         <div className="space-y-3">
 
           {/* Scelta tipo */}
           <div className="flex flex-wrap gap-2">
-            {(['gradient', 'image', 'color'] as const).map((t) => (
+            {(['gradient', 'image', 'color'] as const).map((bt) => (
               <button
-                key={t}
-                onClick={() => set('background_type', t)}
+                key={bt}
+                onClick={() => set('background_type', bt)}
                 className={`rounded-full px-3 py-1.5 text-xs font-bold transition border ${
-                  data.background_type === t
+                  data.background_type === bt
                     ? 'bg-tt-ink text-white border-tt-ink'
                     : 'border-tt-line text-tt-muted hover:border-tt-ink/40'
                 }`}
               >
-                {t === 'gradient' ? 'Gradiente brand' : t === 'image' ? 'Immagine' : 'Colore solido'}
+                {bt === 'gradient' ? t.bgGradient : bt === 'image' ? t.bgImage : t.bgColor}
               </button>
             ))}
           </div>
@@ -250,8 +252,8 @@ export function BrandingSection({ ctx }: Props) {
               ) : (
                 <label className="flex cursor-pointer flex-col items-center justify-center gap-2 rounded-xl border-2 border-dashed border-tt-line bg-tt-surface py-8 transition hover:border-tt-ink/30">
                   <ImageIcon className="h-8 w-8 text-tt-muted" />
-                  <span className="text-xs font-semibold text-tt-muted">Carica immagine sfondo</span>
-                  <span className="text-[10px] text-tt-muted/60">JPG, PNG, WebP · max 5MB</span>
+                  <span className="text-xs font-semibold text-tt-muted">{t.uploadBg}</span>
+                  <span className="text-[10px] text-tt-muted/60">{t.uploadBgFormats}</span>
                   <input
                     type="file"
                     accept="image/*"
@@ -260,14 +262,14 @@ export function BrandingSection({ ctx }: Props) {
                       const file = e.target.files?.[0]
                       if (file) {
                         try { await uploadBackground(file) }
-                        catch (err: any) { setError(err.message ?? 'Errore upload') }
+                        catch (err: any) { setError(err.message ?? t.errorUpload) }
                       }
                     }}
                   />
                 </label>
               )}
               <p className="text-[11px] text-tt-muted">
-                L'immagine verrà usata come sfondo fisso nella pagina ordini del cliente.
+                {t.bgImageDesc}
               </p>
             </div>
           )}
@@ -287,7 +289,7 @@ export function BrandingSection({ ctx }: Props) {
                 </span>
               </div>
               <p className="text-[11px] text-tt-muted">
-                Verrà usato come colore di sfondo uniforme nella pagina ordini del cliente.
+                {t.bgColorDesc}
               </p>
             </div>
           )}
@@ -295,7 +297,7 @@ export function BrandingSection({ ctx }: Props) {
           {/* Gradiente brand */}
           {data.background_type === 'gradient' && (
             <p className="text-xs text-tt-muted">
-              Verrà usato il gradiente generato automaticamente dal colore brand del ristorante.
+              {t.bgGradientDesc}
             </p>
           )}
 
@@ -303,13 +305,13 @@ export function BrandingSection({ ctx }: Props) {
       </div>
 
       <div className="tt-card rounded-2xl border border-tt-line p-5 shadow-tt">
-        <p className="tt-section-title">Contatti e social</p>
+        <p className="tt-section-title">{t.contactsSocial}</p>
         <div className="grid gap-3 sm:grid-cols-2">
           {([
-            { icon: MapPin, label: 'Indirizzo', field: 'address' as const },
-            { icon: Phone, label: 'Telefono', field: 'phone' as const },
-            { icon: Instagram, label: 'Instagram', field: 'instagram' as const },
-            { icon: Globe, label: 'Sito web', field: 'website' as const },
+            { icon: MapPin, label: t.addressField, field: 'address' as const },
+            { icon: Phone, label: t.phoneField, field: 'phone' as const },
+            { icon: Instagram, label: t.instagramField, field: 'instagram' as const },
+            { icon: Globe, label: t.websiteField, field: 'website' as const },
           ]).map((c) => {
             const Icon = c.icon
             return (

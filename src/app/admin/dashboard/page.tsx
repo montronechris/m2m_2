@@ -26,6 +26,11 @@ import type { RestaurantCtx, SectionId, ThemeMode } from './types'
 import { supabase } from '@/lib/supabase'
 import { getRestaurantByUser, signOut } from '@/lib/admin-service'
 import { isNotificationSoundMuted, setNotificationSoundMuted } from '@/lib/notificationSound'
+import { useI18n } from '@/components/i18n/I18nProvider'
+
+function navLabel(tr: ReturnType<typeof useI18n>['tr'], id: SectionId): string {
+  return (tr.admin.nav as Record<string, string>)[id] ?? id
+}
 
 import { DashboardSection } from './sections/DashboardSection'
 import { OrdersSection } from './sections/OrdersSection'
@@ -96,6 +101,7 @@ function BottomNavItem({
   badge?: number
 }) {
   const Icon = item.icon
+  const { tr } = useI18n()
   return (
     <button
       onClick={onClick}
@@ -105,13 +111,13 @@ function BottomNavItem({
         <Icon isActive={isActive} />
         {badge !== undefined && badge > 0 && (
           <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-tt-pink px-1 text-[10px] font-bold text-white">
-            {badge > 99 ? '99+' : badge}
+            {badge > 9 ? '9+' : badge}
           </span>
         )}
       </div>
       <span className={`max-w-full truncate text-[10px] transition-colors duration-200 ${
         isActive ? 'text-tt-ink font-bold' : 'text-tt-muted font-medium'
-      }`}>{item.label}</span>
+      }`}>{navLabel(tr, item.id)}</span>
     </button>
   )
 }
@@ -129,6 +135,7 @@ function MoreDrawer({
   activeSection: SectionId
   onSelect: (s: SectionId) => void
 }) {
+  const { tr } = useI18n()
   const operationsItems = NAV_ITEMS.filter((i) => OPERATIONS_GROUP_IDS.includes(i.id))
   const managementItems = NAV_ITEMS.filter((i) => MANAGEMENT_GROUP_IDS.includes(i.id))
   const otherItems = NAV_ITEMS.filter(
@@ -166,7 +173,7 @@ function MoreDrawer({
                   <Icon isActive={isActive} />
                 </div>
                 <span className={`flex-1 text-left text-sm font-semibold ${isActive ? 'text-tt-pink' : 'text-tt-ink'}`}>
-                  {item.label}
+                  {navLabel(tr, item.id)}
                 </span>
                 {isActive && <span className="h-2 w-2 animate-pulse rounded-full bg-tt-pink" />}
               </button>
@@ -195,7 +202,7 @@ function MoreDrawer({
           <div className="h-1.5 w-10 rounded-full bg-tt-line" />
         </div>
         <div className="flex items-center justify-between border-b border-tt-line px-5 py-3">
-          <h2 className="text-lg font-bold text-tt-ink">Tutte le sezioni</h2>
+          <h2 className="text-lg font-bold text-tt-ink">{tr.admin.layout.allSections}</h2>
           <button
             onClick={onClose}
             className="flex h-8 w-8 items-center justify-center rounded-full bg-tt-surfaceAlt2 text-tt-muted hover:text-tt-ink"
@@ -205,7 +212,7 @@ function MoreDrawer({
         </div>
         <div className="tt-scroll overflow-y-auto px-4 py-4" style={{ maxHeight: 'calc(85vh - 80px)' }}>
           <div className="mb-4">
-            <p className="tt-section-title">Principale</p>
+            <p className="tt-section-title">{tr.admin.layout.main}</p>
             <div className="overflow-hidden rounded-2xl border border-tt-line bg-white">
               {(() => {
                 const item = NAV_ITEMS.find((i) => i.id === 'dashboard')!
@@ -225,7 +232,7 @@ function MoreDrawer({
                       <Icon className="h-5 w-5" />
                     </div>
                     <span className={`flex-1 text-left text-sm font-semibold ${isActive ? 'text-tt-pink' : 'text-tt-ink'}`}>
-                      {item.label}
+                      {navLabel(tr, item.id)}
                     </span>
                     {isActive && <span className="h-2 w-2 animate-pulse rounded-full bg-tt-pink" />}
                   </button>
@@ -233,11 +240,11 @@ function MoreDrawer({
               })()}
             </div>
           </div>
-          <GroupBlock label="Operazioni" items={operationsItems} />
-          <GroupBlock label="Gestione" items={managementItems} />
-          <GroupBlock label="Altro" items={otherItems} />
+          <GroupBlock label={tr.admin.layout.operations} items={operationsItems} />
+          <GroupBlock label={tr.admin.layout.management} items={managementItems} />
+          <GroupBlock label={tr.admin.layout.other} items={otherItems} />
           <div className="mb-4">
-            <p className="tt-section-title">Sistema</p>
+            <p className="tt-section-title">{tr.admin.layout.system}</p>
             <div className="overflow-hidden rounded-2xl border border-tt-line bg-white">
               <button
                 onClick={() => handleSelect('settings')}
@@ -252,7 +259,7 @@ function MoreDrawer({
                   <Settings className="h-5 w-5" />
                 </div>
                 <span className={`flex-1 text-left text-sm font-semibold ${activeSection === 'settings' ? 'text-tt-pink' : 'text-tt-ink'}`}>
-                  Impostazioni
+                  {tr.admin.nav.settings}
                 </span>
                 {activeSection === 'settings' && <span className="h-2 w-2 animate-pulse rounded-full bg-tt-pink" />}
               </button>
@@ -278,6 +285,7 @@ function SidebarItem({
   badge?: number
 }) {
   const Icon = item.icon
+  const { tr } = useI18n()
   return (
     <button
       onClick={onClick}
@@ -291,11 +299,11 @@ function SidebarItem({
         <Icon className="h-5 w-5" />
         {badge !== undefined && badge > 0 && (
           <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-[14px] items-center justify-center rounded-full bg-tt-pinkSoft px-1 text-[9px] font-bold text-white">
-            {badge > 99 ? '99+' : badge}
+            {badge > 9 ? '9+' : badge}
           </span>
         )}
       </div>
-      <span className="flex-1 text-left">{item.label}</span>
+      <span className="flex-1 text-left">{navLabel(tr, item.id)}</span>
     </button>
   )
 }
@@ -304,6 +312,7 @@ function SidebarItem({
 
 export default function AdminDashboardPage() {
   const router = useRouter()
+  const { tr, lang } = useI18n()
   const [activeSection, setActiveSection] = useState<SectionId>(() => {
     if (typeof window === 'undefined') return 'dashboard'
     return (sessionStorage.getItem('tt-admin-active-section') as SectionId | null) ?? 'dashboard'
@@ -314,10 +323,17 @@ export default function AdminDashboardPage() {
   }, [activeSection])
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false)
   const [soundMuted, setSoundMuted] = useState(false)
+  const [confirmLogout, setConfirmLogout] = useState(false)
+  const [logoutClosing, setLogoutClosing] = useState(false)
+  const closeLogoutConfirm = () => {
+    setLogoutClosing(true)
+    setTimeout(() => { setConfirmLogout(false); setLogoutClosing(false) }, 200)
+  }
   const [isLoading, setIsLoading] = useState(true)
   const [ctx, setCtx] = useState<RestaurantCtx | null>(null)
   const [activeOrdersCount, setActiveOrdersCount] = useState(0)
   const [pendingPaymentsCount, setPendingPaymentsCount] = useState(0)
+  const [pendingWaiterCount, setPendingWaiterCount] = useState(0)
   const [brandColor, setBrandColor] = useState('#10b981')
   const theme: ThemeMode = 'light'
 
@@ -360,12 +376,13 @@ export default function AdminDashboardPage() {
 
         const restaurant = await getRestaurantByUser()
 
-        // active orders count
+        // active orders count — stessa logica di OrdersSection: escludi
+        // 'pending' (carrello cliente ancora aperto), oltre a stati finali.
         const { count } = await supabase
           .from('orders')
           .select('id', { count: 'exact', head: true })
           .eq('restaurant_id', restaurant.id)
-          .in('status', ['pending', 'preparing', 'ready'])
+          .not('status', 'in', '("pending","served","delivered","cancelled","expired")')
 
         if (!active) return
 
@@ -374,12 +391,13 @@ export default function AdminDashboardPage() {
           restaurantId: restaurant.id,
           restaurantName: restaurant.name,
           logoUrl: restaurant.logo_url,
-          plan: null,
-          accessExpiresAt: null,
-          maxStaff: null,
+          plan: restaurant.plan,
+          accessExpiresAt: restaurant.access_expires_at,
+          maxStaff: restaurant.max_staff,
           userId: user.id,
           userFirstName: restaurant.userName.split(' ')[0] ?? '',
           userLastName: restaurant.userName.split(' ').slice(1).join(' ') ?? '',
+          userAvatarUrl: restaurant.avatarUrl,
           userEmail: user.email ?? '',
           role: restaurant.userRole,
           rolePermissions: null,
@@ -388,7 +406,7 @@ export default function AdminDashboardPage() {
         setActiveOrdersCount(count ?? 0)
         // Badge pagamenti pendenti
         supabase.from('waiter_calls').select('id', { count: 'exact', head: true })
-          .eq('restaurant_id', restaurant.restaurantId).eq('type', 'payment').eq('status', 'pending')
+          .eq('restaurant_id', restaurant.id).eq('type', 'payment').eq('status', 'pending')
           .then(({ count: c }) => setPendingPaymentsCount(c ?? 0))
       } catch (err) {
         console.error('Errore caricamento dashboard:', err)
@@ -403,6 +421,54 @@ export default function AdminDashboardPage() {
     }
   }, [router])
 
+  // Realtime refresh dei badge (ordini + richieste pagamento)
+  useEffect(() => {
+    if (!ctx) return
+    const restaurantId = ctx.restaurantId
+    const refreshOrders = async () => {
+      const { count } = await supabase
+        .from('orders')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', restaurantId)
+        .not('status', 'in', '("pending","served","delivered","cancelled","expired")')
+      setActiveOrdersCount(count ?? 0)
+    }
+    const refreshPayments = async () => {
+      const { count } = await supabase
+        .from('waiter_calls')
+        .select('id', { count: 'exact', head: true })
+        .eq('restaurant_id', restaurantId)
+        .eq('type', 'payment')
+        .eq('status', 'pending')
+      setPendingPaymentsCount(count ?? 0)
+    }
+    // Waiter badge = ordini pronti da consegnare + tutte le richieste al tavolo pendenti
+    const refreshWaiter = async () => {
+      const [{ count: ready }, { count: calls }] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('id', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurantId)
+          .eq('status', 'ready'),
+        supabase
+          .from('waiter_calls')
+          .select('id', { count: 'exact', head: true })
+          .eq('restaurant_id', restaurantId)
+          .eq('status', 'pending'),
+      ])
+      setPendingWaiterCount((ready ?? 0) + (calls ?? 0))
+    }
+    refreshWaiter()
+    const channel = supabase
+      .channel(`dashboard-badges-${restaurantId}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${restaurantId}` }, () => { refreshOrders(); refreshWaiter() })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'waiter_calls', filter: `restaurant_id=eq.${restaurantId}` }, () => { refreshPayments(); refreshWaiter() })
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [ctx])
+
   const userInitials = useMemo(() => {
     if (!ctx) return 'TR'
     const fn = ctx.userFirstName.trim()
@@ -411,10 +477,7 @@ export default function AdminDashboardPage() {
     return 'TR'
   }, [ctx])
 
-  const activeLabel =
-    activeSection === 'settings'
-      ? 'Impostazioni'
-      : NAV_ITEMS.find((n) => n.id === activeSection)?.label ?? 'Home'
+  const activeLabel = navLabel(tr, activeSection)
 
   const now = new Date()
 
@@ -497,7 +560,7 @@ export default function AdminDashboardPage() {
         {/* Nav scroll */}
         <nav className="tt-scroll flex-1 overflow-y-auto px-3 py-4">
           <div className="mb-4">
-            <p className="tt-section-title px-2">Principale</p>
+            <p className="tt-section-title px-2">{tr.admin.layout.main}</p>
             <div className="space-y-1">
               <SidebarItem
                 item={NAV_ITEMS.find((i) => i.id === 'dashboard')!}
@@ -507,7 +570,7 @@ export default function AdminDashboardPage() {
             </div>
           </div>
           <div className="mb-4">
-            <p className="tt-section-title px-2">Operazioni</p>
+            <p className="tt-section-title px-2">{tr.admin.layout.operations}</p>
             <div className="space-y-1">
               {operationsItems.map((it) => (
                 <SidebarItem
@@ -515,13 +578,13 @@ export default function AdminDashboardPage() {
                   item={it}
                   isActive={activeSection === it.id}
                   onClick={() => setActiveSection(it.id)}
-                  badge={it.id === 'orders' ? activeOrdersCount : it.id === 'payment' ? pendingPaymentsCount : undefined}
+                  badge={it.id === 'orders' ? activeOrdersCount : it.id === 'payment' ? pendingPaymentsCount : it.id === 'waiter' ? pendingWaiterCount : undefined}
                 />
               ))}
             </div>
           </div>
           <div className="mb-4">
-            <p className="tt-section-title px-2">Gestione</p>
+            <p className="tt-section-title px-2">{tr.admin.layout.management}</p>
             <div className="space-y-1">
               {managementItems.map((it) => (
                 <SidebarItem
@@ -534,7 +597,7 @@ export default function AdminDashboardPage() {
             </div>
           </div>
           <div>
-            <p className="tt-section-title px-2">Sistema</p>
+            <p className="tt-section-title px-2">{tr.admin.layout.system}</p>
             <div className="space-y-1">
               <SidebarItem
                 item={{ id: 'settings', label: 'Impostazioni', icon: Settings }}
@@ -553,7 +616,7 @@ export default function AdminDashboardPage() {
               <p className="truncate text-sm font-bold text-tt-ink">{ctx.userFirstName} {ctx.userLastName}</p>
               <p className="truncate text-[11px] text-tt-muted">{ctx.userEmail}</p>
             </div>
-            <button className="grid h-8 w-8 place-items-center rounded-lg text-tt-muted transition hover:bg-tt-danger/10 hover:text-tt-danger" title="Esci">
+            <button className="grid h-8 w-8 place-items-center rounded-lg text-tt-muted transition hover:bg-tt-danger/10 hover:text-tt-danger" title={tr.admin.layout.logout}>
               <LogOut className="h-4 w-4" />
             </button>
           </div>
@@ -563,15 +626,23 @@ export default function AdminDashboardPage() {
       {/* ════════════════════════════════════════════════════════════════════
           MAIN COLUMN (offset by sidebar on desktop)
           ════════════════════════════════════════════════════════════════════ */}
-      <div className="flex min-h-screen flex-1 flex-col lg:pl-64">
+      <div className="flex min-h-screen min-w-0 flex-1 flex-col lg:pl-64">
         {/* Topbar */}
-        <header className="sticky top-0 z-30 flex items-center justify-between border-b border-tt-line bg-white/95 px-4 py-3 backdrop-blur-xl lg:px-6">
-          <div className="min-w-0 flex-1">
+        <header className="sticky top-0 z-30 grid grid-cols-[auto_1fr_auto] items-center gap-2 border-b border-tt-line bg-white/95 px-4 py-3 backdrop-blur-xl lg:px-6">
+          <button
+            onClick={() => setConfirmLogout(true)}
+            title={tr.admin.layout.logout}
+            className="flex h-9 w-9 items-center justify-center rounded-full text-tt-muted transition hover:bg-tt-danger/10 hover:text-tt-danger"
+          >
+            <LogOut className="h-5 w-5" />
+          </button>
+
+          <div className="min-w-0 text-center">
             <h1 className="truncate text-lg font-extrabold leading-tight text-tt-ink lg:text-xl">
               {activeLabel}
             </h1>
             <p className="truncate text-xs capitalize text-tt-muted">
-              {now.toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}
+              {now.toLocaleDateString(lang === 'en' ? 'en-US' : 'it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}
             </p>
           </div>
 
@@ -584,20 +655,48 @@ export default function AdminDashboardPage() {
               {soundMuted ? <BellOff className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
             </button>
             <button
-              onClick={handleLogout}
-              title="Esci"
-              className="flex h-9 w-9 items-center justify-center rounded-full text-tt-muted transition hover:bg-tt-danger/10 hover:text-tt-danger"
-            >
-              <LogOut className="h-5 w-5" />
-            </button>
-            <button
               onClick={() => setActiveSection('settings')}
-              className="tt-avatar h-9 w-9 text-sm shadow-tt transition hover:scale-105"
+              className="h-9 w-9 overflow-hidden rounded-full border-2 border-tt-pink shadow-tt transition hover:scale-105"
             >
-              {userInitials}
+              {ctx.userAvatarUrl ? (
+                <img src={ctx.userAvatarUrl} alt="" className="h-full w-full object-cover" />
+              ) : (
+                <span className="tt-avatar flex h-full w-full items-center justify-center text-sm">{userInitials}</span>
+              )}
             </button>
           </div>
         </header>
+
+        {confirmLogout && (
+          <div className={`fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm ${logoutClosing ? 'animate-ttFadeOut' : 'animate-ttFadeUp'}`} onClick={closeLogoutConfirm}>
+            <div className={`w-full max-w-sm rounded-2xl border border-tt-line bg-white p-5 shadow-tt ${logoutClosing ? 'animate-ttFadeOut' : ''}`} onClick={(e) => e.stopPropagation()}>
+              <div className="mb-3 grid h-10 w-10 place-items-center rounded-xl bg-tt-danger/10 text-tt-danger">
+                <LogOut className="h-5 w-5" />
+              </div>
+              <h3 className="mb-1 font-serif text-lg font-extrabold text-tt-ink">
+                {lang === 'en' ? 'Log out?' : 'Uscire dal profilo?'}
+              </h3>
+              <p className="mb-4 text-sm text-tt-muted">
+                {lang === 'en' ? 'Are you sure you want to log out of your account?' : 'Sei sicuro di voler uscire dal tuo profilo?'}
+              </p>
+              <div className="flex gap-2">
+                <button
+                  onClick={closeLogoutConfirm}
+                  className="h-11 flex-1 rounded-full border border-tt-line bg-white text-sm font-bold text-tt-muted transition hover:text-tt-ink"
+                >
+                  {lang === 'en' ? 'Cancel' : 'Annulla'}
+                </button>
+                <button
+                  onClick={() => { setConfirmLogout(false); handleLogout() }}
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-tt-danger px-3 text-sm font-bold text-white shadow-tt transition hover:scale-105"
+                >
+                  <LogOut className="h-4 w-4" />
+                  <span>{tr.admin.layout.logout}</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
         {/* Main content */}
         <main className="flex-1 overflow-y-auto tt-scroll" style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
@@ -633,7 +732,7 @@ export default function AdminDashboardPage() {
             )
           }
           if (!slot.item) return null
-          const showBadge = slot.item.id === 'orders' ? activeOrdersCount : slot.item.id === 'payment' ? pendingPaymentsCount : undefined
+          const showBadge = slot.item.id === 'orders' ? activeOrdersCount : slot.item.id === 'payment' ? pendingPaymentsCount : slot.item.id === 'waiter' ? pendingWaiterCount : undefined
           return (
             <BottomNavItem
               key={slot.item.id}

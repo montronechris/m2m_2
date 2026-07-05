@@ -5,6 +5,7 @@ import { CreditCard, Bell, CheckCircle2, AlertCircle, Clock } from 'lucide-react
 import type { RestaurantCtx, ThemeMode } from '../types'
 import { supabase } from '@/lib/supabase'
 import { playNotificationSound } from '@/lib/notificationSound'
+import { useI18n } from '@/components/i18n/I18nProvider'
 
 interface Props {
   ctx: RestaurantCtx
@@ -22,6 +23,8 @@ type PaymentRequest = {
 }
 
 export function PaymentSection({ ctx }: Props) {
+  const { tr } = useI18n()
+  const t = tr.admin.payment
   const [requests, setRequests] = useState<PaymentRequest[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -67,7 +70,7 @@ export function PaymentSection({ ctx }: Props) {
       seenIdsRef.current = newIds
       setRequests(enriched)
     } catch (e: any) {
-      setError(e.message ?? 'Errore')
+      setError(e.message ?? t.error)
     } finally {
       setLoading(false)
     }
@@ -120,7 +123,7 @@ export function PaymentSection({ ctx }: Props) {
     return (
       <div className="grid place-items-center py-16 text-center">
         <AlertCircle className="mb-3 h-10 w-10 text-tt-danger" />
-        <p className="text-sm font-bold text-tt-ink">Errore</p>
+        <p className="text-sm font-bold text-tt-ink">{t.error}</p>
         <p className="mt-1 max-w-xs text-xs text-tt-muted">{error}</p>
       </div>
     )
@@ -129,21 +132,21 @@ export function PaymentSection({ ctx }: Props) {
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="font-serif text-xl font-extrabold text-tt-ink">Richieste Pagamento</h2>
+        <h2 className="font-serif text-xl font-extrabold text-tt-ink">{t.title}</h2>
         <p className="text-xs text-tt-muted">
-          {requests.length} {requests.length === 1 ? 'richiesta in attesa' : 'richieste in attesa'}
+          {t.countF(requests.length)}
         </p>
       </div>
 
       {requests.length === 0 ? (
         <div className="tt-card rounded-2xl border border-tt-line p-12 text-center shadow-tt">
           <CreditCard className="mx-auto mb-3 h-9 w-9 text-tt-muted opacity-40" />
-          <p className="text-sm text-tt-muted">Nessuna richiesta di pagamento in attesa.</p>
+          <p className="text-sm text-tt-muted">{t.emptyPayments}</p>
         </div>
       ) : (
         <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {requests.map((r) => {
-            const time = new Date(r.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+            const time = new Date(r.created_at).toLocaleTimeString(t.locale, { hour: '2-digit', minute: '2-digit' })
             const total = r.order_total != null ? (r.order_total / 100).toFixed(2) : null
             return (
               <div key={r.id} className="tt-card overflow-hidden rounded-2xl border-2 border-tt-warning/40 bg-tt-warning/5 shadow-tt">
@@ -153,10 +156,10 @@ export function PaymentSection({ ctx }: Props) {
                   </span>
                   <div>
                     <p className="text-sm font-bold text-tt-ink">
-                      {r.table_label ? `Tavolo ${r.table_label}` : 'Tavolo —'}
+                      {r.table_label ? `${t.table} ${r.table_label}` : t.tableDash}
                     </p>
                     {total && (
-                      <p className="text-xs text-tt-muted">Totale: €{total}</p>
+                      <p className="text-xs text-tt-muted">{t.total(total)}</p>
                     )}
                   </div>
                   <span className="ml-auto flex items-center gap-1 text-xs text-tt-muted">
@@ -166,7 +169,7 @@ export function PaymentSection({ ctx }: Props) {
                 <div className="px-4 py-3">
                   <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-tt-warning">
                     <Bell className="h-3 w-3 animate-pulse" />
-                    Il cliente è pronto per pagare
+                    {t.readyToPay}
                   </p>
                   <button
                     onClick={() => markDone(r.id)}
@@ -174,7 +177,7 @@ export function PaymentSection({ ctx }: Props) {
                     className="flex w-full items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-brand-emerald to-brand-sky py-1.5 text-xs font-bold text-white shadow-glow-emerald transition hover:scale-105 disabled:opacity-60"
                   >
                     <CheckCircle2 className="h-3.5 w-3.5" />
-                    Pagamento gestito
+                    {t.paymentHandled}
                   </button>
                 </div>
               </div>

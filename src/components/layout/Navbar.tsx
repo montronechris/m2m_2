@@ -5,6 +5,8 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, useSpring } from "framer-motion";
+import { LanguageSwitcher } from "@/components/landing/LanguageSwitcher";
+import { useI18n } from "@/components/i18n/I18nProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -184,6 +186,7 @@ export function Navbar({
   ));
 
   // internal scroll state (used if caller doesn't pass scrolled)
+  const { tr } = useI18n();
   const [scrolledInternal, setScrolledInternal] = useState(false);
   const scrolled = scrolledProp ?? scrolledInternal;
 
@@ -353,7 +356,7 @@ export function Navbar({
               /* ── Contenuto sessione ordine ── */
               <div className="relative z-[2] flex h-full items-center gap-0">
                 <BladeLink href={`/order/${sessionId}`} brandColor={brandColor}>
-                  IL TUO ORDINE
+                  {tr.client.status.yourOrder.toUpperCase()}
                 </BladeLink>
 
                 {/* Divisore + tavolo */}
@@ -394,7 +397,7 @@ export function Navbar({
                 </div>
 
                 <BladeLink href={`/status/${sessionId}`} brandColor={brandColor}>
-                  STATO ORDINE
+                  {tr.client.status.orderStatus.toUpperCase()}
                 </BladeLink>
               </div>
             ) : (
@@ -586,6 +589,8 @@ export function Navbar({
                   />
                 </motion.button>
               )}
+              {/* Language switcher */}
+              <LanguageSwitcher />
               {/* Bell / chiama cameriere */}
               <style>{`
                 @keyframes navBellRing {
@@ -698,8 +703,8 @@ export function Navbar({
             }}
           >
             {[
-              { href: `/order/${sessionId}`, label: "IL TUO ORDINE" },
-              { href: `/status/${sessionId}`, label: "STATO ORDINE" },
+              { href: `/order/${sessionId}`, label: tr.client.status.yourOrder.toUpperCase() },
+              { href: `/status/${sessionId}`, label: tr.client.status.orderStatus.toUpperCase() },
             ].map(({ href, label }) => (
               <Link key={href} href={href}
                 style={{

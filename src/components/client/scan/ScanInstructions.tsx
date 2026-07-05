@@ -4,6 +4,7 @@
 import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, Sparkles, ShoppingCart, Layers2, Star } from "lucide-react";
+import { useI18n } from "@/components/i18n/I18nProvider";
 
 interface ScanInstructionsProps {
   primaryColor?: string;
@@ -13,41 +14,6 @@ interface ScanInstructionsProps {
   onContinue: () => void;
 }
 
-const STEPS = [
-  {
-    number: "1",
-    title: "Scegli i piatti",
-    description: "Sfoglia il menu e aggiungi al carrello tutto quello che vuoi ordinare.",
-    icon: (color: string) => <ShoppingCart size={22} color={color} strokeWidth={1.8} />,
-  },
-  {
-    number: "2",
-    title: "Dividili in portate",
-    description:
-      "Organizza i piatti scelti in portate per decidere in che ordine arriveranno al tavolo.",
-    icon: (color: string) => <Layers2 size={22} color={color} strokeWidth={1.8} />,
-  },
-  {
-    number: "3",
-    title: "Lascia una recensione (opzionale)",
-    description:
-      "A fine pasto puoi lasciare un feedback al ristorante e al sito per aiutarci a migliorare.",
-    icon: (color: string) => <Star size={22} color={color} strokeWidth={1.8} />,
-  },
-];
-
-const ACTIONS = [
-  {
-    icon: <Bell size={18} color="#fff" />,
-    title: "Chiama il cameriere",
-    description: "Invia una notifica al personale — arriverà al tuo tavolo il prima possibile.",
-  },
-  {
-    icon: <Sparkles size={18} color="#fff" />,
-    title: "Assistente AI",
-    description: "Chiedi ingredienti, allergeni, consigli sui piatti o qualsiasi altra domanda sul menu.",
-  },
-];
 
 export function ScanInstructions({
   primaryColor,
@@ -56,8 +22,20 @@ export function ScanInstructions({
   ready,
   onContinue,
 }: ScanInstructionsProps) {
+  const { tr } = useI18n();
+  const t = tr.client.scan;
   const [confirmed, setConfirmed] = useState(false);
   const [ticked, setTicked] = useState(false);
+
+  const STEPS = [
+    { number: "1", title: t.step1Title, description: t.step1Desc, icon: (color: string) => <ShoppingCart size={22} color={color} strokeWidth={1.8} /> },
+    { number: "2", title: t.step2Title, description: t.step2Desc, icon: (color: string) => <Layers2 size={22} color={color} strokeWidth={1.8} /> },
+    { number: "3", title: t.step3Title, description: t.step3Desc, icon: (color: string) => <Star size={22} color={color} strokeWidth={1.8} /> },
+  ];
+  const ACTIONS = [
+    { icon: <Bell size={18} color="#fff" />, title: t.actionWaiterTitle, description: t.actionWaiterDesc },
+    { icon: <Sparkles size={18} color="#fff" />, title: t.actionAiTitle, description: t.actionAiDesc },
+  ];
 
   const brand = primaryColor ?? "#1A3D2B";
   const canContinue = ready && confirmed;
@@ -138,7 +116,7 @@ export function ScanInstructions({
             marginBottom: 8,
           }}
         >
-          Come funziona
+          {t.howItWorks}
         </motion.p>
 
         {/* Title */}
@@ -157,7 +135,7 @@ export function ScanInstructions({
             margin: "0 0 32px",
           }}
         >
-          Prima di ordinare
+          {t.beforeOrdering}
         </motion.h1>
 
         {/* Steps card */}
@@ -222,7 +200,7 @@ export function ScanInstructions({
             marginBottom: 14,
           }}
         >
-          Tasti disponibili
+          {t.availableKeys}
         </p>
 
         {/* Action buttons */}
@@ -311,7 +289,7 @@ export function ScanInstructions({
             )}
           </div>
           <span style={{ fontSize: 14, color: "#3D3530", lineHeight: 1.5 }}>
-            Ho letto le istruzioni e sono pronto a ordinare
+            {t.readAndReady}
           </span>
         </motion.label>
       </div>
@@ -388,11 +366,11 @@ export function ScanInstructions({
                     animation: "spin 0.7s linear infinite",
                   }}
                 />
-                Verifica in corso…
+                {t.verifying}
               </motion.span>
             ) : (
               <motion.span key="label" initial={{ opacity: 0 }} animate={{ opacity: 1 }}>
-                Vai al menu
+                {t.goToMenu}
               </motion.span>
             )}
           </AnimatePresence>

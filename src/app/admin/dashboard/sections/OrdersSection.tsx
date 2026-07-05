@@ -15,6 +15,7 @@ import {
   type PortataState,
 } from '@/lib/admin-service'
 import { playNotificationSound } from '@/lib/notificationSound'
+import { useI18n } from '@/components/i18n/I18nProvider'
 
 interface Props {
   ctx: RestaurantCtx
@@ -22,34 +23,27 @@ interface Props {
 }
 
 // Map DB status → UI meta (usata solo per la cronologia, ormai a livello ordine).
-const statusMeta: Record<string, { label: string; cls: string; icon: typeof Clock }> = {
-  pending: { label: 'In attesa', cls: 'bg-tt-muted/15 text-tt-muted', icon: Clock },
-  confirmed: { label: 'Confermato', cls: 'bg-tt-cyan/15 text-tt-cyan', icon: CheckCircle2 },
-  preparing: { label: 'In preparazione', cls: 'bg-tt-warning/15 text-tt-warning', icon: ChefHat },
-  cooking: { label: 'In cottura', cls: 'bg-tt-pink/15 text-tt-pink', icon: ChefHat },
-  ready: { label: 'Pronto', cls: 'bg-tt-success/15 text-tt-success', icon: CheckCircle2 },
-  served: { label: 'Servito', cls: 'bg-tt-muted/15 text-tt-muted', icon: CheckCircle2 },
-  delivered: { label: 'Servito', cls: 'bg-tt-muted/15 text-tt-muted', icon: CheckCircle2 },
-  cancelled: { label: 'Annullato', cls: 'bg-tt-danger/15 text-tt-danger', icon: AlertCircle },
+const statusMeta: Record<string, { key: string; cls: string; icon: typeof Clock }> = {
+  pending: { key: 'pending', cls: 'bg-tt-muted/15 text-tt-muted', icon: Clock },
+  confirmed: { key: 'confirmed', cls: 'bg-tt-cyan/15 text-tt-cyan', icon: CheckCircle2 },
+  preparing: { key: 'preparing', cls: 'bg-tt-warning/15 text-tt-warning', icon: ChefHat },
+  cooking: { key: 'cooking', cls: 'bg-tt-pink/15 text-tt-pink', icon: ChefHat },
+  ready: { key: 'ready', cls: 'bg-tt-success/15 text-tt-success', icon: CheckCircle2 },
+  served: { key: 'served', cls: 'bg-tt-muted/15 text-tt-muted', icon: CheckCircle2 },
+  delivered: { key: 'delivered', cls: 'bg-tt-muted/15 text-tt-muted', icon: CheckCircle2 },
+  cancelled: { key: 'cancelled', cls: 'bg-tt-danger/15 text-tt-danger', icon: AlertCircle },
 }
-
-const portataLabels: Record<number, string> = { 1: 'Prima portata', 2: 'Seconda portata', 3: 'Terza portata', 4: 'Quarta portata' }
 
 type ExtendedPortataState = PortataState | 'in_arrivo'
 
-const portataStateMeta: Record<ExtendedPortataState, { label: string; cls: string; icon: typeof Clock }> = {
-  in_arrivo:       { label: 'In arrivo',          cls: 'bg-tt-cyan/15 text-tt-cyan',      icon: Clock },
-  in_preparazione: { label: 'In preparazione',    cls: 'bg-tt-warning/15 text-tt-warning', icon: ChefHat },
-  pronta:          { label: 'Pronta',             cls: 'bg-tt-success/15 text-tt-success', icon: CheckCircle2 },
-  consegnata:      { label: 'Consegnata',         cls: 'bg-tt-muted/15 text-tt-muted',    icon: CheckCircle2 },
-  ritirata:        { label: 'Ritirata',           cls: 'bg-tt-muted/15 text-tt-muted',    icon: CheckCircle2 },
+const portataStateMeta: Record<ExtendedPortataState, { key: string; cls: string; icon: typeof Clock }> = {
+  in_arrivo:       { key: 'in_arrivo',          cls: 'bg-tt-cyan/15 text-tt-cyan',      icon: Clock },
+  in_preparazione: { key: 'in_preparazione',    cls: 'bg-tt-warning/15 text-tt-warning', icon: ChefHat },
+  pronta:          { key: 'pronta',             cls: 'bg-tt-success/15 text-tt-success', icon: CheckCircle2 },
+  consegnata:      { key: 'consegnata',         cls: 'bg-tt-muted/15 text-tt-muted',    icon: CheckCircle2 },
+  ritirata:        { key: 'ritirata',           cls: 'bg-tt-muted/15 text-tt-muted',    icon: CheckCircle2 },
 }
 
-const filters: { id: string; label: string }[] = [
-  { id: 'all', label: 'Tutti' },
-  { id: 'preparing', label: 'In preparazione' },
-  { id: 'ready', label: 'Pronti' },
-]
 
 /** Raggruppa gli item per portata (numero crescente). */
 function groupByPortata(items: OrderItem[]): { portata: number; items: OrderItem[] }[] {
@@ -69,6 +63,13 @@ function getActivePortataGroup(items: OrderItem[]) {
 }
 
 export function OrdersSection({ ctx }: Props) {
+  const { tr } = useI18n()
+  const t = tr.admin.orders
+  const filters: { id: string; label: string }[] = [
+    { id: 'all', label: t.filters.all },
+    { id: 'preparing', label: t.filters.preparing },
+    { id: 'ready', label: t.filters.ready },
+  ]
   const [filter, setFilter] = useState<string>('all')
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
@@ -109,7 +110,7 @@ export function OrdersSection({ ctx }: Props) {
       const data = await getHistoryOrders(ctx.restaurantId)
       setHistory(data)
     } catch (e: any) {
-      setHistoryError(e.message ?? 'Errore nel caricamento cronologia')
+      setHistoryError(e.message ?? t.errorHistory)
     } finally {
       setHistoryLoading(false)
     }
@@ -145,7 +146,7 @@ export function OrdersSection({ ctx }: Props) {
         })
         .catch((e) => {
           if (active) {
-            setError(e.message ?? 'Errore nel caricamento ordini')
+            setError(e.message ?? t.errorOrders)
             setLoading(false)
           }
         })
@@ -216,7 +217,7 @@ export function OrdersSection({ ctx }: Props) {
             : { ...x, order_items: (x.order_items ?? []).map((it) => (it.portata === portata ? { ...it, portata_completed: false } : it)) }
         )
       )
-      setError(e.message ?? 'Errore aggiornamento portata')
+      setError(e.message ?? t.errorPortata)
     }
   }
 
@@ -225,7 +226,7 @@ export function OrdersSection({ ctx }: Props) {
     return (
       <div className="grid place-items-center py-16 text-center">
         <AlertCircle className="mb-3 h-10 w-10 text-tt-danger" />
-        <p className="text-sm font-bold text-tt-ink">Errore</p>
+        <p className="text-sm font-bold text-tt-ink">{t.error}</p>
         <p className="mt-1 max-w-xs text-xs text-tt-muted">{error}</p>
       </div>
     )
@@ -235,16 +236,16 @@ export function OrdersSection({ ctx }: Props) {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div>
-          <h2 className="font-serif text-xl font-extrabold text-tt-ink">Ordini</h2>
+          <h2 className="font-serif text-xl font-extrabold text-tt-ink">{t.title}</h2>
           <p className="text-xs text-tt-muted">
-            {visible.length} ordini · {orders.length} attivi
+            {t.countActive(visible.length, orders.length)}
           </p>
         </div>
         <button
           onClick={openHistory}
           className="flex items-center gap-1.5 rounded-full border border-tt-line bg-white px-4 py-2 text-sm font-bold text-tt-ink transition hover:bg-tt-surfaceAlt2"
         >
-          <History className="h-4 w-4" /> Cronologia
+          <History className="h-4 w-4" /> {t.history}
         </button>
       </div>
 
@@ -276,7 +277,9 @@ export function OrdersSection({ ctx }: Props) {
           const state: ExtendedPortataState | null = rawState === 'in_preparazione' && (o.status === 'confirmed' || o.status === 'pending')
             ? 'in_arrivo'
             : rawState
-          const st = state ? portataStateMeta[state] : statusMeta['pending']
+          const stMeta = state ? portataStateMeta[state] : statusMeta['pending']
+          const stLabel = state ? (t.portataState as Record<string, string>)[stMeta.key] : t.status.pending
+          const st = { cls: stMeta.cls, icon: stMeta.icon, label: stLabel }
           const StatusIcon = st.icon
           const pinned = pinnedIds.includes(o.id)
           return (
@@ -290,7 +293,7 @@ export function OrdersSection({ ctx }: Props) {
                     {o.ordine ? `#${o.ordine}` : (o.table_code ?? `#${o.id.slice(-6)}`)}
                   </p>
                   {o.table_code && o.ordine && (
-                    <p className="shrink-0 text-xs text-tt-muted">· Tavolo {o.table_code}</p>
+                    <p className="shrink-0 text-xs text-tt-muted">· {t.table} {o.table_code}</p>
                   )}
                 </div>
                 <span className="shrink-0 text-xs text-tt-muted">{time}</span>
@@ -299,7 +302,7 @@ export function OrdersSection({ ctx }: Props) {
                 </span>
                 <button
                   onClick={() => togglePin(o.id)}
-                  title={pinned ? 'Sblocca ordine' : 'Fissa in alto'}
+                  title={pinned ? t.unpin : t.pin}
                   className={`grid h-7 w-7 shrink-0 place-items-center rounded-full transition ${
                     pinned ? 'bg-brand-amber text-white' : 'bg-white text-tt-muted hover:text-tt-ink'
                   }`}
@@ -311,7 +314,7 @@ export function OrdersSection({ ctx }: Props) {
                 {activeGroup ? (
                   <>
                     <p className="mb-1.5 text-xs font-bold text-tt-muted">
-                      {portataLabels[activeGroup.portata] ?? `${activeGroup.portata}ª portata`}
+                      {t.portataLabel(activeGroup.portata)}
                       {totalPortate > 1 ? ` (${activeGroup.portata}/${totalPortate})` : ''}
                     </p>
                     <div className="space-y-1">
@@ -320,13 +323,13 @@ export function OrdersSection({ ctx }: Props) {
                           <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-tt-pink/10 text-[10px] font-bold text-tt-pink">
                             {it.quantity}×
                           </span>
-                          <span className="truncate text-tt-ink">{it.menu_items?.name ?? 'Piatto'}</span>
+                          <span className="truncate text-tt-ink">{it.menu_items?.name ?? t.dish}</span>
                         </div>
                       ))}
                     </div>
                   </>
                 ) : (
-                  <p className="text-xs text-tt-muted">Nessun dettaglio disponibile</p>
+                  <p className="text-xs text-tt-muted">{t.noDetails}</p>
                 )}
               </div>
               <div className="flex items-center justify-between border-t border-tt-line bg-tt-surfaceAlt/60 px-4 py-2.5">
@@ -338,7 +341,7 @@ export function OrdersSection({ ctx }: Props) {
                     }}
                     className="rounded-full bg-gradient-to-r from-tt-cyan to-blue-500 px-4 py-1.5 text-xs font-bold text-white shadow-sm transition hover:scale-105"
                   >
-                    Inizia preparazione
+                    {t.startPreparing}
                   </button>
                 )}
                 {activeGroup && state === 'in_preparazione' && (
@@ -346,7 +349,7 @@ export function OrdersSection({ ctx }: Props) {
                     onClick={() => markReady(o, activeGroup.portata)}
                     className="rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-4 py-1.5 text-xs font-bold text-white shadow-glow-amber shadow-sm transition hover:scale-105"
                   >
-                    Segna pronta
+                    {t.markReady}
                   </button>
                 )}
               </div>
@@ -356,7 +359,7 @@ export function OrdersSection({ ctx }: Props) {
         {visible.length === 0 && (
           <div className="py-12 text-center text-sm text-tt-muted">
             <Filter className="mx-auto mb-2 h-8 w-8 opacity-40" />
-            Nessun ordine in questa categoria.
+            {t.emptyCategory}
           </div>
         )}
       </div>
@@ -375,18 +378,24 @@ export function OrdersSection({ ctx }: Props) {
 function OrdersSkeleton() {
   return (
     <div className="space-y-4">
-      <div className="h-7 w-32 tt-skeleton rounded-full" />
-      <div className="flex gap-1.5">
-        {Array.from({ length: 4 }).map((_, i) => (
-          <div key={i} className="h-8 w-24 tt-skeleton rounded-full" />
-        ))}
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="space-y-2">
+          <div className="h-6 w-24 tt-skeleton rounded-full" />
+          <div className="h-3 w-28 tt-skeleton rounded-full" />
+        </div>
+        <div className="h-9 w-28 tt-skeleton rounded-full" />
+      </div>
+      <div className="flex gap-1.5 overflow-x-hidden">
+        <div className="h-8 w-14 shrink-0 tt-skeleton rounded-full" />
+        <div className="h-8 w-24 shrink-0 tt-skeleton rounded-full" />
+        <div className="h-8 w-20 shrink-0 tt-skeleton rounded-full" />
       </div>
       {Array.from({ length: 4 }).map((_, i) => (
-        <div key={i} className="tt-card rounded-2xl border border-tt-line p-4 shadow-tt">
+        <div key={i} className="tt-card rounded-2xl border border-tt-line p-4 shadow-tt overflow-hidden">
           <div className="mb-3 flex items-center gap-3">
-            <div className="h-8 w-8 tt-skeleton rounded-lg" />
+            <div className="h-8 w-8 shrink-0 tt-skeleton rounded-lg" />
             <div className="h-4 w-20 tt-skeleton rounded-full" />
-            <div className="ml-auto h-5 w-24 tt-skeleton rounded-full" />
+            <div className="ml-auto h-5 w-24 shrink-0 tt-skeleton rounded-full" />
           </div>
           <div className="space-y-2">
             <div className="h-3 w-3/4 tt-skeleton rounded-full" />
@@ -411,6 +420,8 @@ function HistoryModal({
   loading: boolean
   error: string | null
 }) {
+  const { tr } = useI18n()
+  const t = tr.admin.orders
   if (!open) return null
   return (
     <div
@@ -424,7 +435,7 @@ function HistoryModal({
         <div className="flex shrink-0 items-center justify-between border-b border-tt-line bg-gradient-to-r from-brand-amber to-brand-terra px-5 py-4 text-white">
           <div className="flex items-center gap-2">
             <History className="h-5 w-5" />
-            <h3 className="font-serif text-lg font-extrabold">Cronologia ordini</h3>
+            <h3 className="font-serif text-lg font-extrabold">{t.historyTitle}</h3>
           </div>
           <button
             onClick={onClose}
@@ -446,12 +457,14 @@ function HistoryModal({
           ) : history.length === 0 ? (
             <div className="py-12 text-center">
               <History className="mx-auto mb-2 h-8 w-8 text-tt-muted opacity-50" />
-              <p className="text-sm text-tt-muted">Nessun ordine nello storico</p>
+              <p className="text-sm text-tt-muted">{t.historyEmpty}</p>
             </div>
           ) : (
             <div className="space-y-2">
               {history.map((o) => {
-                const st = statusMeta[o.status] ?? statusMeta['served']
+                const stMeta = statusMeta[o.status] ?? statusMeta['served']
+                const stLabel = (t.status as Record<string, string>)[stMeta.key] ?? stMeta.key
+                const st = { cls: stMeta.cls, icon: stMeta.icon, label: stLabel }
                 const StatusIcon = st.icon
                 const total = (o.total_cents / 100).toFixed(2)
                 const date = new Date(o.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })
@@ -469,7 +482,7 @@ function HistoryModal({
                         <span className={`tt-pill ${st.cls}`}>{st.label}</span>
                       </div>
                       <p className="text-xs text-tt-muted">
-                        {date} · {time}{o.table_code && o.ordine ? ` · Tavolo ${o.table_code}` : ''}
+                        {date} · {time}{o.table_code && o.ordine ? ` · ${t.table} ${o.table_code}` : ''}
                       </p>
                     </div>
                     <p className="text-sm font-bold text-tt-ink">€{total}</p>

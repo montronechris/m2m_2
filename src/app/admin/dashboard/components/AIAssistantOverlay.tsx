@@ -4,6 +4,7 @@ import { useState, useRef, useEffect } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Sparkles, Send, X, Bot, User } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
+import { supabase } from '@/lib/supabase'
 
 interface Props {
   ctx: RestaurantCtx
@@ -12,19 +13,55 @@ interface Props {
 
 type Msg = { role: 'user' | 'assistant'; content: string }
 
-// Quick canned replies (no external API needed for the demo dashboard).
-function reply(question: string, ctx: RestaurantCtx): string {
+type LiveStats = {
+  revenueTodayCents: number
+  ordersActive: number
+  ordersPreparing: number
+  ordersCooking: number
+  ordersReady: number
+  tablesTotal: number
+  tablesOccupied: number
+  staffCount: number
+  topDish: { name: string; count: number } | null
+}
+
+const euro = (cents: number) => `€${(cents / 100).toFixed(2).replace('.', ',')}`
+
+// Risposte guidate da dati REALI presi da Supabase (vedi loadStats in basso), non più inventate.
+// otherRestaurantNames: nomi di TUTTI gli altri ristoranti sulla piattaforma, usati per
+// rilevare quando l'utente chiede dati su un ristorante che non è il proprio — l'assistente
+// ha accesso solo ai dati di ctx.restaurantName e non deve mai rispondere per gli altri.
+function reply(question: string, ctx: RestaurantCtx, otherRestaurantNames: string[], stats: LiveStats | null): string {
   const q = question.toLowerCase()
+
+  const mentionedOther = otherRestaurantNames.find((name) => {
+    const n = name.trim().toLowerCase()
+    return n.length > 0 && q.includes(n)
+  })
+  if (mentionedOther) {
+    return `Posso darti informazioni solo sul ristorante ${ctx.restaurantName}. Non ho accesso ai dati di "${mentionedOther}" o di altri ristoranti sulla piattaforma.`
+  }
+
+  if (q.includes('quali ristorant') || q.includes('altri ristorant'))
+    return `Ho accesso solo ai dati di ${ctx.restaurantName}, il ristorante collegato al tuo account. Non posso vedere né condividere dati di altri ristoranti.`
+
+  if (!stats)
+    return `Sto ancora caricando i dati di ${ctx.restaurantName}, riprova tra un istante.`
+
   if (q.includes('incass') || q.includes('fatturat') || q.includes('soldi'))
-    return `Oggi ${ctx.restaurantName} ha incassato €1.284, +24% rispetto alla media settimanale. Sabato è il giorno più forte (€2.240).`
+    return `Oggi ${ctx.restaurantName} ha incassato ${euro(stats.revenueTodayCents)}.`
   if (q.includes('ordin'))
-    return `Ci sono 7 ordini attivi: 2 in preparazione, 1 in cottura, 2 pronti da servire. Il piatto top di oggi è la Tagliata di Manzo.`
-  if (q.includes('tavol') || q.includes('tavol'))
-    return `12 tavoli su 18 occupati. Tavolo 7 da più tempo (dalle 15:42). Ti consiglio di liberare i tavoli pronti per nuovi arrivi.`
+    return stats.ordersActive === 0
+      ? `Al momento non ci sono ordini attivi.`
+      : `Ci sono ${stats.ordersActive} ordini attivi: ${stats.ordersPreparing} in preparazione, ${stats.ordersCooking} in cottura, ${stats.ordersReady} pronti da servire.${stats.topDish ? ` Il piatto più venduto di recente è ${stats.topDish.name}.` : ''}`
+  if (q.includes('tavol'))
+    return `${stats.tablesOccupied} tavoli su ${stats.tablesTotal} risultano occupati (con almeno un ordine attivo).`
   if (q.includes('menu') || q.includes('piatt'))
-    return `Il piatto più venduto è la Tagliata di Manzo (38 ordini). Il Branzino al Sale è attualmente esaurito — vuoi rimetterlo disponibile?`
+    return stats.topDish
+      ? `Il piatto più venduto di recente è ${stats.topDish.name} (${stats.topDish.count} ordini).`
+      : `Non ho ancora abbastanza dati sugli ordini per calcolare il piatto più venduto.`
   if (q.includes('staff') || q.includes('camerier') || q.includes('cuoc'))
-    return `Hai 5 membri staff, 4 attivi. Per il servizio serale ti consiglio 2 camerieri + 1 cuoco. Anna e Luca sono di turno oggi.`
+    return `Hai ${stats.staffCount} membri dello staff registrati. Non ho dati sui turni di oggi.`
   if (q.includes('ciao') || q.includes('salve') || q.includes('buongiorno'))
     return `Ciao ${ctx.userFirstName}! 👋 Sono l'assistente AI di ${ctx.restaurantName}. Posso aiutarti con ordini, incassi, tavoli, menu o staff. Cosa ti serve?`
   if (q.includes('grazie'))
@@ -44,6 +81,100 @@ export function AIAssistantOverlay({ ctx }: Props) {
     },
   ])
   const scrollRef = useRef<HTMLDivElement>(null)
+  const [otherRestaurantNames, setOtherRestaurantNames] = useState<string[]>([])
+  const [stats, setStats] = useState<LiveStats | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    supabase
+      .from('restaurants')
+      .select('name')
+      .neq('name', ctx.restaurantName)
+      .then(({ data }) => {
+        if (!cancelled && data) setOtherRestaurantNames(data.map((r) => r.name).filter(Boolean))
+      })
+    return () => { cancelled = true }
+  }, [ctx.restaurantName])
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadStats() {
+      const startToday = new Date()
+      startToday.setHours(0, 0, 0, 0)
+
+      const sevenDaysAgo = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString()
+
+      const [todayOrders, activeOrders, tables, staffCountRes, recentOrderIds] = await Promise.all([
+        supabase
+          .from('orders')
+          .select('total_cents')
+          .eq('restaurant_id', ctx.restaurantId)
+          .gte('created_at', startToday.toISOString())
+          .not('status', 'eq', 'cancelled'),
+        supabase
+          .from('orders')
+          .select('id, status, table_id')
+          .eq('restaurant_id', ctx.restaurantId)
+          .in('status', ['confirmed', 'cooking', 'ready', 'served'])
+          .is('paid_at', null),
+        supabase
+          .from('tables')
+          .select('id', { count: 'exact', head: true })
+          .eq('restaurant_id', ctx.restaurantId)
+          .eq('is_active', true),
+        supabase
+          .from('profiles')
+          .select('id', { count: 'exact', head: true })
+          .eq('restaurant_id', ctx.restaurantId)
+          .in('role', ['staff', 'manager', 'cameriere', 'cucina']),
+        supabase
+          .from('orders')
+          .select('id')
+          .eq('restaurant_id', ctx.restaurantId)
+          .gte('created_at', sevenDaysAgo)
+          .not('status', 'eq', 'cancelled')
+          .limit(200),
+      ])
+
+      if (cancelled) return
+
+      const active = activeOrders.data ?? []
+      const dishCounts = new Map<string, number>()
+      const recentOrderIdList = (recentOrderIds.data ?? []).map((o) => o.id)
+      if (recentOrderIdList.length > 0) {
+        const { data: recentItems } = await supabase
+          .from('order_items')
+          .select('name_snapshot, name, quantity')
+          .in('order_id', recentOrderIdList)
+          .limit(1000)
+        if (!cancelled) {
+          for (const it of (recentItems as any[]) ?? []) {
+            const name = it.name_snapshot || it.name
+            if (!name) continue
+            dishCounts.set(name, (dishCounts.get(name) ?? 0) + (it.quantity ?? 1))
+          }
+        }
+      }
+      let topDish: LiveStats['topDish'] = null
+      for (const [name, count] of dishCounts) {
+        if (!topDish || count > topDish.count) topDish = { name, count }
+      }
+
+      setStats({
+        revenueTodayCents: (todayOrders.data ?? []).reduce((s: number, o: any) => s + (o.total_cents ?? 0), 0),
+        ordersActive: active.length,
+        ordersPreparing: active.filter((o) => o.status === 'confirmed').length,
+        ordersCooking: active.filter((o) => o.status === 'cooking').length,
+        ordersReady: active.filter((o) => o.status === 'ready').length,
+        tablesTotal: tables.count ?? 0,
+        tablesOccupied: new Set(active.map((o) => o.table_id).filter(Boolean)).size,
+        staffCount: staffCountRes.count ?? 0,
+        topDish,
+      })
+    }
+    loadStats()
+    return () => { cancelled = true }
+  }, [ctx.restaurantId])
 
   // Hint after 15s of inactivity
   useEffect(() => {
@@ -63,7 +194,7 @@ export function AIAssistantOverlay({ ctx }: Props) {
     setInput('')
     setLoading(true)
     setTimeout(() => {
-      setMessages((m) => [...m, { role: 'assistant', content: reply(text, ctx) }])
+      setMessages((m) => [...m, { role: 'assistant', content: reply(text, ctx, otherRestaurantNames, stats) }])
       setLoading(false)
     }, 700)
   }

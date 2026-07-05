@@ -18,6 +18,7 @@ import {
   BarChart, Bar, PieChart, Pie, Cell, LineChart, Line,
 } from "recharts";
 import type { RestaurantCtx, SectionId, ThemeMode } from "../types";
+import { useI18n } from "@/components/i18n/I18nProvider";
 type AIProvider = "openai" | "anthropic" | "gemini" | string;
 
 interface Props {
@@ -50,16 +51,15 @@ type Insights = {
   payments?:   string;
 };
 
-const PERIODS = [
-  { key: 7,  label: "7 giorni" },
-  { key: 30, label: "30 giorni" },
-] as const;
-
-function formatEur(cents: number): string {
-  return (cents / 100).toLocaleString("it-IT", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-}
-
 export function AIAnalyticsSection({ ctx, theme, onSectionChange }: Props) {
+  const { tr } = useI18n();
+  const t = tr.admin.aiAnalytics;
+  const PERIODS = [
+    { key: 7 as const,  label: t.days7 },
+    { key: 30 as const, label: t.days30 },
+  ];
+  const formatEur = (cents: number): string =>
+    (cents / 100).toLocaleString(t.locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const dark   = theme === "dark";
   const card   = dark ? "bg-tt-dark"    : "bg-white";
   const bord   = dark ? "border-white/8" : "border-tt-line";
@@ -167,7 +167,7 @@ export function AIAnalyticsSection({ ctx, theme, onSectionChange }: Props) {
       const hourCounts = new Map<number, number>();
       for (const o of currentOrders) {
         const hour = Number(
-          new Intl.DateTimeFormat("it-IT", { hour: "2-digit", hour12: false, timeZone: "Europe/Rome" })
+          new Intl.DateTimeFormat(t.locale, { hour: "2-digit", hour12: false, timeZone: "Europe/Rome" })
             .format(new Date(o.created_at))
         );
         hourCounts.set(hour, (hourCounts.get(hour) ?? 0) + 1);
@@ -187,9 +187,9 @@ export function AIAnalyticsSection({ ctx, theme, onSectionChange }: Props) {
         else payCounts.none++;
       }
       setPaymentMethods([
-        { name: "Carta",            value: payCounts.card },
-        { name: "Contanti",         value: payCounts.cash },
-        { name: "Non specificato",  value: payCounts.none },
+        { name: t.card,        value: payCounts.card },
+        { name: t.cash,        value: payCounts.cash },
+        { name: t.unspecified, value: payCounts.none },
       ].filter(p => p.value > 0));
 
       // ── 2. Piatti più ordinati + fatturato per categoria ────────────────────
@@ -203,7 +203,7 @@ export function AIAnalyticsSection({ ctx, theme, onSectionChange }: Props) {
 
         const counts = new Map<string, number>();
         for (const it of items ?? []) {
-          const label = (it.name_snapshot || it.name || "Sconosciuto").trim();
+          const label = (it.name_snapshot || it.name || t.unknown).trim();
           counts.set(label, (counts.get(label) ?? 0) + (it.quantity ?? 1));
         }
         const dishes = [...counts.entries()]
@@ -235,7 +235,7 @@ export function AIAnalyticsSection({ ctx, theme, onSectionChange }: Props) {
         const revenueByCategory = new Map<string, number>();
         for (const it of items ?? []) {
           const catId   = it.menu_item_id ? categoryByItem.get(it.menu_item_id) : undefined;
-          const catName = catId ? (categoryNames.get(catId) ?? "Altro") : "Altro";
+          const catName = catId ? (categoryNames.get(catId) ?? t.other) : t.other;
           const cents   = Math.round((it.base_price ?? 0) * 100) * (it.quantity ?? 1);
           revenueByCategory.set(catName, (revenueByCategory.get(catName) ?? 0) + cents);
         }
@@ -279,7 +279,7 @@ export function AIAnalyticsSection({ ctx, theme, onSectionChange }: Props) {
 
     } catch (err: any) {
       console.error("[AIAnalytics] load error:", err);
-      setError("Errore nel caricamento dei dati analitici.");
+      setError(t.errorLoad);
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -311,13 +311,7 @@ export function AIAnalyticsSection({ ctx, theme, onSectionChange }: Props) {
           metodi_di_pagamento: paymentMethods,
         };
 
-        const system = `
-Sei un analista per un ristorante italiano. Ricevi un JSON con dati reali (fatturato, occupazione tavoli, piatti più ordinati, recensioni, orari di punta, scontrino medio, fatturato per categoria, metodi di pagamento).
-Scrivi 8 brevi insight in italiano (max 1 riga ciascuno, con un'emoji), uno per ciascun dato.
-Diretto, concreto, evidenzia trend, picchi o numeri interessanti — utile per le decisioni operative del proprietario (es. quando rinforzare il personale, quali piatti spingere). Mai inventare numeri non presenti nel JSON.
-Rispondi SOLO con questo JSON, zero testo fuori:
-{ "revenue": "...", "occupancy": "...", "dishes": "...", "reviews": "...", "peakHours": "...", "avgTicket": "...", "categories": "...", "payments": "..." }
-`.trim();
+        const system = t.aiSystem;
 
         const res = await fetch("/api/ai-analytics", {
           method:  "POST",
@@ -331,7 +325,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
           }),
         });
         const data = await res.json();
-        if (!res.ok) throw new Error(data?.error ?? "Errore API");
+        if (!res.ok) throw new Error(data?.error ?? t.errorApi);
         const text = data?.content?.[0]?.text ?? "";
         const match = text.match(/\{[\s\S]*\}/);
         if (match) setInsights(JSON.parse(match[0]));
@@ -348,8 +342,8 @@ Rispondi SOLO con questo JSON, zero testo fuori:
 
   const occupancyPct = occupancy.total > 0 ? Math.round((occupancy.occupied / occupancy.total) * 100) : 0;
   const occupancyData = [
-    { name: "Occupati", value: occupancy.occupied },
-    { name: "Liberi",   value: Math.max(0, occupancy.total - occupancy.occupied) },
+    { name: t.occupied, value: occupancy.occupied },
+    { name: t.free,     value: Math.max(0, occupancy.total - occupancy.occupied) },
   ];
 
   // ── Loading iniziale ─────────────────────────────────────────────────────
@@ -370,7 +364,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
           <div className="w-11 h-11 rounded-2xl bg-tt-gradient flex items-center justify-center shadow-tt shrink-0">
             <Sparkles className="w-5 h-5 text-white" />
           </div>
-          <h2 className={`text-xl font-extrabold tracking-tight ${txt} truncate`}>Analytics AI</h2>
+          <h2 className={`text-xl font-extrabold tracking-tight ${txt} truncate`}>{t.title}</h2>
         </div>
         <div className="flex items-center gap-2 shrink-0">
           <div className={`flex rounded-2xl border ${bord} overflow-hidden p-1 ${dark ? "bg-white/5" : "bg-tt-surfaceAlt2"}`}>
@@ -391,7 +385,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
           <button
             onClick={() => loadData(period, { silent: true })}
             disabled={refreshing}
-            title="Aggiorna"
+            title={t.refresh}
             className={`p-2.5 rounded-2xl border ${bord} ${muted} transition-all ${dark ? "hover:bg-white/5" : "hover:bg-tt-surfaceAlt2"} disabled:opacity-50`}
           >
             <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
@@ -406,14 +400,14 @@ Rispondi SOLO con questo JSON, zero testo fuori:
             <KeyRound className="w-4 h-4 text-tt-pink" />
           </div>
           <p className={`text-xs ${muted} flex-1 min-w-[180px]`}>
-            Configura un provider AI nelle Impostazioni per ricevere un breve commento automatico sotto ogni grafico.
+            {t.configureAI}
           </p>
           {onSectionChange && (
             <button
               onClick={() => onSectionChange("settings")}
               className="flex items-center gap-1.5 text-xs font-bold text-tt-pink hover:text-tt-pinkSoft transition-colors shrink-0"
             >
-              Vai alle Impostazioni <ArrowRight className="w-3.5 h-3.5" />
+              {t.goSettings} <ArrowRight className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
@@ -435,7 +429,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
               <div className="w-7 h-7 rounded-lg bg-tt-success/15 flex items-center justify-center">
                 <TrendingUp className="w-3.5 h-3.5 text-tt-success" />
               </div>
-              <p className={`text-sm font-bold ${txt}`}>Profitto</p>
+              <p className={`text-sm font-bold ${txt}`}>{t.profit}</p>
             </div>
             {revenueDelta !== null && (
               <span className={`tt-pill ${revenueDelta >= 0 ? "tt-pill-success" : "tt-pill-danger"}`}>
@@ -460,7 +454,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: axisColor }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: axisColor }} axisLine={false} tickLine={false} width={36} />
                 <Tooltip
-                  formatter={((v: number) => [`€ ${v.toFixed(2)}`, "Fatturato"]) as any}
+                  formatter={((v: number) => [`€ ${v.toFixed(2)}`, t.revenueTip]) as any}
                   contentStyle={{ background: dark ? "#121212" : "#fff", border: `1px solid ${gridStroke}`, borderRadius: 12, fontSize: 12 }}
                 />
                 <Area type="monotone" dataKey="eur" stroke="#FE2C55" strokeWidth={2} fill="url(#revGrad)" />
@@ -476,7 +470,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
             <div className="w-7 h-7 rounded-lg bg-tt-cyan/15 flex items-center justify-center">
               <LayoutGrid className="w-3.5 h-3.5 text-tt-cyan" />
             </div>
-            <p className={`text-sm font-bold ${txt}`}>Tavoli occupati</p>
+            <p className={`text-sm font-bold ${txt}`}>{t.occupiedTables}</p>
           </div>
           <p className={`text-2xl font-black ${txt} mb-3`}>
             {occupancy.occupied} <span className={`text-base font-semibold ${muted}`}>/ {occupancy.total}</span>
@@ -502,7 +496,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
             </div>
             <div>
               <p className="text-3xl font-black text-tt-cyan">{occupancyPct}%</p>
-              <p className={`text-xs ${muted}`}>tavoli occupati ora</p>
+              <p className={`text-xs ${muted}`}>{t.occupiedNow}</p>
             </div>
           </div>
           <InsightLine loading={insightsLoading} text={insights.occupancy} muted={muted} />
@@ -514,10 +508,10 @@ Rispondi SOLO con questo JSON, zero testo fuori:
             <div className="w-7 h-7 rounded-lg bg-tt-warning/15 flex items-center justify-center">
               <Utensils className="w-3.5 h-3.5 text-tt-warning" />
             </div>
-            <p className={`text-sm font-bold ${txt}`}>Piatti più ordinati</p>
+            <p className={`text-sm font-bold ${txt}`}>{t.topDishes}</p>
           </div>
           {topDishes.length === 0 ? (
-            <p className={`text-sm ${muted} py-8 text-center`}>Nessun ordine nel periodo selezionato.</p>
+            <p className={`text-sm ${muted} py-8 text-center`}>{t.noOrdersPeriod}</p>
           ) : (
             <div style={{ width: "100%", height: 200 }}>
               <ResponsiveContainer>
@@ -529,7 +523,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
                     tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false}
                   />
                   <Tooltip
-                    formatter={((v: number) => [v, "Ordinati"]) as any}
+                    formatter={((v: number) => [v, t.orderedTip]) as any}
                     contentStyle={{ background: dark ? "#121212" : "#fff", border: `1px solid ${gridStroke}`, borderRadius: 12, fontSize: 12 }}
                   />
                   <Bar dataKey="count" fill="#FFA800" radius={[0, 6, 6, 0]} />
@@ -547,12 +541,12 @@ Rispondi SOLO con questo JSON, zero testo fuori:
               <div className="w-7 h-7 rounded-lg bg-tt-warning/15 flex items-center justify-center">
                 <Star className="w-3.5 h-3.5 text-tt-warning" />
               </div>
-              <p className={`text-sm font-bold ${txt}`}>Recensioni</p>
+              <p className={`text-sm font-bold ${txt}`}>{t.reviews}</p>
             </div>
             <span className={`text-xs ${muted}`}>{reviewStats.total} totali</span>
           </div>
           {reviewStats.total === 0 ? (
-            <p className={`text-sm ${muted} py-8 text-center`}>Ancora nessuna recensione.</p>
+            <p className={`text-sm ${muted} py-8 text-center`}>{t.noReviews}</p>
           ) : (
             <>
               <div className="flex items-center gap-2 mb-3">
@@ -577,7 +571,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
                     <XAxis dataKey="stars" tickFormatter={(v) => `${v}★`} tick={{ fontSize: 10, fill: axisColor }} axisLine={false} tickLine={false} />
                     <YAxis tick={{ fontSize: 10, fill: axisColor }} axisLine={false} tickLine={false} width={28} allowDecimals={false} />
                     <Tooltip
-                      formatter={((v: number) => [v, "Recensioni"]) as any}
+                      formatter={((v: number) => [v, t.reviewsTip]) as any}
                       contentStyle={{ background: dark ? "#121212" : "#fff", border: `1px solid ${gridStroke}`, borderRadius: 12, fontSize: 12 }}
                     />
                     <Bar dataKey="count" fill="#FFA800" radius={[6, 6, 0, 0]} />
@@ -595,10 +589,10 @@ Rispondi SOLO con questo JSON, zero testo fuori:
             <div className="w-7 h-7 rounded-lg bg-tt-pink/15 flex items-center justify-center">
               <Clock className="w-3.5 h-3.5 text-tt-pink" />
             </div>
-            <p className={`text-sm font-bold ${txt}`}>Orari di punta</p>
+            <p className={`text-sm font-bold ${txt}`}>{t.peakHours}</p>
           </div>
           {peakHours.every(h => h.count === 0) ? (
-            <p className={`text-sm ${muted} py-8 text-center`}>Nessun ordine nel periodo selezionato.</p>
+            <p className={`text-sm ${muted} py-8 text-center`}>{t.noOrdersPeriod}</p>
           ) : (
             <div style={{ width: "100%", height: 180 }}>
               <ResponsiveContainer>
@@ -610,7 +604,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
                   />
                   <YAxis tick={{ fontSize: 10, fill: axisColor }} axisLine={false} tickLine={false} width={28} allowDecimals={false} />
                   <Tooltip
-                    formatter={((v: number) => [v, "Ordini"]) as any}
+                    formatter={((v: number) => [v, t.ordersTip]) as any}
                     labelFormatter={(l) => `Ore ${l}:00`}
                     contentStyle={{ background: dark ? "#121212" : "#fff", border: `1px solid ${gridStroke}`, borderRadius: 12, fontSize: 12 }}
                   />
@@ -628,7 +622,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
             <div className="w-7 h-7 rounded-lg bg-tt-success/15 flex items-center justify-center">
               <Receipt className="w-3.5 h-3.5 text-tt-success" />
             </div>
-            <p className={`text-sm font-bold ${txt}`}>Scontrino medio</p>
+            <p className={`text-sm font-bold ${txt}`}>{t.avgTicket}</p>
           </div>
           <p className={`text-2xl font-black ${txt} mb-3`}>€ {avgTicketOverall.toFixed(2)}</p>
           <div style={{ width: "100%", height: 160 }}>
@@ -638,7 +632,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
                 <XAxis dataKey="label" tick={{ fontSize: 10, fill: axisColor }} axisLine={false} tickLine={false} />
                 <YAxis tick={{ fontSize: 10, fill: axisColor }} axisLine={false} tickLine={false} width={36} />
                 <Tooltip
-                  formatter={((v: number) => [`€ ${v.toFixed(2)}`, "Scontrino medio"]) as any}
+                  formatter={((v: number) => [`€ ${v.toFixed(2)}`, t.avgTicketTip]) as any}
                   contentStyle={{ background: dark ? "#121212" : "#fff", border: `1px solid ${gridStroke}`, borderRadius: 12, fontSize: 12 }}
                 />
                 <Line type="monotone" dataKey="eur" stroke="#10D78A" strokeWidth={2} dot={false} />
@@ -654,10 +648,10 @@ Rispondi SOLO con questo JSON, zero testo fuori:
             <div className="w-7 h-7 rounded-lg bg-tt-pinkSoft/15 flex items-center justify-center">
               <Tags className="w-3.5 h-3.5 text-tt-pinkSoft" />
             </div>
-            <p className={`text-sm font-bold ${txt}`}>Categorie più vendute</p>
+            <p className={`text-sm font-bold ${txt}`}>{t.topCategories}</p>
           </div>
           {categoryRevenue.length === 0 ? (
-            <p className={`text-sm ${muted} py-8 text-center`}>Nessun ordine nel periodo selezionato.</p>
+            <p className={`text-sm ${muted} py-8 text-center`}>{t.noOrdersPeriod}</p>
           ) : (
             <div style={{ width: "100%", height: 200 }}>
               <ResponsiveContainer>
@@ -669,7 +663,7 @@ Rispondi SOLO con questo JSON, zero testo fuori:
                     tick={{ fontSize: 11, fill: axisColor }} axisLine={false} tickLine={false}
                   />
                   <Tooltip
-                    formatter={((v: number) => [`€ ${v.toFixed(2)}`, "Fatturato"]) as any}
+                    formatter={((v: number) => [`€ ${v.toFixed(2)}`, t.revenueTip]) as any}
                     contentStyle={{ background: dark ? "#121212" : "#fff", border: `1px solid ${gridStroke}`, borderRadius: 12, fontSize: 12 }}
                   />
                   <Bar dataKey="eur" fill="#FF4081" radius={[0, 6, 6, 0]} />
@@ -686,10 +680,10 @@ Rispondi SOLO con questo JSON, zero testo fuori:
             <div className="w-7 h-7 rounded-lg bg-tt-warning/15 flex items-center justify-center">
               <CreditCard className="w-3.5 h-3.5 text-tt-warning" />
             </div>
-            <p className={`text-sm font-bold ${txt}`}>Metodo di pagamento</p>
+            <p className={`text-sm font-bold ${txt}`}>{t.paymentMethod}</p>
           </div>
           {paymentMethods.length === 0 ? (
-            <p className={`text-sm ${muted} py-8 text-center`}>Nessun ordine nel periodo selezionato.</p>
+            <p className={`text-sm ${muted} py-8 text-center`}>{t.noOrdersPeriod}</p>
           ) : (
             <div className="flex items-center gap-4">
               <div style={{ width: 120, height: 120 }} className="shrink-0">
@@ -729,12 +723,13 @@ Rispondi SOLO con questo JSON, zero testo fuori:
 // ─── Sotto-componente: riga insight AI ─────────────────────────────────────────
 
 function InsightLine({ loading, text, muted }: { loading: boolean; text?: string; muted: string }) {
+  const { tr } = useI18n();
   if (!loading && !text) return null;
   return (
     <div className="flex items-center gap-2 mt-3 pt-3 border-t border-dashed border-tt-pink/15">
       <Sparkles className="w-3.5 h-3.5 text-tt-pink shrink-0" />
       {loading ? (
-        <span className={`text-xs ${muted} animate-pulse`}>Genero un insight…</span>
+        <span className={`text-xs ${muted} animate-pulse`}>{tr.admin.aiAnalytics.generating}</span>
       ) : (
         <span className={`text-xs ${muted}`}>{text}</span>
       )}

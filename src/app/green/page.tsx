@@ -254,6 +254,9 @@ export default function GreenPage() {
                     {tr.cta.primary} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                   </Link>
                 </Button>
+                <p className="mt-3 text-[10px] italic text-white/60">
+                  {tr.pages.green.backHome.includes('Torna') ? 'Aggiornato automaticamente ogni 72 ore' : 'Automatically updated every 72 hours'}
+                </p>
               </div>
             </div>
           </motion.div>

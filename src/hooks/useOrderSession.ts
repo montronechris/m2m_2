@@ -107,20 +107,12 @@ export function useOrderSession(
         const { getRestaurantBySlug } = await import("@/lib/api-service");
         let rest: Restaurant;
         if (actualRestaurantId) {
-          const { createBrowserClient } = await import("@supabase/ssr");
-          const supabase = createBrowserClient(
-            process.env.NEXT_PUBLIC_SUPABASE_URL!,
-            process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!
-          );
-          const { data: r, error: rErr } = await supabase
-            .from("restaurants")
-            .select(
-              "id, name, slug, brand_color, logo_url, address, phone, instagram, facebook, tripadvisor, website, google_review_url, background_image_url, background_type"
-            )
-            .eq("id", actualRestaurantId)
-            .single();
-          if (rErr || !r) throw new Error("Ristorante non trovato");
-          rest = r as Restaurant;
+          const res = await fetch(`/api/restaurant/${actualRestaurantId}`);
+          if (!res.ok) {
+            const body = await res.json().catch(() => ({}));
+            throw new Error(body.error || "Ristorante non trovato");
+          }
+          rest = (await res.json()) as Restaurant;
         } else if (initialSlug) {
           rest = await getRestaurantBySlug(initialSlug);
         } else {

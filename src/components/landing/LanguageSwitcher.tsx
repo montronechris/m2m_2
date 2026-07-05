@@ -30,7 +30,7 @@ export function LanguageSwitcher() {
           <span className="text-xs uppercase">{lang}</span>
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-40 rounded-xl">
+      <DropdownMenuContent align="end" sideOffset={8} className="z-[200] w-40 rounded-xl">
         <DropdownMenuLabel className="text-xs text-ink/50">
           {current.label}
         </DropdownMenuLabel>
@@ -41,7 +41,9 @@ export function LanguageSwitcher() {
             onClick={() => setLang(l.code as Lang)}
             className="cursor-pointer gap-2 rounded-lg"
           >
-            <span className="text-base">{l.flag}</span>
+            <span className="grid h-5 w-6 place-items-center rounded-sm border border-ink/10 bg-white text-[10px] font-bold uppercase text-ink/70">
+              {l.code === 'en' ? 'GB' : l.code.toUpperCase()}
+            </span>
             <span className="flex-1">{l.label}</span>
             {l.code === lang && <Check className="h-4 w-4 text-brand-emerald" />}
           </DropdownMenuItem>

@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { UtensilsCrossed, Instagram, Facebook, Twitter, Mail, MapPin, Phone } from 'lucide-react'
+import { UtensilsCrossed, Instagram, Facebook, Twitter } from 'lucide-react'
 import { useI18n } from '@/components/i18n/I18nProvider'
 
 export function Footer() {
@@ -60,22 +60,6 @@ export function Footer() {
               </ul>
             </div>
           ))}
-        </div>
-
-        {/* Contact strip */}
-        <div className="noise-overlay mt-10 flex flex-wrap items-center gap-x-6 gap-y-3 rounded-2xl border border-ink/5 bg-white/60 p-4 text-sm text-ink/60">
-          <span className="inline-flex items-center gap-2">
-            <Mail className="h-4 w-4 text-brand-amber" /> ciao@m2m.app
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <Phone className="h-4 w-4 text-brand-emerald" /> +39 055 123 4567
-          </span>
-          <span className="inline-flex items-center gap-2">
-            <MapPin className="h-4 w-4 text-brand-rose" /> Via del Gusto 12, Firenze
-          </span>
-          <span className="ml-auto inline-flex items-center gap-2 rounded-full bg-brand-emerald/10 px-2.5 py-1 text-xs font-semibold text-brand-emerald">
-            <span className="status-dot bg-brand-emerald" /> Online now
-          </span>
         </div>
 
         {/* Bottom bar */}

@@ -1,6 +1,6 @@
 'use client'
 
-import React, { useEffect, useState, useRef, useMemo } from 'react'
+import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter, useSearchParams } from 'next/navigation'
 import { motion, AnimatePresence, useMotionValue, useTransform, animate, useAnimation } from 'framer-motion'
@@ -238,32 +238,80 @@ const [loaderDone, setLoaderDone] = useState(!fromScan);  const [activeCat, setA
 
   // ── Mappatura dati reali → tipi usati dalla UI ──────────────────────────────
   const categories = useMemo(
-    () =>
-      dbCategories.map((c) => ({
+    () => {
+      const map = tr.client.categoryNames as Record<string, string>
+      const norm = (s: string) =>
+        s.toLowerCase().normalize('NFD').replace(/\p{Diacritic}/gu, '')
+      return dbCategories.map((c) => ({
         id: c.id,
-        name: c.name,
+        name: map[norm(c.name)] ?? c.name,
         is_drink: c.is_drink,
-      })),
-    [dbCategories]
+      }))
+    },
+    [dbCategories, tr]
+  )
+
+  const [translations, setTranslations] = useState<Record<string, string>>({})
+
+  useEffect(() => {
+    if (lang === 'it') {
+      setTranslations({})
+      return
+    }
+    const texts = new Set<string>()
+    for (const i of dbItems) {
+      const rec = i as Record<string, unknown>
+      const ing = rec.ingredients as string[] | undefined
+      const alg = rec.allergens as string[] | undefined
+      ing?.forEach((s) => s && texts.add(s))
+      alg?.forEach((s) => s && texts.add(s))
+      if (i.name) texts.add(i.name)
+      if (i.description) texts.add(i.description)
+      const story = rec.story as string | undefined
+      if (story) texts.add(story)
+    }
+    if (texts.size === 0) return
+    let cancelled = false
+    fetch('/api/translate', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ texts: Array.from(texts), sourceLang: 'it', targetLang: lang }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (!cancelled && json?.translations) setTranslations(json.translations)
+      })
+      .catch(() => {})
+    return () => {
+      cancelled = true
+    }
+  }, [dbItems, lang])
+
+  const txArr = useCallback(
+    (arr: string[] | undefined) => arr?.map((s) => translations[s] ?? s),
+    [translations]
   )
 
   const items: MenuItem[] = useMemo(
     () =>
       dbItems.map((i) => ({
         id: i.id,
-        name: i.name,
-        description: i.description,
+        name: translations[i.name] ?? i.name,
+        description: i.description ? translations[i.description] ?? i.description : i.description,
         price_cents: i.price_cents,
         image_url: i.image_url ?? null,
         is_vegetarian: (i as Record<string, unknown>).is_vegetarian as boolean | undefined,
         is_vegan: (i as Record<string, unknown>).is_vegan as boolean | undefined,
         is_gluten_free: (i as Record<string, unknown>).is_gluten_free as boolean | undefined,
-        allergens: (i as Record<string, unknown>).allergens as string[] | undefined,
-        ingredients: (i as Record<string, unknown>).ingredients as string[] | undefined,
-        story: (i as Record<string, unknown>).story as string | undefined,
+        allergens: txArr((i as Record<string, unknown>).allergens as string[] | undefined),
+        ingredients: txArr((i as Record<string, unknown>).ingredients as string[] | undefined),
+        story: (() => {
+          const s = (i as Record<string, unknown>).story as string | undefined
+          return s ? translations[s] ?? s : s
+        })(),
         category_id: i.category_id,
       })),
-    [dbItems]
+    [dbItems, txArr, translations]
   )
 
   // ── Parole chiave di ricerca (colonna search_keywords nel DB) ───────────────
@@ -534,7 +582,7 @@ if (!loaderDone) {
 className="mt-6 rounded-3xl border border-black/10 bg-white/85 p-4 shadow-sm backdrop-blur-md sm:p-5"
               style={{ boxShadow: '0 6px 24px -10px rgba(0,0,0,0.20)' }}
             >
-<p className="mb-5 mt-0 text-base font-bold text-ink/70">Filtra Categoria</p>
+<p className="mb-5 mt-0 text-base font-bold text-ink/70">{tr.client.order.filterCategory}</p>
               {/* Search bar */}
               <button
                 onClick={openSearch}

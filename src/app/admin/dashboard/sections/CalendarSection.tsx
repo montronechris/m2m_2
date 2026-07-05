@@ -12,28 +12,23 @@ import {
   type ShiftCode,
   type AttendanceRow,
 } from '@/lib/admin-service'
+import { useI18n } from '@/components/i18n/I18nProvider'
 
 interface Props {
   ctx: RestaurantCtx
   theme: ThemeMode
 }
 
-const ROLE_LABELS: Record<string, string> = { cameriere: 'Cameriere', cucina: 'Cucina' }
-
-function formatDateTime(iso: string) {
-  return new Date(iso).toLocaleDateString('it-IT', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  })
-}
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
-}
-
 export function CalendarSection({ ctx }: Props) {
+  const { tr } = useI18n()
+  const t = tr.admin.calendar
+  const ROLE_LABELS: Record<string, string> = { cameriere: t.roleWaiter, cucina: t.roleKitchen }
+  const formatDateTime = (iso: string) =>
+    new Date(iso).toLocaleDateString(t.locale, {
+      day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
+    })
+  const formatTime = (iso: string) =>
+    new Date(iso).toLocaleTimeString(t.locale, { hour: '2-digit', minute: '2-digit' })
   const [isLoading, setIsLoading] = useState(true)
   const [generating, setGenerating] = useState<string | null>(null)
   const [copiedId, setCopiedId] = useState<string | null>(null)
@@ -55,7 +50,7 @@ export function CalendarSection({ ctx }: Props) {
       setEmployees(emps)
       setShiftCodes(codes)
     } catch (err: any) {
-      setError(err.message ?? 'Errore nel caricamento dello staff.')
+      setError(err.message ?? t.errorStaff)
     } finally {
       setIsLoading(false)
     }
@@ -71,7 +66,7 @@ export function CalendarSection({ ctx }: Props) {
       const data = await getAttendance(ctx.restaurantId, viewMode === '7' ? 7 : 30)
       setAttendance(data)
     } catch (err: any) {
-      setError(err.message ?? 'Errore nel caricamento delle presenze.')
+      setError(err.message ?? t.errorAttendance)
     } finally {
       setLoadingAtt(false)
     }
@@ -87,10 +82,10 @@ export function CalendarSection({ ctx }: Props) {
     setSuccessMsg(null)
     try {
       const code = await generateShiftCode(ctx.restaurantId, empId)
-      setSuccessMsg(`Codice ${code} generato con successo.`)
+      setSuccessMsg(t.codeGenerated(code))
       await loadStaffAndCodes()
     } catch (err: any) {
-      setError(err.message ?? 'Errore nella generazione del codice.')
+      setError(err.message ?? t.errorGenerate)
     } finally {
       setGenerating(null)
     }
@@ -145,15 +140,15 @@ export function CalendarSection({ ctx }: Props) {
             <KeyRound className="h-4 w-4" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-tt-ink">Codice turno</h3>
-            <p className="text-xs text-tt-muted">Richiesto al login per cameriere/cucina · un codice fisso per account</p>
+            <h3 className="text-sm font-bold text-tt-ink">{t.codeTitle}</h3>
+            <p className="text-xs text-tt-muted">{t.codeSubtitle}</p>
           </div>
         </div>
         <div className="space-y-2.5 px-4 py-5 sm:px-6">
           {employees.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-tt-line bg-tt-surfaceAlt py-8 text-center">
               <Users className="mx-auto mb-2 h-8 w-8 text-tt-muted opacity-50" />
-              <p className="text-sm text-tt-muted">Nessun account cameriere/cucina registrato</p>
+              <p className="text-sm text-tt-muted">{t.noAccounts}</p>
             </div>
           ) : (
             employees.map((e) => {
@@ -176,11 +171,11 @@ export function CalendarSection({ ctx }: Props) {
                       <p className="mt-1">
                         <span className="block font-mono text-base font-bold tracking-widest text-tt-ink">{c.code}</span>
                         {c.last_used_at && (
-                          <span className="block text-xs text-tt-muted">ultimo accesso {formatDateTime(c.last_used_at)}</span>
+                          <span className="block text-xs text-tt-muted">{t.lastAccess} {formatDateTime(c.last_used_at)}</span>
                         )}
                       </p>
                     ) : (
-                      <p className="mt-0.5 text-xs text-tt-muted">Nessun codice associato</p>
+                      <p className="mt-0.5 text-xs text-tt-muted">{t.noCode}</p>
                     )}
                   </div>
                   <div className="flex shrink-0 items-center gap-2">
@@ -192,12 +187,12 @@ export function CalendarSection({ ctx }: Props) {
                         {copiedId === c.id ? (
                           <>
                             <CheckCircle className="h-3.5 w-3.5 text-tt-success" />
-                            Copiato
+                            {t.copied}
                           </>
                         ) : (
                           <>
                             <Copy className="h-3.5 w-3.5" />
-                            Copia
+                            {t.copy}
                           </>
                         )}
                       </button>
@@ -212,7 +207,7 @@ export function CalendarSection({ ctx }: Props) {
                       ) : (
                         <KeyRound className="h-3.5 w-3.5" />
                       )}
-                      {c ? 'Rigenera' : 'Genera'}
+                      {c ? t.regenerate : t.generate}
                     </button>
                   </div>
                 </div>
@@ -229,13 +224,13 @@ export function CalendarSection({ ctx }: Props) {
             <div className="grid h-8 w-8 shrink-0 place-items-center rounded-xl bg-gradient-to-br from-brand-amber to-brand-terra text-white">
               <Clock className="h-4 w-4" />
             </div>
-            <h3 className="text-sm font-bold text-tt-ink">Presenze</h3>
+            <h3 className="text-sm font-bold text-tt-ink">{t.attendance}</h3>
           </div>
           <div className="flex items-center gap-1 rounded-full bg-tt-surfaceAlt2 p-1">
             {(
               [
-                ['7', '7 giorni'],
-                ['30', '30 giorni'],
+                ['7', t.days7],
+                ['30', t.days30],
               ] as const
             ).map(([key, label]) => (
               <button
@@ -258,14 +253,14 @@ export function CalendarSection({ ctx }: Props) {
           ) : sortedDays.length === 0 ? (
             <div className="rounded-2xl border border-dashed border-tt-line bg-tt-surfaceAlt py-10 text-center">
               <Clock className="mx-auto mb-2 h-8 w-8 text-tt-muted opacity-50" />
-              <p className="text-sm text-tt-muted">Nessuna presenza in questo periodo</p>
+              <p className="text-sm text-tt-muted">{t.noAttendance}</p>
             </div>
           ) : (
             <div className="space-y-4">
               {sortedDays.map((day) => (
                 <div key={day}>
                   <p className="mb-2 text-xs font-bold uppercase tracking-[0.15em] text-tt-muted">
-                    {new Date(day).toLocaleDateString('it-IT', { weekday: 'long', day: 'numeric', month: 'long' })}
+                    {new Date(day).toLocaleDateString(t.locale, { weekday: 'long', day: 'numeric', month: 'long' })}
                   </p>
                   <div className="divide-y divide-tt-line/60 overflow-hidden rounded-2xl border border-tt-line">
                     {(attendanceByDay.get(day) ?? []).map((row) => {

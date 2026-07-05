@@ -12,6 +12,7 @@ import {
   getPortataState, type Order, type OrderItem,
 } from '@/lib/admin-service'
 import { playNotificationSound } from '@/lib/notificationSound'
+import { useI18n } from '@/components/i18n/I18nProvider'
 
 interface Props { ctx: RestaurantCtx; theme: ThemeMode }
 
@@ -29,10 +30,6 @@ type WaiterCall = {
   payment_method?: string | null
 }
 
-const portataLabels: Record<number, string> = {
-  1: '1ª Portata', 2: '2ª Portata', 3: '3ª Portata', 4: '4ª Portata',
-}
-
 function groupByPortata(items: OrderItem[]) {
   const map = new Map<number, OrderItem[]>()
   for (const it of items) {
@@ -44,6 +41,8 @@ function groupByPortata(items: OrderItem[]) {
 }
 
 export function WaiterSection({ ctx }: Props) {
+  const { tr } = useI18n()
+  const t = tr.admin.waiter
   const [tab, setTab] = useState<Tab>('consegne')
   const [readyOrders, setReadyOrders] = useState<Order[]>([])
   const [payments, setPayments] = useState<WaiterCall[]>([])
@@ -107,7 +106,7 @@ export function WaiterSection({ ctx }: Props) {
       setPayments(pays)
       setHelpCalls(helps)
     } catch (e: any) {
-      setError(e.message ?? 'Errore')
+      setError(e.message ?? t.error)
     } finally {
       setLoading(false)
     }
@@ -133,8 +132,13 @@ export function WaiterSection({ ctx }: Props) {
       ...o, order_items: (o.order_items ?? []).map((it) => it.portata === portata ? { ...it, portata_delivered: true } : it),
     }))
     try { await markPortataDelivered(order.id, portata, ctx.userId) }
-    catch (e: any) { setError(e.message ?? 'Errore'); load() }
-    finally { setBusyKey(null) }
+    catch (e: any) { setError(e.message ?? t.error); load() }
+    finally {
+      // Tieni il lock ~700ms per evitare il ghost-click su mobile: il bottone
+      // cambia da "Consegna" a "Ritira" nella stessa posizione e il click
+      // ritardato del touch atterrerebbe sul pickup.
+      setTimeout(() => setBusyKey(null), 700)
+    }
   }
 
   async function pickUpPortata(order: Order, portata: number) {
@@ -148,7 +152,7 @@ export function WaiterSection({ ctx }: Props) {
       : prev.map((o) => o.id !== order.id ? o : { ...o, order_items: (o.order_items ?? []).filter((it) => it.portata !== portata) })
     )
     try { await markPortataPickedUp(order.id, portata, ctx.userId) }
-    catch (e: any) { setError(e.message ?? 'Errore'); load() }
+    catch (e: any) { setError(e.message ?? t.error); load() }
     finally { setBusyKey(null) }
   }
 
@@ -194,11 +198,20 @@ export function WaiterSection({ ctx }: Props) {
 
   if (loading) {
     return (
-      <div className="space-y-4">
-        <div className="h-7 w-40 tt-skeleton rounded-full" />
-        {Array.from({ length: 3 }).map((_, i) => (
-          <div key={i} className="tt-card h-24 rounded-2xl border border-tt-line shadow-tt" />
-        ))}
+      <div className="space-y-5">
+        <div className="space-y-2">
+          <div className="h-6 w-24 tt-skeleton rounded-full" />
+          <div className="h-3 w-40 tt-skeleton rounded-full" />
+        </div>
+        <div className="tt-card flex gap-1 rounded-2xl border border-tt-line p-1.5 shadow-tt">
+          {Array.from({ length: 3 }).map((_, i) => (
+            <div key={i} className="flex flex-1 flex-col items-center gap-1 rounded-xl py-2.5 px-1">
+              <div className="h-4 w-16 tt-skeleton rounded-full" />
+              <div className="h-4 w-6 tt-skeleton rounded-full" />
+            </div>
+          ))}
+        </div>
+        <div className="tt-card h-24 rounded-2xl border border-tt-line shadow-tt" />
       </div>
     )
   }
@@ -207,24 +220,24 @@ export function WaiterSection({ ctx }: Props) {
     return (
       <div className="grid place-items-center py-16 text-center">
         <AlertCircle className="mb-3 h-10 w-10 text-tt-danger" />
-        <p className="text-sm font-bold text-tt-ink">Errore</p>
+        <p className="text-sm font-bold text-tt-ink">{t.error}</p>
         <p className="mt-1 max-w-xs text-xs text-tt-muted">{error}</p>
       </div>
     )
   }
 
   const tabs: { id: Tab; label: string; count: number; Icon: React.ElementType; color: string }[] = [
-    { id: 'consegne',  label: 'Consegne',  count: readyOrders.length, Icon: CheckCircle2, color: 'text-tt-success' },
-    { id: 'pagamenti', label: 'Pagamenti', count: payments.length,    Icon: CreditCard,   color: 'text-tt-warning' },
-    { id: 'richieste', label: 'Richieste', count: helpCalls.length,   Icon: Bell,         color: 'text-tt-pink'    },
+    { id: 'consegne',  label: t.tabs.deliveries, count: readyOrders.length, Icon: CheckCircle2, color: 'text-tt-success' },
+    { id: 'pagamenti', label: t.tabs.payments,   count: payments.length,    Icon: CreditCard,   color: 'text-tt-warning' },
+    { id: 'richieste', label: t.tabs.requests,   count: helpCalls.length,   Icon: Bell,         color: 'text-tt-pink'    },
   ]
 
   return (
     <div className="space-y-5">
       <div>
-        <h2 className="font-serif text-xl font-extrabold text-tt-ink">Cameriere</h2>
+        <h2 className="font-serif text-xl font-extrabold text-tt-ink">{t.title}</h2>
         <p className="text-xs text-tt-muted">
-          {readyOrders.length} consegne · {payments.length} pagamenti · {helpCalls.length} richieste
+          {t.countF(readyOrders.length, payments.length, helpCalls.length)}
         </p>
       </div>
 
@@ -257,7 +270,7 @@ export function WaiterSection({ ctx }: Props) {
         readyOrders.length === 0 ? (
           <div className="tt-card rounded-2xl border border-tt-line p-12 text-center shadow-tt">
             <UtensilsCrossed className="mx-auto mb-3 h-9 w-9 text-tt-muted opacity-40" />
-            <p className="text-sm text-tt-muted">Nessun ordine pronto da consegnare.</p>
+            <p className="text-sm text-tt-muted">{t.emptyDeliveries}</p>
           </div>
         ) : (
           <div className="space-y-3">
@@ -276,7 +289,7 @@ export function WaiterSection({ ctx }: Props) {
                     {o.ordine && (
                       <>
                         <span className="text-xs text-tt-muted">·</span>
-                        <p className="text-xs text-tt-muted">Tavolo {o.table_code ?? '—'}</p>
+                        <p className="text-xs text-tt-muted">{t.table} {o.table_code ?? '—'}</p>
                       </>
                     )}
                     <span className="ml-auto flex items-center gap-1 text-xs text-tt-muted">
@@ -286,35 +299,36 @@ export function WaiterSection({ ctx }: Props) {
                   <div className="divide-y divide-tt-line/60">
                     {groups.map(({ portata, items }) => {
                       const state = getPortataState(items)
-                      const label = portataLabels[portata] ?? `${portata}ª Portata`
+                      const label = t.portataFallback(portata)
                       const busyDeliver = busyKey === `${o.id}-${portata}-deliver`
-                      const busyPickup  = busyKey === `${o.id}-${portata}-pickup`
+                      // Anti ghost-click: se il deliver è in corso/cooldown, blocca anche il pickup
+                      const busyPickup  = busyKey === `${o.id}-${portata}-pickup` || busyKey === `${o.id}-${portata}-deliver`
                       return (
                         <div key={portata} className="px-4 py-3">
                           <div className="mb-1.5 flex items-center gap-2">
                             <span className="grid h-6 w-6 place-items-center rounded-md bg-tt-pink/10 text-[11px] font-bold text-tt-pink">{portata}</span>
                             <p className="text-xs font-bold text-tt-ink">{label}</p>
                             <span className={`tt-pill ml-auto ${state === 'pronta' ? 'bg-tt-success/15 text-tt-success' : 'bg-tt-cyan/15 text-tt-cyan'}`}>
-                              {state === 'pronta' ? 'Da consegnare' : 'Da ritirare'}
+                              {state === 'pronta' ? t.toDeliver : t.toPickup}
                             </span>
                           </div>
                           <div className="space-y-1">
                             {items.map((it, i) => (
                               <div key={it.id ?? i} className="flex items-center gap-2 text-sm">
                                 <span className="grid h-5 w-5 place-items-center rounded-md bg-tt-pink/10 text-[10px] font-bold text-tt-pink">{it.quantity}×</span>
-                                <span className="text-tt-ink">{it.menu_items?.name ?? 'Piatto'}</span>
+                                <span className="text-tt-ink">{it.menu_items?.name ?? t.dish}</span>
                               </div>
                             ))}
                           </div>
                           {state === 'pronta' ? (
                             <button onClick={() => deliverPortata(o, portata)} disabled={busyDeliver}
                               className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-brand-emerald to-brand-sky px-4 py-1.5 text-xs font-bold text-white shadow-glow-emerald transition hover:scale-105 disabled:opacity-60">
-                              <CheckCircle2 className="h-3.5 w-3.5" /> Consegna portata
+                              <CheckCircle2 className="h-3.5 w-3.5" /> {t.deliverCourse}
                             </button>
                           ) : (
                             <button onClick={() => pickUpPortata(o, portata)} disabled={busyPickup}
                               className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-4 py-1.5 text-xs font-bold text-white shadow-glow-amber transition hover:scale-105 disabled:opacity-60">
-                              <PackageCheck className="h-3.5 w-3.5" /> Ritira piatti
+                              <PackageCheck className="h-3.5 w-3.5" /> {t.pickupCourse}
                             </button>
                           )}
                         </div>
@@ -333,7 +347,7 @@ export function WaiterSection({ ctx }: Props) {
         payments.length === 0 ? (
           <div className="tt-card rounded-2xl border border-tt-line p-12 text-center shadow-tt">
             <CreditCard className="mx-auto mb-3 h-9 w-9 text-tt-muted opacity-40" />
-            <p className="text-sm text-tt-muted">Nessuna richiesta di pagamento in attesa.</p>
+            <p className="text-sm text-tt-muted">{t.emptyPayments}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -341,7 +355,7 @@ export function WaiterSection({ ctx }: Props) {
               const time = new Date(r.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
               const total = r.order_total != null ? (r.order_total / 100).toFixed(2) : null
               const payIcon = r.payment_method === 'card' ? '💳' : '💵'
-              const payLabel = r.payment_method === 'card' ? 'Carta' : 'Contanti'
+              const payLabel = r.payment_method === 'card' ? t.card : t.cash
               return (
                 <div key={r.id} className="tt-card overflow-hidden rounded-2xl border-2 border-tt-warning/40 bg-tt-warning/5 shadow-tt">
                   <div className="flex items-center gap-3 border-b border-tt-line/60 bg-tt-surfaceAlt/60 px-4 py-3">
@@ -349,7 +363,7 @@ export function WaiterSection({ ctx }: Props) {
                       <CreditCard className="h-4 w-4" />
                     </span>
                     <div>
-                      <p className="text-sm font-bold text-tt-ink">{r.table_label ? `Tavolo ${r.table_label}` : 'Tavolo —'}</p>
+                      <p className="text-sm font-bold text-tt-ink">{r.table_label ? `${t.table} ${r.table_label}` : t.tableDash}</p>
                       <div className="flex items-center gap-2">
                         {total && <p className="text-xs text-tt-muted">€{total}</p>}
                         {r.payment_method && (
@@ -363,19 +377,19 @@ export function WaiterSection({ ctx }: Props) {
                   </div>
                   <div className="px-4 py-3">
                     <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-tt-warning">
-                      <Bell className="h-3 w-3 animate-pulse" /> Il cliente è pronto per pagare
+                      <Bell className="h-3 w-3 animate-pulse" /> {t.readyToPay}
                     </p>
                     <div className="flex gap-2">
                       <button onClick={() => dismissCall(r.id, setPayments, r.order_id, r.table_id)}
                         className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-brand-emerald to-brand-sky py-1.5 text-xs font-bold text-white shadow-glow-emerald transition hover:scale-105">
-                        <CheckCircle2 className="h-3.5 w-3.5" /> Pagamento gestito
+                        <CheckCircle2 className="h-3.5 w-3.5" /> {t.paymentHandled}
                       </button>
                       <button onClick={async () => {
                         setPayments((prev) => prev.filter((x) => x.id !== r.id))
                         await supabase.from('waiter_calls').delete().eq('id', r.id)
                       }}
                         className="rounded-full border border-red-200 bg-red-50 px-3 py-1.5 text-xs font-bold text-red-500 transition hover:bg-red-100">
-                        Annulla
+                        {t.cancel}
                       </button>
                     </div>
                   </div>
@@ -391,7 +405,7 @@ export function WaiterSection({ ctx }: Props) {
         helpCalls.length === 0 ? (
           <div className="tt-card rounded-2xl border border-tt-line p-12 text-center shadow-tt">
             <Bell className="mx-auto mb-3 h-9 w-9 text-tt-muted opacity-40" />
-            <p className="text-sm text-tt-muted">Nessuna richiesta di assistenza al tavolo.</p>
+            <p className="text-sm text-tt-muted">{t.emptyRequests}</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
@@ -404,8 +418,8 @@ export function WaiterSection({ ctx }: Props) {
                       <Bell className="h-4 w-4" />
                     </span>
                     <div>
-                      <p className="text-sm font-bold text-tt-ink">{r.table_label ? `Tavolo ${r.table_label}` : 'Tavolo —'}</p>
-                      <p className="text-xs text-tt-muted">Richiesta assistenza</p>
+                      <p className="text-sm font-bold text-tt-ink">{r.table_label ? `${t.table} ${r.table_label}` : t.tableDash}</p>
+                      <p className="text-xs text-tt-muted">{t.assistanceRequest}</p>
                     </div>
                     <span className="ml-auto flex items-center gap-1 text-xs text-tt-muted">
                       <Clock className="h-3 w-3" /> {time}
@@ -413,11 +427,11 @@ export function WaiterSection({ ctx }: Props) {
                   </div>
                   <div className="px-4 py-3">
                     <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-tt-pink">
-                      <Bell className="h-3 w-3 animate-pulse" /> Il cliente ha bisogno di assistenza
+                      <Bell className="h-3 w-3 animate-pulse" /> {t.needsAssistance}
                     </p>
                     <button onClick={() => dismissCall(r.id, setHelpCalls)}
                       className="flex w-full items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-brand-emerald to-brand-sky py-1.5 text-xs font-bold text-white shadow-glow-emerald transition hover:scale-105">
-                      <CheckCircle2 className="h-3.5 w-3.5" /> Richiesta gestita
+                      <CheckCircle2 className="h-3.5 w-3.5" /> {t.requestHandled}
                     </button>
                   </div>
                 </div>

@@ -171,6 +171,9 @@ export function GreenSection() {
               {tr.pages.green.backHome.includes('Torna') ? 'Scopri di più sul nostro impegno' : 'Learn more about our commitment'}
               <ArrowRight className="h-4 w-4" />
             </Link>
+            <p className="mt-3 text-[10px] italic text-white/60">
+              {tr.pages.green.backHome.includes('Torna') ? 'Aggiornato automaticamente ogni 72 ore' : 'Automatically updated every 72 hours'}
+            </p>
           </div>
         </motion.div>
 

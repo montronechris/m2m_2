@@ -4,25 +4,26 @@ import { useEffect, useState, useMemo } from 'react'
 import { History, CheckCircle2, XCircle, AlertCircle, Filter, TrendingUp } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
 import { getHistoryOrders, type Order } from '@/lib/admin-service'
+import { useI18n } from '@/components/i18n/I18nProvider'
 
 interface Props {
   ctx: RestaurantCtx
   theme: ThemeMode
 }
 
-const statusMeta: Record<string, { label: string; cls: string; icon: typeof CheckCircle2 }> = {
-  served: { label: 'Servito', cls: 'bg-tt-success/15 text-tt-success', icon: CheckCircle2 },
-  delivered: { label: 'Consegnato', cls: 'bg-tt-success/15 text-tt-success', icon: CheckCircle2 },
-  cancelled: { label: 'Annullato', cls: 'bg-tt-danger/15 text-tt-danger', icon: XCircle },
-}
-
-const filters: { id: string; label: string }[] = [
-  { id: 'all', label: 'Tutti' },
-  { id: 'served', label: 'Serviti' },
-  { id: 'cancelled', label: 'Annullati' },
-]
-
 export function HistorySection({ ctx }: Props) {
+  const { tr } = useI18n()
+  const t = tr.admin.history
+  const statusMeta: Record<string, { label: string; cls: string; icon: typeof CheckCircle2 }> = {
+    served: { label: t.statusServed, cls: 'bg-tt-success/15 text-tt-success', icon: CheckCircle2 },
+    delivered: { label: t.statusDelivered, cls: 'bg-tt-success/15 text-tt-success', icon: CheckCircle2 },
+    cancelled: { label: t.statusCancelled, cls: 'bg-tt-danger/15 text-tt-danger', icon: XCircle },
+  }
+  const filters: { id: string; label: string }[] = [
+    { id: 'all', label: t.filterAll },
+    { id: 'served', label: t.filterServed },
+    { id: 'cancelled', label: t.filterCancelled },
+  ]
   const [filter, setFilter] = useState('all')
   const [orders, setOrders] = useState<Order[]>([])
   const [loading, setLoading] = useState(true)
@@ -35,7 +36,7 @@ export function HistorySection({ ctx }: Props) {
         if (active) setOrders(data)
       })
       .catch((e) => {
-        if (active) setError(e.message ?? 'Errore nel caricamento')
+        if (active) setError(e.message ?? t.errorLoad)
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -79,7 +80,7 @@ export function HistorySection({ ctx }: Props) {
     return (
       <div className="grid place-items-center py-16 text-center">
         <AlertCircle className="mb-3 h-10 w-10 text-tt-danger" />
-        <p className="text-sm font-bold text-tt-ink">Errore</p>
+        <p className="text-sm font-bold text-tt-ink">{t.error}</p>
         <p className="mt-1 max-w-xs text-xs text-tt-muted">{error}</p>
       </div>
     )
@@ -88,8 +89,8 @@ export function HistorySection({ ctx }: Props) {
   return (
     <div className="space-y-4">
       <div>
-        <h2 className="font-serif text-xl font-extrabold text-tt-ink">Cronologia</h2>
-        <p className="text-xs text-tt-muted">Storico ordini serviti e annullati</p>
+        <h2 className="font-serif text-xl font-extrabold text-tt-ink">{t.title}</h2>
+        <p className="text-xs text-tt-muted">{t.subtitle}</p>
       </div>
 
       {/* Stats */}
@@ -101,7 +102,7 @@ export function HistorySection({ ctx }: Props) {
             </span>
           </div>
           <p className="text-lg font-extrabold text-tt-ink">{stats.total}</p>
-          <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">Totale</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">{t.statTotal}</p>
         </div>
         <div className="tt-card rounded-2xl border border-tt-line p-4 shadow-tt">
           <div className="mb-2 flex items-center justify-between">
@@ -110,7 +111,7 @@ export function HistorySection({ ctx }: Props) {
             </span>
           </div>
           <p className="text-lg font-extrabold text-tt-ink">{stats.delivered}</p>
-          <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">Serviti</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">{t.statServed}</p>
         </div>
         <div className="tt-card rounded-2xl border border-tt-line p-4 shadow-tt">
           <div className="mb-2 flex items-center justify-between">
@@ -119,7 +120,7 @@ export function HistorySection({ ctx }: Props) {
             </span>
           </div>
           <p className="text-lg font-extrabold text-tt-ink">{stats.cancelled}</p>
-          <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">Annullati</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">{t.statCancelled}</p>
         </div>
         <div className="tt-card rounded-2xl border border-tt-line p-4 shadow-tt">
           <div className="mb-2 flex items-center justify-between">
@@ -128,7 +129,7 @@ export function HistorySection({ ctx }: Props) {
             </span>
           </div>
           <p className="text-lg font-extrabold text-tt-ink">€{stats.revenue.toFixed(0)}</p>
-          <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">Ricavo</p>
+          <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">{t.statRevenue}</p>
         </div>
       </div>
 
@@ -153,7 +154,7 @@ export function HistorySection({ ctx }: Props) {
       {visible.length === 0 ? (
         <div className="tt-card rounded-2xl border border-tt-line p-8 text-center shadow-tt">
           <Filter className="mx-auto mb-2 h-8 w-8 text-tt-muted opacity-40" />
-          <p className="text-sm text-tt-muted">Nessun ordine nello storico.</p>
+          <p className="text-sm text-tt-muted">{t.empty}</p>
         </div>
       ) : (
         <div className="tt-card overflow-hidden rounded-2xl border border-tt-line shadow-tt">
@@ -161,8 +162,8 @@ export function HistorySection({ ctx }: Props) {
             const st = statusMeta[o.status] ?? statusMeta['served']
             const StatusIcon = st.icon
             const total = (o.total_cents / 100).toFixed(2)
-            const date = new Date(o.created_at).toLocaleDateString('it-IT', { day: '2-digit', month: 'short' })
-            const time = new Date(o.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+            const date = new Date(o.created_at).toLocaleDateString(t.locale, { day: '2-digit', month: 'short' })
+            const time = new Date(o.created_at).toLocaleTimeString(t.locale, { hour: '2-digit', minute: '2-digit' })
             return (
               <div
                 key={o.id}

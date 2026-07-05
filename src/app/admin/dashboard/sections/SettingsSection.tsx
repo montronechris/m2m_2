@@ -23,7 +23,8 @@ interface Props {
 
 export function SettingsSection({ ctx }: Props) {
   const router = useRouter()
-  const { lang, setLang } = useI18n()
+  const { lang, setLang, tr } = useI18n()
+  const t = tr.admin.settings
   const [data, setData] = useState<RestaurantSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
@@ -42,7 +43,7 @@ export function SettingsSection({ ctx }: Props) {
         if (active) setData(d)
       })
       .catch((e) => {
-        if (active) setError(e.message ?? 'Errore nel caricamento')
+        if (active) setError(e.message ?? t.errorLoad)
       })
       .finally(() => {
         if (active) setLoading(false)
@@ -63,7 +64,7 @@ export function SettingsSection({ ctx }: Props) {
       setSaved(true)
       setTimeout(() => setSaved(false), 2000)
     } catch (e: any) {
-      setError(e.message ?? 'Errore nel salvataggio')
+      setError(e.message ?? t.errorSave)
       setData({ ...data, notification_prefs: data.notification_prefs })
     } finally {
       setSaving(false)
@@ -103,7 +104,7 @@ export function SettingsSection({ ctx }: Props) {
   if (error && !data) {
     return (
       <div className="grid place-items-center py-16 text-center">
-        <p className="text-sm font-bold text-tt-ink">Errore</p>
+        <p className="text-sm font-bold text-tt-ink">{t.error}</p>
         <p className="mt-1 max-w-xs text-xs text-tt-muted">{error}</p>
       </div>
     )
@@ -116,8 +117,8 @@ export function SettingsSection({ ctx }: Props) {
           <Settings className="h-5 w-5" />
         </span>
         <div>
-          <h2 className="font-serif text-xl font-extrabold text-tt-ink">Impostazioni</h2>
-          <p className="text-xs text-tt-muted">Account e preferenze</p>
+          <h2 className="font-serif text-xl font-extrabold text-tt-ink">{t.title}</h2>
+          <p className="text-xs text-tt-muted">{t.subtitle}</p>
         </div>
       </div>
 
@@ -146,66 +147,66 @@ export function SettingsSection({ ctx }: Props) {
           onClick={() => setShowProfile(true)}
           className="flex shrink-0 items-center gap-1.5 rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-3 py-2 text-xs font-bold text-white shadow-glow-amber transition hover:scale-105"
         >
-          <UserCog className="h-3.5 w-3.5" /> Modifica
+          <UserCog className="h-3.5 w-3.5" /> {t.edit}
         </button>
       </div>
 
       {/* Notifications */}
       <div className="tt-card overflow-hidden rounded-2xl border border-tt-line shadow-tt">
         <div className="flex items-center justify-between border-b border-tt-line px-4 py-2.5">
-          <p className="text-xs font-bold uppercase tracking-wide text-tt-muted">Notifiche</p>
+          <p className="text-xs font-bold uppercase tracking-wide text-tt-muted">{t.notifications}</p>
           {saved && (
             <span className="flex items-center gap-1 text-xs font-bold text-tt-success">
-              <Check className="h-3 w-3" /> Salvato
+              <Check className="h-3 w-3" /> {t.savedShort}
             </span>
           )}
         </div>
         {[
           {
             icon: Bell,
-            label: 'Notifiche admin',
-            desc: 'Ricevi notifiche per nuovi ordini',
+            label: t.notifAdmin,
+            desc: t.notifAdminDesc,
             val: data?.notification_prefs.admin ?? true,
             onClick: () => togglePref('admin'),
           },
           {
             icon: Bell,
-            label: 'Notifiche staff',
-            desc: 'Avvisa lo staff dei nuovi ordini',
+            label: t.notifStaff,
+            desc: t.notifStaffDesc,
             val: data?.notification_prefs.cameriere ?? true,
             onClick: () => togglePref('cameriere'),
           },
           {
             icon: Volume2,
-            label: 'Suono notifiche',
-            desc: 'Riproduci un suono per ogni ordine',
+            label: t.notifSound,
+            desc: t.notifSoundDesc,
             val: soundOn,
             onClick: toggleSound,
           },
-        ].map((t, i) => {
-          const Icon = t.icon
+        ].map((row, i) => {
+          const Icon = row.icon
           return (
-            <div key={t.label} className={`flex items-center gap-3 px-4 py-3.5 ${i > 0 ? 'border-t border-tt-line' : ''}`}>
+            <div key={row.label} className={`flex items-center gap-3 px-4 py-3.5 ${i > 0 ? 'border-t border-tt-line' : ''}`}>
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-tt-surfaceAlt2 text-tt-pink">
                 <Icon className="h-4 w-4" />
               </span>
               <div className="flex-1">
-                <p className="text-sm font-bold text-tt-ink">{t.label}</p>
-                <p className="text-xs text-tt-muted">{t.desc}</p>
+                <p className="text-sm font-bold text-tt-ink">{row.label}</p>
+                <p className="text-xs text-tt-muted">{row.desc}</p>
               </div>
-              <span className="mr-2 text-xs font-bold text-tt-muted">{t.val ? 'ON' : 'OFF'}</span>
+              <span className="mr-2 text-xs font-bold text-tt-muted">{row.val ? 'ON' : 'OFF'}</span>
               <button
-                onClick={t.onClick}
+                onClick={row.onClick}
                 disabled={saving}
                 role="switch"
-                aria-checked={t.val}
+                aria-checked={row.val}
                 className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
-                  t.val ? 'bg-gradient-to-r from-brand-amber to-brand-terra' : 'bg-tt-line'
+                  row.val ? 'bg-gradient-to-r from-brand-amber to-brand-terra' : 'bg-tt-line'
                 }`}
               >
                 <span
                   className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
-                    t.val ? 'translate-x-5' : 'translate-x-0.5'
+                    row.val ? 'translate-x-5' : 'translate-x-0.5'
                   }`}
                 />
               </button>
@@ -217,15 +218,15 @@ export function SettingsSection({ ctx }: Props) {
       {/* Security & preferences */}
       <div className="tt-card overflow-hidden rounded-2xl border border-tt-line shadow-tt">
         <p className="border-b border-tt-line px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-tt-muted">
-          Sicurezza e preferenze
+          {t.securityPrefs}
         </p>
         <div className="flex items-center gap-3 border-b border-tt-line px-4 py-3.5">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-tt-surfaceAlt2 text-tt-pink">
             <Shield className="h-4 w-4" />
           </span>
           <div className="flex-1">
-            <p className="text-sm font-bold text-tt-ink">Autenticazione 2FA</p>
-            <p className="text-xs text-tt-muted">Aggiungi un livello di sicurezza extra</p>
+            <p className="text-sm font-bold text-tt-ink">{t.twoFA}</p>
+            <p className="text-xs text-tt-muted">{t.twoFADesc}</p>
           </div>
           <span className="mr-2 text-xs font-bold text-tt-muted">{twoFA ? 'ON' : 'OFF'}</span>
           <button
@@ -248,8 +249,8 @@ export function SettingsSection({ ctx }: Props) {
             <Globe className="h-4 w-4" />
           </span>
           <div className="flex-1">
-            <p className="text-sm font-bold text-tt-ink">Lingua</p>
-            <p className="text-xs text-tt-muted">Seleziona la lingua del sito</p>
+            <p className="text-sm font-bold text-tt-ink">{t.language}</p>
+            <p className="text-xs text-tt-muted">{t.languageDesc}</p>
           </div>
           <div className="flex items-center gap-1 rounded-full border border-tt-line bg-white p-0.5">
             <button
@@ -275,22 +276,22 @@ export function SettingsSection({ ctx }: Props) {
       {/* Plan */}
       {data && (
         <div className="tt-card rounded-2xl border border-tt-line p-5 shadow-tt">
-          <p className="tt-section-title">Abbonamento</p>
+          <p className="tt-section-title">{t.subscription}</p>
           <div className="flex items-center justify-between">
             <div>
-              <p className="font-serif text-lg font-extrabold text-tt-ink">Piano {data.plan ?? '—'}</p>
+              <p className="font-serif text-lg font-extrabold text-tt-ink">{t.planPrefix} {data.plan ?? '—'}</p>
               <p className="text-xs text-tt-muted">
                 {data.accessExpiresAt
-                  ? `Rinnovo: ${new Date(data.accessExpiresAt).toLocaleDateString('it-IT')}`
-                  : 'Nessuna scadenza'}
-                {data.maxStaff ? ` · ${data.maxStaff} posti staff` : ''}
+                  ? `${t.renewalPrefix} ${new Date(data.accessExpiresAt).toLocaleDateString(t.locale)}`
+                  : t.noExpiration}
+                {data.maxStaff ? t.staffSeatsSuffix(data.maxStaff) : ''}
               </p>
             </div>
             <button
               onClick={() => setShowPlan(true)}
               className="rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-4 py-2 text-sm font-bold text-white shadow-glow-amber transition hover:scale-105"
             >
-              Gestisci
+              {t.manage}
             </button>
           </div>
         </div>
@@ -301,7 +302,7 @@ export function SettingsSection({ ctx }: Props) {
         onClick={handleLogout}
         className="flex w-full items-center justify-center gap-2 rounded-2xl border border-tt-danger/30 bg-tt-danger/5 py-3.5 text-sm font-bold text-tt-danger transition hover:bg-tt-danger/10"
       >
-        <LogOut className="h-4 w-4" /> Esci dall'account
+        <LogOut className="h-4 w-4" /> {t.logoutBtn}
       </button>
 
       {/* Profile edit modal */}
@@ -324,54 +325,54 @@ export function SettingsSection({ ctx }: Props) {
             className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl"
           >
             <div className="flex items-center justify-between bg-gradient-to-r from-brand-amber to-brand-terra px-5 py-4 text-white">
-              <h3 className="font-serif text-lg font-extrabold">Gestisci abbonamento</h3>
+              <h3 className="font-serif text-lg font-extrabold">{t.managePlan}</h3>
               <button onClick={() => setShowPlan(false)} className="grid h-8 w-8 place-items-center rounded-full bg-white/20">
                 <X className="h-4 w-4" />
               </button>
             </div>
             <div className="p-5">
-              <p className="mb-4 text-sm text-tt-muted">Il tuo piano attuale e le opzioni disponibili:</p>
+              <p className="mb-4 text-sm text-tt-muted">{t.currentPlanIntro}</p>
               <div className="mb-4 rounded-2xl border-2 border-tt-pink/30 bg-tt-pink/5 p-4">
                 <div className="flex items-center justify-between">
                   <div>
-                    <p className="font-serif text-xl font-extrabold text-tt-ink">Piano {data.plan ?? '—'}</p>
+                    <p className="font-serif text-xl font-extrabold text-tt-ink">{t.planPrefix} {data.plan ?? '—'}</p>
                     <p className="text-xs text-tt-muted">
                       {data.accessExpiresAt
-                        ? `Attivo fino al ${new Date(data.accessExpiresAt).toLocaleDateString('it-IT')}`
-                        : 'Attivo'}
+                        ? t.activeUntil(new Date(data.accessExpiresAt).toLocaleDateString(t.locale))
+                        : t.active}
                     </p>
                   </div>
-                  <span className="tt-pill bg-tt-success/15 text-tt-success">Attivo</span>
+                  <span className="tt-pill bg-tt-success/15 text-tt-success">{t.active}</span>
                 </div>
               </div>
               <div className="space-y-2">
                 <button
-                  onClick={() => { setShowPlan(false); flash('Reindiramento al pagamento…') }}
+                  onClick={() => { setShowPlan(false); flash(t.redirectPayment) }}
                   className="flex w-full items-center justify-between rounded-xl border border-tt-line px-4 py-3 text-left transition hover:bg-tt-surfaceAlt2"
                 >
                   <div>
-                    <p className="text-sm font-bold text-tt-ink">Rinnova abbonamento</p>
-                    <p className="text-xs text-tt-muted">Estendi di 1 mese</p>
+                    <p className="text-sm font-bold text-tt-ink">{t.renewSub}</p>
+                    <p className="text-xs text-tt-muted">{t.renewSubDesc}</p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-tt-muted" />
                 </button>
                 <button
-                  onClick={() => { setShowPlan(false); flash('Contatto sales avviato') }}
+                  onClick={() => { setShowPlan(false); flash(t.salesContact) }}
                   className="flex w-full items-center justify-between rounded-xl border border-tt-line px-4 py-3 text-left transition hover:bg-tt-surfaceAlt2"
                 >
                   <div>
-                    <p className="text-sm font-bold text-tt-ink">Cambia piano</p>
-                    <p className="text-xs text-tt-muted">Upgrade o downgrade</p>
+                    <p className="text-sm font-bold text-tt-ink">{t.changePlan}</p>
+                    <p className="text-xs text-tt-muted">{t.changePlanDesc}</p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-tt-muted" />
                 </button>
                 <button
-                  onClick={() => { setShowPlan(false); flash('Richiesta fattura inviata') }}
+                  onClick={() => { setShowPlan(false); flash(t.invoiceRequested) }}
                   className="flex w-full items-center justify-between rounded-xl border border-tt-line px-4 py-3 text-left transition hover:bg-tt-surfaceAlt2"
                 >
                   <div>
-                    <p className="text-sm font-bold text-tt-ink">Scarica fatture</p>
-                    <p className="text-xs text-tt-muted">Storico pagamenti</p>
+                    <p className="text-sm font-bold text-tt-ink">{t.downloadInvoices}</p>
+                    <p className="text-xs text-tt-muted">{t.downloadInvoicesDesc}</p>
                   </div>
                   <ChevronRight className="h-4 w-4 text-tt-muted" />
                 </button>
@@ -395,6 +396,8 @@ function ProfileEditModal({
   onClose: () => void
   onSaved: (msg: string) => void
 }) {
+  const { tr } = useI18n()
+  const t = tr.admin.settings
   const [firstName, setFirstName] = useState(ctx.userFirstName)
   const [lastName, setLastName] = useState(ctx.userLastName)
   const [newPassword, setNewPassword] = useState('')
@@ -429,13 +432,13 @@ function ProfileEditModal({
       }
       // Update password if provided
       if (newPassword) {
-        if (newPassword.length < 6) throw new Error('La password deve avere almeno 6 caratteri')
-        if (newPassword !== confirmPassword) throw new Error('Le password non coincidono')
+        if (newPassword.length < 6) throw new Error(t.pwTooShort)
+        if (newPassword !== confirmPassword) throw new Error(t.pwMismatch)
         await updateUserPassword(newPassword)
       }
-      onSaved('Profilo aggiornato con successo')
+      onSaved(t.profileUpdated)
     } catch (e: any) {
-      setError(e.message ?? 'Errore nell\'aggiornamento')
+      setError(e.message ?? t.errorUpdate)
     } finally {
       setSaving(false)
     }
@@ -453,7 +456,7 @@ function ProfileEditModal({
         <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-brand-amber to-brand-terra px-5 py-4 text-white">
           <div className="flex items-center gap-2">
             <UserCog className="h-5 w-5" />
-            <h3 className="font-serif text-lg font-extrabold">Modifica profilo</h3>
+            <h3 className="font-serif text-lg font-extrabold">{t.editProfile}</h3>
           </div>
           <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full bg-white/20">
             <X className="h-4 w-4" />
@@ -476,13 +479,13 @@ function ProfileEditModal({
                 <input type="file" accept="image/*" onChange={handleAvatar} className="hidden" />
               </label>
             </div>
-            <p className="mt-2 text-xs text-tt-muted">Cambia foto profilo</p>
+            <p className="mt-2 text-xs text-tt-muted">{t.changePhoto}</p>
           </div>
 
           {/* Name */}
           <div className="mb-4 grid grid-cols-2 gap-3">
             <div>
-              <label className="mb-1 block text-xs font-bold text-tt-ink">Nome</label>
+              <label className="mb-1 block text-xs font-bold text-tt-ink">{t.firstName}</label>
               <input
                 value={firstName}
                 onChange={(e) => setFirstName(e.target.value)}
@@ -490,7 +493,7 @@ function ProfileEditModal({
               />
             </div>
             <div>
-              <label className="mb-1 block text-xs font-bold text-tt-ink">Cognome</label>
+              <label className="mb-1 block text-xs font-bold text-tt-ink">{t.lastName}</label>
               <input
                 value={lastName}
                 onChange={(e) => setLastName(e.target.value)}
@@ -501,14 +504,14 @@ function ProfileEditModal({
 
           {/* Password */}
           <div className="mb-2 flex items-center gap-2 text-xs font-bold text-tt-ink">
-            <KeyRound className="h-3.5 w-3.5 text-tt-pink" /> Cambia password (opzionale)
+            <KeyRound className="h-3.5 w-3.5 text-tt-pink" /> {t.changePasswordOpt}
           </div>
           <div className="mb-3">
             <input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Nuova password"
+              placeholder={t.newPasswordPh}
               className="w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
             />
           </div>
@@ -517,7 +520,7 @@ function ProfileEditModal({
               type="password"
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder="Conferma nuova password"
+              placeholder={t.confirmNewPasswordPh}
               className="w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
             />
           </div>
@@ -536,13 +539,13 @@ function ProfileEditModal({
             className="flex flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-brand-amber to-brand-terra py-3 text-sm font-bold text-white shadow-glow-amber transition hover:scale-105 disabled:opacity-60"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-            Salva modifiche
+            {t.saveChanges}
           </button>
           <button
             onClick={onClose}
             className="rounded-full border border-tt-line bg-white px-5 py-3 text-sm font-bold text-tt-muted transition hover:text-tt-ink"
           >
-            Annulla
+            {t.cancel}
           </button>
         </div>
       </div>

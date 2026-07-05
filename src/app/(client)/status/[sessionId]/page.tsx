@@ -13,6 +13,7 @@ import type { Palette } from "@/components/client/order/palette";
 
 import { getTableSession } from "@/lib/table-session";
 import { useCartStore } from "@/stores/useCartStore";
+import { useI18n } from "@/components/i18n/I18nProvider";
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -89,34 +90,36 @@ const STATUS_TO_STEP: Record<string, StepIdx> = {
   completed: 3,
 };
 
-const STATUS_LABEL_IT: Record<string, string> = {
-  confirmed: "In attesa",
-  pending:   "In attesa",
-  cooking:   "In preparazione",
-  ready:     "In consegna",
-  served:    "Consegnato",
-  completed: "Completato",
-};
+function getStatusLabel(tS: any): Record<string, string> { return {
+  confirmed: tS.waiting,
+  pending:   tS.waiting,
+  cooking:   tS.inPreparation,
+  ready:     tS.inDelivery,
+  served:    tS.served,
+  completed: tS.completed,
+}; }
 
-const STATUS_ETA: Record<string, string> = {
-  confirmed: "15 min",
-  pending:   "15 min",
-  cooking:   "8 min",
-  ready:     "Pronto!",
-  completed: "Servito",
-};
+function getStatusEta(tS: any): Record<string, string> { return {
+  confirmed: tS.etaPending,
+  pending:   tS.etaPending,
+  cooking:   tS.etaCooking,
+  ready:     tS.etaReady,
+  completed: tS.etaServed,
+}; }
 
-const STEP_META: {
+function getStepMeta(tS: any): {
   idx: StepIdx;
   label: string;
   desc: string;
   Icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
-}[] = [
-  { idx: 0, label: "Ordine confermato",  desc: "Pagamento confermato",           Icon: CheckCircle },
-  { idx: 1, label: "In preparazione",    desc: "Il ristorante sta cucinando",     Icon: ChefHat },
-  { idx: 2, label: "In consegna",        desc: "Il cameriere sta arrivando",      Icon: Bell },
-  { idx: 3, label: "Consegnato",         desc: "Buon appetito!",                  Icon: Utensils },
-];
+}[] {
+  return [
+    { idx: 0, label: tS.orderConfirmed,  desc: tS.paymentConfirmed,   Icon: CheckCircle },
+    { idx: 1, label: tS.inPreparation,   desc: tS.kitchenCooking,     Icon: ChefHat },
+    { idx: 2, label: tS.inDelivery,      desc: tS.waiterArriving,     Icon: Bell },
+    { idx: 3, label: tS.served,          desc: tS.enjoyMeal,          Icon: Utensils },
+  ];
+}
 
 function deriveCurrentStep(orders: Order[]): StepIdx {
   if (orders.length === 0) return 0;
@@ -185,11 +188,15 @@ function HeroCard({
   activePortataStartedAt?: string | null;
   tick?: number;
 }) {
+  const { tr } = useI18n();
+  const tS = tr.client.status;
+  const STATUS_LABEL_LOC = getStatusLabel(tS);
+  const STATUS_ETA_LOC = getStatusEta(tS);
   const mostAdvanced = orders.length > 0
     ? [...orders].sort((a, b) => (STATUS_TO_STEP[b.status] ?? 0) - (STATUS_TO_STEP[a.status] ?? 0))[0]
     : null;
 
-  const etaFallback = mostAdvanced ? STATUS_ETA[mostAdvanced.status] : "—";
+  const etaFallback = mostAdvanced ? STATUS_ETA_LOC[mostAdvanced.status] : "—";
   // Tempo rimanente stimato per la portata attiva: tempo medio di consegna
   // meno i minuti già trascorsi da quando questa portata è "iniziata"
   // (conferma ordine per la prima portata, consegna della precedente per le altre).
@@ -200,9 +207,9 @@ function HeroCard({
     return remaining > 0 ? remaining : null; // se il tempo è scaduto, niente countdown — fallback sotto
   })();
   const eta = mostAdvanced && mostAdvanced.status !== "completed" && mostAdvanced.status !== "ready"
-    ? (remainingMinutes !== null ? `~${remainingMinutes} min` : (avgMinutes !== null ? "Sta arrivando" : etaFallback))
+    ? (remainingMinutes !== null ? `~${remainingMinutes} min` : (avgMinutes !== null ? tS.arriving : etaFallback))
     : etaFallback;
-  const statusLabel = mostAdvanced ? STATUS_LABEL_IT[mostAdvanced.status] : "In attesa";
+  const statusLabel = mostAdvanced ? STATUS_LABEL_LOC[mostAdvanced.status] : tS.waiting;
   const isCompleted = currentStep === 3;
 
   // progress bar width based on step (0–3)
@@ -254,7 +261,7 @@ function HeroCard({
                 transition={{ duration: 0.25 }}
                 style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, marginBottom: 2 }}
               >
-                {isCompleted ? "Completato" : activePortataNum != null ? `Avanzamento · Portata ${activePortataNum}` : "Tempo stimato"}
+                {isCompleted ? tS.completedTitle : activePortataNum != null ? `${tS.progressCourse} ${activePortataNum}` : tS.estimatedTime}
               </motion.p>
             </AnimatePresence>
 
@@ -354,6 +361,9 @@ function ProgressSteps({
   isDark: boolean;
 }) {
   const t = themeTokens(isDark);
+  const { tr } = useI18n();
+  const tS = tr.client.status;
+  const STEP_META = getStepMeta(tS);
 
   // Map step → timestamp from orders
   const stepTime: Partial<Record<StepIdx, string>> = {};
@@ -495,6 +505,8 @@ function OrderSummaryCard({
   activePortataNum?: number | null;
 }) {
   const t = themeTokens(isDark);
+  const { tr } = useI18n();
+  const tS = tr.client.status;
   const [expanded, setExpanded] = React.useState(false);
   const dragControls = useAnimation();
 
@@ -533,9 +545,9 @@ function OrderSummaryCard({
     return sa !== sb ? sa - sb : a - b;
   });
 
-  const COOKING_LABEL = "In preparazione";
-  const WAITING_LABEL = "In attesa";
-  const DONE_LABEL    = "Conclusa";
+  const COOKING_LABEL = tS.inPreparation;
+  const WAITING_LABEL = tS.waiting;
+  const DONE_LABEL    = tS.concluded;
 
   const statusMeta = (s: PortataStatus, pNum: number) => {
     if (s === "cooking") return {
@@ -619,10 +631,10 @@ function OrderSummaryCard({
         className="flex w-full items-center justify-between px-4 pb-2 pt-0"
         style={{ touchAction: "none" }}
       >
-        <span style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>Il tuo ordine</span>
+        <span style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{tS.yourOrder}</span>
         <div className="flex items-center gap-2">
           <span style={{ fontSize: 11, color: t.inkSoft }}>
-            {totalQty} {totalQty === 1 ? "articolo" : "articoli"} · € {formatPrice(totalCents)}
+            {totalQty} {totalQty === 1 ? tS.itemSingular : tS.itemPlural} · € {formatPrice(totalCents)}
           </span>
           <motion.svg
             animate={{ rotate: expanded ? 180 : 0 }}
@@ -793,6 +805,8 @@ function Comanda({
   restaurantLogo?: string | null;
 }) {
   const t = themeTokens(isDark);
+  const { tr } = useI18n();
+  const tS = tr.client.status;
   const displayTime = order._displayTime || order.created_at;
   const isPending = order.status === "confirmed" || order.status === "pending";
   const isCooking = order.status === "cooking";
@@ -805,9 +819,9 @@ function Comanda({
   const accentSoft   = `${accent}1a`;
   const accentBorder = `${accent}40`;
   const statusLabel =
-    isPending ? "In attesa" :
-    isCooking ? "In cucina" :
-                "Pronto";
+    isPending ? tS.waiting :
+    isCooking ? tS.cooking :
+                tS.ready;
 
   return (
     <motion.article
@@ -949,10 +963,12 @@ function TabBar({
   brand: string;
 }) {
   const t = themeTokens(isDark);
+  const { tr } = useI18n();
+  const tS = tr.client.status;
   const tabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
-    { key: "attesa", label: "In attesa", icon: <Clock size={16} /> },
-    { key: "cucina", label: "In cucina", icon: <ChefHat size={16} /> },
-    { key: "pronti", label: "Pronti",    icon: <CheckCircle size={16} /> },
+    { key: "attesa", label: tS.waiting, icon: <Clock size={16} /> },
+    { key: "cucina", label: tS.cooking, icon: <ChefHat size={16} /> },
+    { key: "pronti", label: tS.ready,   icon: <CheckCircle size={16} /> },
   ];
   const brandText = `color-mix(in srgb, ${brand} 78%, #000)`;
 
@@ -1289,6 +1305,8 @@ function LoadingSkeleton({ brand, isDark, bg }: { brand: string; isDark: boolean
 
 function EmptyOrderState({ sessionId, brand, isDark }: { sessionId: string; brand: string; isDark: boolean }) {
   const t = themeTokens(isDark);
+  const { tr } = useI18n();
+  const tS = tr.client.status;
   return (
     <motion.div
       initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
@@ -1306,15 +1324,15 @@ function EmptyOrderState({ sessionId, brand, isDark }: { sessionId: string; bran
         </div>
       </motion.div>
       <div className="space-y-2">
-        <h2 className="font-serif text-2xl font-semibold" style={{ color: t.ink }}>Nessun ordine attivo</h2>
-        <p className="mx-auto max-w-xs text-sm" style={{ color: t.inkMuted }}>Non hai ancora ordinato nulla per questo tavolo. Scopri il menù e inizia la tua esperienza.</p>
+        <h2 className="font-serif text-2xl font-semibold" style={{ color: t.ink }}>{tS.noActiveOrder}</h2>
+        <p className="mx-auto max-w-xs text-sm" style={{ color: t.inkMuted }}>{tS.noActiveOrderDesc}</p>
       </div>
       <Link
         href={`/order/${sessionId}`}
         className="group inline-flex min-h-[48px] items-center gap-2 rounded-full px-6 py-3 text-sm font-bold text-white transition hover:scale-[1.02] active:scale-[0.98]"
         style={{ background: `linear-gradient(135deg, ${brand}, color-mix(in srgb, ${brand} 60%, #000))`, boxShadow: `0 12px 28px -6px color-mix(in srgb, ${brand} 55%, transparent)` }}
       >
-        Torna al menù
+        {tS.backToMenu}
         <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
       </Link>
     </motion.div>
@@ -1324,6 +1342,8 @@ function EmptyOrderState({ sessionId, brand, isDark }: { sessionId: string; bran
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function StatusPage() {
+  const { tr } = useI18n();
+  const tS = tr.client.status;
   const params    = useParams();
   const sessionId = params?.sessionId as string;
 
@@ -1638,25 +1658,11 @@ export default function StatusPage() {
       if (resolvedTableNumber) setTableNumber(resolvedTableNumber);
       if (resolvedTableId) setResolvedTableId(resolvedTableId);
 
-      // Check pagamento confermato dal cameriere (usa table_id o session_id come fallback).
-      // Solo se il pagamento è recente: altrimenti un tavolo pagato giorni fa
-      // rilancerebbe per sempre l'animazione "pagamento in corso" a ogni nuova
-      // visita/sessione futura sullo stesso tavolo.
-      {
-        const recentSince = new Date(Date.now() - 10 * 60 * 1000).toISOString();
-        let paidFound = false;
-        if (resolvedTableId) {
-          const { data } = await supabase.from("orders").select("id")
-            .eq("table_id", resolvedTableId).not("paid_at", "is", null).gte("paid_at", recentSince).limit(1);
-          paidFound = !!(data && data.length > 0);
-        }
-        if (!paidFound) {
-          const { data } = await supabase.from("orders").select("id")
-            .eq("session_id", sessionId).not("paid_at", "is", null).gte("paid_at", recentSince).limit(1);
-          paidFound = !!(data && data.length > 0);
-        }
-        if (paidFound) { setShowPaidScreen(true); setLoading(false); return; }
-      }
+      // Nota: lo screen "pagamento in corso/effettuato" viene mostrato SOLO in reazione
+      // all'evento realtime su waiter_calls (vedi subscription qui sotto), non ricontrollato
+      // ad ogni fetch/reload. Il sessionId è persistente per tavolo, quindi un controllo
+      // "pagato negli ultimi N minuti" qui rimostrerebbe lo screen ad ogni reload della
+      // pagina anche senza ordini attivi (es. nuovo cliente allo stesso tavolo).
 
       // Sincronizza stato pagamento richiesto tra dispositivi
       if (resolvedTableId) {
@@ -1678,42 +1684,24 @@ export default function StatusPage() {
         }
       }
 
-      const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
       let ordersData: any[] | null = null;
-      let ordErr: any = null;
-
-      if (resolvedTableId) {
-        const res = await supabase
-          .from("orders").select("*")
-          .eq("table_id", resolvedTableId)
-          .in("status", ["confirmed", "cooking", "ready", "served"])
-          .not("confirmed_at", "is", null)
-          .gte("confirmed_at", since)
-          .order("created_at", { ascending: true });
-        ordersData = res.data;
-        ordErr = res.error;
+      let itemsData: any[] | null = null;
+      {
+        const qs = resolvedTableId ? `?tableId=${encodeURIComponent(resolvedTableId)}` : "";
+        const res = await fetch(`/api/session/${sessionId}/active-orders${qs}`);
+        if (!res.ok) {
+          const errBody = await res.json().catch(() => ({}));
+          throw new Error(errBody.error || tS.loadOrdersError);
+        }
+        const json = await res.json();
+        ordersData = json.orders ?? [];
+        itemsData = json.items ?? [];
       }
 
-      // Fallback: look up by session_id (handles cases where table_id was null at order creation)
-      if (!ordersData?.length && sessionId) {
-        const res = await supabase
-          .from("orders").select("*")
-          .eq("session_id", sessionId)
-          .in("status", ["confirmed", "cooking", "ready", "served"])
-          .not("confirmed_at", "is", null)
-          .gte("confirmed_at", since)
-          .order("created_at", { ascending: true });
-        if (!res.error) { ordersData = res.data; ordErr = null; }
-      }
-
-      if (ordErr) throw ordErr;
       if (!ordersData?.length) { setOrders([]); setLoading(false); return; }
 
       const orderIds = ordersData.map(o => o.id);
-      const { data: itemsData } = await supabase
-        .from("order_items")
-        .select("id, order_id, menu_item_id, name_snapshot, name, quantity, base_price, portata, note, customizations, portata_completed, portata_delivered, picked_up_at, delivered_at")
-        .in("order_id", orderIds);
+      void orderIds;
 
       const menuItemIds = [...new Set((itemsData || []).map(i => i.menu_item_id).filter(Boolean))];
       let nameMap: Record<string, string> = {};
@@ -1885,10 +1873,32 @@ export default function StatusPage() {
   useEffect(() => {
     if (!sessionId) return;
     fetchOrders();
+    const tickInterval = setInterval(() => setTick(t => t + 1), 60_000);
+    // Polling: Realtime + RLS con subquery (order_items.anon read pending) non riesce
+    // ad autorizzare gli eventi per anon, quindi lo stato portata non arriva mai.
+    // Poll ogni 5s finché la pagina è visibile.
+    const pollInterval = setInterval(() => {
+      if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+      fetchOrders();
+    }, 5_000);
+    const onFocus = () => fetchOrders();
+    if (typeof window !== "undefined") window.addEventListener("focus", onFocus);
+    return () => {
+      clearInterval(tickInterval);
+      clearInterval(pollInterval);
+      if (typeof window !== "undefined") window.removeEventListener("focus", onFocus);
+    };
+  }, [sessionId, fetchOrders]);
+
+  // Subscription realtime separata: aspetta di conoscere resolvedTableId prima di
+  // iscriversi a waiter_calls, così il filtro per tavolo è sempre applicato e non
+  // riceviamo mai eventi di pagamento di ALTRI tavoli/ristoranti.
+  useEffect(() => {
+    if (!sessionId || !resolvedTableId) return;
     const channel = supabase.channel(`status_realtime_${sessionId}`)
-      .on("postgres_changes", { event: "*", schema: "public", table: "orders" },      fetchOrders)
+      .on("postgres_changes", { event: "*", schema: "public", table: "orders", filter: `table_id=eq.${resolvedTableId}` },      fetchOrders)
       .on("postgres_changes", { event: "*", schema: "public", table: "order_items" }, fetchOrders)
-      .on("postgres_changes", { event: "*", schema: "public", table: "waiter_calls" },
+      .on("postgres_changes", { event: "*", schema: "public", table: "waiter_calls", filter: `table_id=eq.${resolvedTableId}` },
         (payload) => {
           if (payload.eventType === "DELETE") {
             // Su DELETE payload.old ha solo la PK — confronta con il ref
@@ -1912,9 +1922,8 @@ export default function StatusPage() {
         }
       )
       .subscribe();
-    const tickInterval = setInterval(() => setTick(t => t + 1), 60_000);
-    return () => { supabase.removeChannel(channel); clearInterval(tickInterval); };
-  }, [sessionId, fetchOrders]);
+    return () => { supabase.removeChannel(channel); };
+  }, [sessionId, resolvedTableId, fetchOrders]);
 
   const pending = orders.filter(o => o.status === "confirmed" || o.status === "pending");
   const cooking = orders.filter(o => o.status === "cooking");
@@ -1924,9 +1933,9 @@ export default function StatusPage() {
   const clearBadge = (tab: TabKey) => setBadges(prev => ({ ...prev, [tab]: 0 }));
   const tabOrders: Record<TabKey, Order[]> = { attesa: pending, cucina: cooking, pronti: ready };
   const tabEmpty:  Record<TabKey, string>  = {
-    attesa: "Nessun ordine in attesa",
-    cucina: "Nessun ordine in cucina",
-    pronti: "Nessun ordine pronto",
+    attesa: tS.noWaiting,
+    cucina: tS.noCooking,
+    pronti: tS.noReady,
   };
 
   const markDishReviewed = (dishId: string, orderId: string | null) => {
@@ -2242,8 +2251,9 @@ export default function StatusPage() {
   // ── END SCREEN ────────────────────────────────────────────────────────────
   if (showEndScreen) {
     const order = orders[0];
+    const isPaid = !!(order as any)?.paid_at;
     const payMethod = (order as any)?.payment_method as string | null;
-    const payLabel = payMethod === "cash" ? "Pagamento in contanti" : payMethod === "card" ? "Pagamento con carta" : null;
+    const payLabel = payMethod === "cash" ? tS.payCash : payMethod === "card" ? tS.payCard : null;
     const totalEur = order ? ((order.total_cents ?? 0) / 100).toFixed(2) : null;
     const originalTotalCents =
       (order as any)?.original_total_cents ??
@@ -2297,7 +2307,12 @@ export default function StatusPage() {
             )}
             {/* Richiesta pagamento */}
             <div style={{ borderTop: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.07)"}`, paddingTop: 14 }}>
-              {paymentRequested ? (
+              {isPaid ? (
+                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0" }}>
+                  <span style={{ fontSize: 18 }}>✅</span>
+                  <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? "#a8a29e" : "#78716c" }}>Pagamento già ricevuto</span>
+                </div>
+              ) : paymentRequested ? (
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0" }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 18 }}>✅</span>
@@ -2641,7 +2656,7 @@ export default function StatusPage() {
             return (
             <>
               <p className="mb-1 text-center text-[14px]" style={{ color: "#78716c" }}>
-                {tableNumber ? `Tavolo ${tableNumber}` : "Il tuo ordine"} · tutto servito 🎉
+                {tableNumber ? `${tS.table} ${tableNumber}` : tS.yourOrder} · {tS.allServed} 🎉
               </p>
               <h2 className="mb-5 text-center font-bold" style={{ color: "#1c1917", fontSize: 24, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.02em", lineHeight: 1.2 }}>
                 Com'è stata l'esperienza?

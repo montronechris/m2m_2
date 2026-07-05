@@ -3,6 +3,7 @@
 
 import { useEffect, useState, useRef, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useI18n } from "@/components/i18n/I18nProvider";
 
 interface ScanStatusProps {
   status: "idle" | "verifying" | "success" | "error";
@@ -12,6 +13,8 @@ interface ScanStatusProps {
   tableNumber?: string | number;
   primaryColor?: string;
   logoUrl?: string;
+  backgroundImageUrl?: string;
+  backgroundType?: string;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -155,11 +158,17 @@ export function ScanStatus({
   status,
   message,
   error,
-  restaurantName = "Il tuo ristorante",
+  restaurantName,
   tableNumber,
   primaryColor = "#C07A3A",
   logoUrl,
+  backgroundImageUrl,
+  backgroundType,
 }: ScanStatusProps) {
+  const { tr } = useI18n();
+  const t = tr.client.scan;
+  const tCommon = tr.client.common;
+  const displayRestaurantName = restaurantName ?? tCommon.restaurantFallback;
   const BEIGE = "#F2EDE4";
   const PRIMARY = primaryColor;
   const isLight = luminance(PRIMARY) > 0.55;
@@ -287,6 +296,55 @@ export function ScanStatus({
         />
       ))}
 
+      {/* ── Admin background image overlay ── */}
+      {backgroundType === "image" && backgroundImageUrl && (
+        <div
+          aria-hidden
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundImage: `url(${backgroundImageUrl})`,
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            zIndex: 0,
+            opacity: 0.85,
+          }}
+        />
+      )}
+      {backgroundType === "image" && backgroundImageUrl && (
+        <div
+          aria-hidden
+          style={{
+            position: "fixed",
+            inset: 0,
+            background: "linear-gradient(180deg, rgba(0,0,0,0.15) 0%, rgba(0,0,0,0.45) 100%)",
+            zIndex: 1,
+          }}
+        />
+      )}
+
+      {/* ── Top-left Tavola Rapida logo badge ── */}
+      <div
+        style={{
+          position: "fixed",
+          top: 16,
+          left: 16,
+          width: 44,
+          height: 44,
+          borderRadius: "50%",
+          background: "rgba(255,255,255,0.9)",
+          backdropFilter: "blur(8px)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "center",
+          boxShadow: "0 4px 14px rgba(0,0,0,0.15)",
+          zIndex: 20,
+          border: "1px solid rgba(0,0,0,0.06)",
+        }}
+      >
+        <img src="/logo.svg" alt="Tavola Rapida" style={{ width: 28, height: 28, objectFit: "contain" }} />
+      </div>
+
       {/* ── Radial glow ── */}
       <div
         className="absolute pointer-events-none"
@@ -359,7 +417,7 @@ export function ScanStatus({
                 >
                   <img
                     src={logoUrl}
-                    alt={restaurantName}
+                    alt={displayRestaurantName}
                     style={{ width: "100%", height: "100%", objectFit: "cover" }}
                   />
                 </div>
@@ -411,7 +469,7 @@ export function ScanStatus({
               transition: "color 0.3s",
             }}
           >
-            {tableNumber ? `Tavolo ${tableNumber}` : "Benvenuto"}
+            {tableNumber ? `${tCommon.table} ${tableNumber}` : tCommon.welcome}
           </motion.p>
 
           {/* Restaurant name */}
@@ -430,7 +488,7 @@ export function ScanStatus({
               transition: "color 0.3s",
             }}
           >
-            {isError ? "Accesso non riuscito" : restaurantName}
+            {isError ? t.accessFailed : displayRestaurantName}
           </motion.h1>
 
           {/* Status message */}
@@ -449,7 +507,7 @@ export function ScanStatus({
                 transition: "color 0.3s",
               }}
             >
-              {isError ? error || "Token QR non valido." : message}
+              {isError ? error || t.invalidToken : message}
             </motion.p>
           </AnimatePresence>
         </motion.div>
@@ -474,18 +532,25 @@ export function ScanStatus({
               exit={{ opacity: 0, y: -8 }}
               transition={{ type: "spring", stiffness: 300, damping: 24 }}
               style={{
-                background: "rgba(255,59,48,0.08)",
-                border: "1px solid rgba(255,59,48,0.18)",
-                borderRadius: 16,
-                padding: "14px 22px",
-                color: "#FF3B30",
-                fontSize: 13,
-                maxWidth: 320,
+                background: "rgba(20, 20, 20, 0.75)",
+                border: "1px solid rgba(255,255,255,0.12)",
+                borderRadius: 9999,
+                padding: "14px 28px",
+                color: "#fff",
+                fontSize: 14,
+                maxWidth: 340,
                 textAlign: "center",
-                fontWeight: 500,
+                fontWeight: 600,
+                backdropFilter: "blur(10px)",
+                boxShadow: "0 8px 24px rgba(0,0,0,0.25)",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 10,
               }}
             >
-              Scansiona nuovamente il QR o chiedi assistenza al personale.
+              <span aria-hidden style={{ fontSize: 18 }}>📱</span>
+              <span>{t.scanAgain}<br />{t.askAssistance}</span>
             </motion.div>
           )}
         </AnimatePresence>

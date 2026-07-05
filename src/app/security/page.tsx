@@ -187,48 +187,6 @@ export default function SecurityPage() {
       </section>
       
       <ContactSection />
-
-      {/* CTA */}
-      <section className="relative py-12 sm:py-16">
-        <div className="mx-auto max-w-4xl px-4">
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true }}
-            className="noise-overlay relative overflow-hidden rounded-[2.5rem] bg-gradient-to-br from-brand-sky via-brand-violet to-brand-terra p-8 text-center text-white shadow-glow-violet sm:p-14"
-          >
-            <div aria-hidden className="absolute inset-0 bg-grid-soft opacity-20" />
-            <div aria-hidden className="pointer-events-none absolute left-8 top-8 h-3 w-3 rounded-full bg-white/40 animate-float-soft" />
-            <div aria-hidden className="pointer-events-none absolute right-10 bottom-10 h-4 w-4 rounded-full bg-white/30 animate-float-soft" style={{ animationDelay: '1s' }} />
-            <div className="relative">
-              <span className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 backdrop-blur ring-1 ring-inset ring-white/30">
-                <CheckCircle2 className="h-8 w-8 drop-shadow-lg" />
-              </span>
-              <h2 className="mt-5 font-serif text-3xl font-black sm:text-4xl">
-                {tr.cta.title1} {tr.cta.title2}
-              </h2>
-              <p className="mx-auto mt-3 max-w-md text-white/90">{tr.cta.subtitle}</p>
-              <div className="mt-7 flex flex-wrap items-center justify-center gap-3">
-                <Button
-                  asChild
-                  className="sheen group gap-2 rounded-full bg-white px-7 font-bold text-brand-violet shadow-md transition hover:scale-[1.02] hover:bg-white/95"
-                >
-                  <Link href="/#prezzi">
-                    {tr.cta.primary} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-                  </Link>
-                </Button>
-                <Button
-                  asChild
-                  variant="outline"
-                  className="lift-hover glass gap-2 rounded-full border-white/40 bg-white/15 px-7 font-semibold text-white backdrop-blur hover:bg-white/25"
-                >
-                  <Link href="/#contattaci">{tr.cta.secondary}</Link>
-                </Button>
-              </div>
-            </div>
-          </motion.div>
-        </div>
-      </section>
     </PageShell>
   )
 }

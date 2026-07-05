@@ -15,7 +15,7 @@ const iconClsMap = [
 const accentMap = ['bg-brand-emerald', 'bg-brand-violet', 'bg-brand-sky', 'bg-brand-amber']
 
 // Sub-labels & trend copy are visual-only metadata (not from i18n keys).
-const trendMap = ['+18% YoY', '+312 / mese', '−12 min', '↑ da 4.7']
+const trendMap = ['+240 / mese', '+5 / mese', '−6 min', '↑ da 4.6']
 
 export function StatsBar() {
   const { tr } = useI18n()

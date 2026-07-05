@@ -1,7 +1,7 @@
 'use client'
 
 import { motion } from 'framer-motion'
-import { ChefHat, Star, TrendingUp, Bell, CheckCircle2, Clock3 } from 'lucide-react'
+import { ChefHat, Star, TrendingUp, CheckCircle2, Clock3 } from 'lucide-react'
 import { useI18n } from '@/components/i18n/I18nProvider'
 
 const kitchenOrders = [
@@ -125,7 +125,7 @@ export function ProductShowcase() {
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true, margin: '-60px' }}
             transition={{ duration: 0.6, delay: 0.15 }}
-            className="noise-overlay lift-hover relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-brand-rose to-brand-terra p-5 text-white shadow-glow-rose md:col-span-2"
+            className="noise-overlay lift-hover relative overflow-hidden rounded-3xl border border-white/10 bg-gradient-to-br from-brand-rose to-brand-terra p-5 text-white shadow-glow-rose md:col-span-4"
           >
             <div className="flex items-center gap-2">
               <span className="grid h-9 w-9 place-items-center rounded-xl bg-white/20">
@@ -140,33 +140,7 @@ export function ProductShowcase() {
               ))}
             </div>
             <p className="mt-2 text-xs text-white/70">{s.reviews.sub}</p>
-          </motion.div>
-
-          {/* Notifications */}
-          <motion.div
-            initial={{ opacity: 0, y: 30 }}
-            whileInView={{ opacity: 1, y: 0 }}
-            viewport={{ once: true, margin: '-60px' }}
-            transition={{ duration: 0.6, delay: 0.2 }}
-            className="lift-hover relative overflow-hidden rounded-3xl border border-ink/5 bg-white/80 p-5 shadow-sm backdrop-blur md:col-span-2"
-          >
-            <div className="flex items-center gap-2">
-              <span className="relative grid h-9 w-9 place-items-center rounded-xl bg-brand-emerald/15 text-brand-emerald">
-                <Bell className="h-5 w-5" />
-                <span className="status-dot absolute -right-1 -top-1 bg-brand-rose" />
-              </span>
-              <p className="text-sm font-bold text-ink">{s.alerts.title}</p>
-            </div>
-            <p className="mt-3 text-xs leading-relaxed text-ink/60">{s.alerts.desc}</p>
-            <motion.div
-              initial={{ opacity: 0 }}
-              whileInView={{ opacity: 1 }}
-              viewport={{ once: true }}
-              transition={{ delay: 0.5 }}
-              className="mt-3 rounded-xl bg-brand-emerald/10 px-3 py-2 text-xs font-semibold text-brand-emerald"
-            >
-              {s.alerts.warn}
-            </motion.div>
+            <p className="mt-3 text-[10px] italic text-white/50">{s.reviews.disclaimer}</p>
           </motion.div>
         </div>
 

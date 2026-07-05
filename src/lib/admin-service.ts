@@ -21,8 +21,12 @@ export interface RestaurantData {
   name: string;
   logo_url: string | null;
   status: string;
+  plan: string | null;
+  access_expires_at: string | null;
+  max_staff: number | null;
   userRole: UserRole;
   userName: string;
+  avatarUrl: string | null;
 }
 
 export interface OrderItem {
@@ -104,39 +108,12 @@ export interface Table {
  * Recupera ristorante + profilo utente completo (ruolo, nome, cognome)
  */
 export const getRestaurantByUser = async (): Promise<RestaurantData> => {
-  const supabase = getSupabase();
-
-  const { data: { user }, error: userError } = await supabase.auth.getUser();
-  if (userError || !user) throw new Error("Utente non autenticato");
-
-  // Recupera profilo con ruolo, nome e cognome
-  const { data: profile, error: profileError } = await supabase
-    .from("profiles")
-    .select("restaurant_id, role, first_name, last_name")
-    .eq("id", user.id)
-    .single();
-
-  if (profileError || !profile) throw new Error("Profilo non trovato");
-
-  // Recupera ristorante
-  const { data: restaurant, error: restError } = await supabase
-    .from("restaurants")
-    .select("id, name, logo_url, status")
-    .eq("id", profile.restaurant_id)
-    .single();
-
-  if (restError || !restaurant) throw new Error("Ristorante non trovato");
-
-  // Costruisci nome completo
-  const userName = [profile.first_name, profile.last_name]
-    .filter(Boolean)
-    .join(" ") || "Utente";
-
-  return {
-    ...restaurant,
-    userRole: (profile.role as UserRole) || "staff",
-    userName,
-  };
+  const res = await fetch("/api/admin/me", { credentials: "include" });
+  if (!res.ok) {
+    const body = await res.json().catch(() => ({}));
+    throw new Error(body.error || "Errore caricamento profilo");
+  }
+  return (await res.json()) as RestaurantData;
 };
 
 /**
@@ -466,6 +443,15 @@ export const updateTableStatus = async (tableId: string, status: Table["status"]
   if (error) throw error;
 };
 
+export const setTableActive = async (tableId: string, isActive: boolean) => {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("tables")
+    .update({ is_active: isActive })
+    .eq("id", tableId);
+  if (error) throw error;
+};
+
 /**
  * Crea nuovo tavolo (label + code generato)
  */
@@ -516,6 +502,7 @@ export interface StaffMember {
   email: string;
   role: "staff" | "manager" | "cameriere" | "cucina" | "admin" | "titolare";
   created_at: string;
+  avatar_url: string | null;
 }
 
 export interface InviteCode {
@@ -533,7 +520,7 @@ export const getStaffMembers = async (restaurantId: string): Promise<StaffMember
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, first_name, last_name, email, role, created_at")
+    .select("id, first_name, last_name, email, role, created_at, avatar_url")
     .eq("restaurant_id", restaurantId)
     .in("role", ["staff", "manager", "cameriere", "cucina", "admin", "titolare"])
     .order("created_at", { ascending: false });
@@ -697,6 +684,25 @@ export const createStaffInvite = async (
   role: "manager" | "cameriere" | "cucina"
 ): Promise<string> => {
   const supabase = getSupabase();
+
+  const { data: restaurant, error: restError } = await supabase
+    .from("restaurants")
+    .select("max_staff")
+    .eq("id", restaurantId)
+    .single();
+  if (restError) throw restError;
+  const maxStaff = (restaurant as any)?.max_staff as number | null;
+  if (maxStaff != null) {
+    const { count, error: countError } = await supabase
+      .from("profiles")
+      .select("id", { count: "exact", head: true })
+      .eq("restaurant_id", restaurantId);
+    if (countError) throw countError;
+    if ((count ?? 0) >= maxStaff) {
+      throw new Error(`Hai raggiunto il limite di ${maxStaff} membri staff previsto dal tuo abbonamento.`);
+    }
+  }
+
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
   for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
@@ -711,6 +717,7 @@ export const createStaffInvite = async (
     restaurant_id: restaurantId,
     role,
     expires_at: expiresAt.toISOString(),
+    created_by: user.id,
   });
   if (error) throw error;
   return code;

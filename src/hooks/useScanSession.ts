@@ -4,6 +4,7 @@ import { useRouter } from "next/navigation";
 import { validateScanToken } from "@/lib/api-service";
 import { saveTableSession } from "@/lib/table-session";
 import { supabase } from "@/lib/supabase";
+import { useI18n } from "@/components/i18n/I18nProvider";
 
 type ScanStatus = "idle" | "verifying" | "success" | "error";
 
@@ -16,14 +17,18 @@ interface ScanSessionResult {
   tableNumber: string | number | undefined;
   primaryColor: string | undefined;
   logoUrl: string | undefined;
+  backgroundImageUrl: string | undefined;
+  backgroundType: string | undefined;
   // Called by the instructions panel once the user is ready to see the menu
   goToMenu: () => void;
 }
 
 export function useScanSession(tableCode: string): ScanSessionResult {
   const router = useRouter();
+  const { tr } = useI18n();
+  const t = tr.client.scan;
   const [status, setStatus] = useState<ScanStatus>("idle");
-  const [message, setMessage] = useState("Verifica QR Code in corso...");
+  const [message, setMessage] = useState(t.verifyingQr);
   const [error, setError] = useState<string | null>(null);
 
   // Branding state
@@ -31,6 +36,8 @@ export function useScanSession(tableCode: string): ScanSessionResult {
   const [tableNumber, setTableNumber] = useState<string | number | undefined>(undefined);
   const [primaryColor, setPrimaryColor] = useState<string | undefined>(undefined);
   const [logoUrl, setLogoUrl] = useState<string | undefined>(undefined);
+  const [backgroundImageUrl, setBackgroundImageUrl] = useState<string | undefined>(undefined);
+  const [backgroundType, setBackgroundType] = useState<string | undefined>(undefined);
 
   const pendingNavRef = useRef<string | null>(null);
 
@@ -43,14 +50,14 @@ export function useScanSession(tableCode: string): ScanSessionResult {
 
   useEffect(() => {
     if (!tableCode || tableCode.length > 20) {
-      setError("Token QR non valido.");
+      setError(t.invalidToken);
       setStatus("error");
       return;
     }
 
     const activateSession = async () => {
       setStatus("verifying");
-      setMessage("Verifica QR Code in corso...");
+      setMessage(t.verifyingQr);
 
       try {
         const data = await validateScanToken(tableCode);
@@ -63,7 +70,7 @@ export function useScanSession(tableCode: string): ScanSessionResult {
           supabase.rpc("start_table_session", { p_table_id: data.tableId }),
           supabase
             .from("restaurants")
-            .select("name, brand_color, logo_url")
+            .select("name, brand_color, logo_url, background_image_url, background_type")
             .eq("id", data.restaurantId)
             .single(),
         ]);
@@ -72,6 +79,8 @@ export function useScanSession(tableCode: string): ScanSessionResult {
           setRestaurantName(brandingResult.data.name ?? undefined);
           setPrimaryColor(brandingResult.data.brand_color ?? undefined);
           setLogoUrl(brandingResult.data.logo_url ?? undefined);
+          setBackgroundImageUrl((brandingResult.data as any).background_image_url ?? undefined);
+          setBackgroundType((brandingResult.data as any).background_type ?? undefined);
         }
 
         // 2. Save session locally
@@ -89,16 +98,37 @@ export function useScanSession(tableCode: string): ScanSessionResult {
         pendingNavRef.current = `/order/${data.sessionId}?slug=${data.restaurantSlug}&table=${data.tableNumber}&from=scan`;
 
         setStatus("success");
-        setMessage("Tutto pronto. Buon appetito!");
+        setMessage(t.readyEnjoy);
       } catch (err: any) {
         setStatus("error");
         setError(err.message);
-        setMessage(`Errore: ${err.message}`);
+        setMessage(`${tr.client.common.error}: ${err.message}`);
+        try {
+          const { data: tbl } = await supabase
+            .from("tables")
+            .select("restaurant_id")
+            .eq("code", tableCode.toUpperCase())
+            .maybeSingle();
+          if (tbl?.restaurant_id) {
+            const { data: br } = await supabase
+              .from("restaurants")
+              .select("name, brand_color, logo_url, background_image_url, background_type")
+              .eq("id", tbl.restaurant_id)
+              .maybeSingle();
+            if (br) {
+              setRestaurantName(br.name ?? undefined);
+              setPrimaryColor(br.brand_color ?? undefined);
+              setLogoUrl(br.logo_url ?? undefined);
+              setBackgroundImageUrl((br as any).background_image_url ?? undefined);
+              setBackgroundType((br as any).background_type ?? undefined);
+            }
+          }
+        } catch { /* ignore */ }
       }
     };
 
     activateSession();
   }, [tableCode, router]);
 
-  return { status, message, error, restaurantName, tableNumber, primaryColor, logoUrl, goToMenu };
+  return { status, message, error, restaurantName, tableNumber, primaryColor, logoUrl, backgroundImageUrl, backgroundType, goToMenu };
 }
