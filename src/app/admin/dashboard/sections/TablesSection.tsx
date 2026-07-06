@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { QrCode, Plus, Copy, Trash2, AlertCircle, Check, X, Loader2, Download, Printer } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
 import { getTables, createTable, deleteTable, setTableActive, type Table } from '@/lib/admin-service'
@@ -92,7 +93,8 @@ export function TablesSection({ ctx }: Props) {
     setDeletingId(id)
     setError(null)
     try {
-      await deleteTable(id)
+      const minDelay = new Promise((resolve) => setTimeout(resolve, 900))
+      await Promise.all([deleteTable(id), minDelay])
       setTables((prev) => prev.filter((t) => t.id !== id))
       setConfirmDelete(null)
     } catch (e: any) {
@@ -318,42 +320,85 @@ export function TablesSection({ ctx }: Props) {
       )}
 
       {/* Delete confirmation modal */}
-      {confirmDelete && (
-        <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm"
-          onClick={() => setConfirmDelete(null)}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl"
+      <AnimatePresence>
+        {confirmDelete && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm"
+            onClick={() => setConfirmDelete(null)}
           >
-            <div className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-tt-danger/15 text-tt-danger">
-              <Trash2 className="h-7 w-7" />
-            </div>
-            <h3 className="font-serif text-lg font-extrabold text-tt-ink">{T.deleteTitle}</h3>
-            <p className="mt-2 text-sm text-tt-muted">
-              {T.deletePrefix} <span className="font-bold text-tt-ink">{confirmDelete.label}</span> ({confirmDelete.code}).
-              {T.deleteIrreversible}
-            </p>
-            <div className="mt-5 flex gap-2">
-              <button
-                onClick={handleDeleteConfirmed}
-                disabled={deletingId === confirmDelete.id}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-full bg-tt-danger py-2.5 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-60"
-              >
-                {deletingId === confirmDelete.id ? <Loader2 className="h-4 w-4 animate-spin" /> : <Trash2 className="h-4 w-4" />}
-                {T.deletePermanently}
-              </button>
-              <button
-                onClick={() => setConfirmDelete(null)}
-                className="rounded-full border border-tt-line bg-white px-4 py-2.5 text-sm font-bold text-tt-muted transition hover:text-tt-ink"
-              >
-                {T.cancel}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+            <motion.div
+              initial={{ opacity: 0, scale: 0.9, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.9, y: 16 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-sm rounded-3xl bg-white p-6 text-center shadow-2xl"
+            >
+              <div className="relative mx-auto mb-4 grid h-14 w-14 place-items-center rounded-full bg-tt-danger/15 text-tt-danger">
+                {deletingId === confirmDelete.id ? (
+                  <div className="relative h-7 w-7">
+                    {/* falling paper, drops in while the lid is open */}
+                    <motion.span
+                      initial={{ y: -16, opacity: 0, rotate: -20, scale: 1 }}
+                      animate={{ y: [-16, -2, 1], opacity: [0, 1, 1, 0], rotate: [-20, 10, -8, 4], scale: [1, 1, 0.3] }}
+                      transition={{ duration: 0.9, times: [0, 0.35, 0.7, 1], ease: 'easeInOut' }}
+                      className="pointer-events-none absolute left-1/2 top-0 z-0 h-2.5 w-2.5 -translate-x-1/2 rounded-[2px] bg-tt-danger/70"
+                    />
+                    {/* trash body (fixed) */}
+                    <svg viewBox="0 0 24 24" className="absolute inset-0 h-7 w-7" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M5 8h14l-1 12.2a2 2 0 0 1-2 1.8H8a2 2 0 0 1-2-1.8L5 8Z" />
+                      <path d="M10 12v5M14 12v5" />
+                    </svg>
+                    {/* lid, hinges open then closes */}
+                    <motion.svg
+                      viewBox="0 0 24 24"
+                      className="absolute inset-0 h-7 w-7"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      style={{ transformOrigin: '20% 55%' }}
+                      animate={{ rotate: [0, -45, -45, 0] }}
+                      transition={{ duration: 0.9, times: [0, 0.25, 0.65, 1], ease: 'easeInOut' }}
+                    >
+                      <path d="M3 6h18" />
+                      <path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+                    </motion.svg>
+                  </div>
+                ) : (
+                  <Trash2 className="h-7 w-7" />
+                )}
+              </div>
+              <h3 className="font-serif text-lg font-extrabold text-tt-ink">{T.deleteTitle}</h3>
+              <p className="mt-2 text-sm text-tt-muted">
+                {T.deletePrefix} <span className="font-bold text-tt-ink">{confirmDelete.label}</span> ({confirmDelete.code}).
+                {T.deleteIrreversible}
+              </p>
+              <div className="mt-5 flex items-center gap-2">
+                <button
+                  onClick={() => setConfirmDelete(null)}
+                  className="flex h-11 flex-1 items-center justify-center rounded-full border border-tt-line bg-white px-4 text-sm font-bold text-tt-muted transition hover:text-tt-ink"
+                >
+                  {T.cancel}
+                </button>
+                <button
+                  onClick={handleDeleteConfirmed}
+                  disabled={deletingId === confirmDelete.id}
+                  className="flex h-11 items-center justify-center gap-1.5 rounded-full bg-tt-danger px-4 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {deletingId === confirmDelete.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                  {T.deletePermanently}
+                </button>
+              </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
     </div>
   )
 }

@@ -211,12 +211,12 @@ export function AIAssistantOverlay({ ctx }: Props) {
             className="fixed bottom-16 right-2 z-50 hidden max-w-xs rounded-2xl bg-white p-3 shadow-xl ring-1 ring-tt-line sm:block lg:bottom-24 lg:right-5"
           >
             <button onClick={() => { setHint(false); setOpen(true) }} className="flex items-start gap-2 text-left">
-              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-amber to-brand-terra text-white">
+              <span className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-violet to-brand-rose text-white">
                 <Sparkles className="h-4 w-4" />
               </span>
               <div>
-                <p className="text-xs font-bold text-tt-ink">Hai bisogno di aiuto? 💬</p>
-                <p className="text-[11px] text-tt-muted">Chiedimi come vanno gli incassi o gli ordini.</p>
+                <p className="text-xs font-bold text-tt-ink">Serve una mano?</p>
+                <p className="text-[11px] text-tt-muted">Chiedimi come vanno incassi, ordini o tavoli.</p>
               </div>
             </button>
             <button onClick={() => setHint(false)} className="absolute right-1.5 top-1.5 grid h-5 w-5 place-items-center rounded-full text-tt-muted hover:bg-tt-surfaceAlt2">
@@ -234,11 +234,11 @@ export function AIAssistantOverlay({ ctx }: Props) {
         whileHover={{ scale: 1.06 }}
         whileTap={{ scale: 0.94 }}
         onClick={() => { setOpen((v) => !v); setHint(false) }}
-        className="fixed bottom-16 right-2 z-50 grid h-13 w-13 place-items-center rounded-full bg-gradient-to-br from-brand-amber to-brand-terra text-white shadow-glow-amber lg:bottom-5 lg:right-5"
+        className="fixed bottom-16 right-2 z-50 grid h-13 w-13 place-items-center rounded-full bg-gradient-to-br from-brand-violet to-brand-rose text-white shadow-glow-violet lg:bottom-5 lg:right-5"
         style={{ height: 52, width: 52 }}
         aria-label="Assistente AI"
       >
-        {!open && <span className="absolute inset-0 rounded-full bg-brand-amber/40 [animation:pulse-ring_2s_ease-out_infinite]" />}
+        {!open && <span className="absolute inset-0 rounded-full bg-brand-violet/40 [animation:pulse-ring_2s_ease-out_infinite]" />}
         <AnimatePresence mode="wait">
           {open ? (
             <motion.span key="x" initial={{ rotate: -90, opacity: 0 }} animate={{ rotate: 0, opacity: 1 }} exit={{ rotate: 90, opacity: 0 }}>
@@ -260,10 +260,10 @@ export function AIAssistantOverlay({ ctx }: Props) {
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 24, scale: 0.96 }}
             transition={{ duration: 0.25 }}
-            className="fixed bottom-20 right-2 z-50 flex h-[26rem] w-[calc(100vw-2.5rem)] max-w-sm flex-col overflow-hidden rounded-3xl border border-tt-line bg-white shadow-2xl lg:bottom-24 lg:right-5"
+            className="fixed bottom-[7.75rem] left-1/2 z-50 flex h-[26rem] w-[calc(100vw-2.5rem)] max-w-sm -translate-x-1/2 flex-col overflow-hidden rounded-3xl border border-tt-line bg-white shadow-2xl lg:bottom-24 lg:left-auto lg:right-5 lg:translate-x-0"
           >
             {/* Header */}
-            <div className="flex items-center gap-3 bg-gradient-to-r from-brand-amber to-brand-terra p-4 text-white">
+            <div className="flex items-center gap-3 bg-gradient-to-r from-brand-violet to-brand-rose p-4 text-white">
               <span className="grid h-10 w-10 place-items-center rounded-2xl bg-white/20">
                 <Bot className="h-5 w-5" />
               </span>
@@ -281,10 +281,10 @@ export function AIAssistantOverlay({ ctx }: Props) {
               {messages.map((m, i) => (
                 <div key={i} className={`flex ${m.role === 'user' ? 'justify-end' : 'justify-start'}`}>
                   <div className={`flex max-w-[85%] items-start gap-2 ${m.role === 'user' ? 'flex-row-reverse' : ''}`}>
-                    <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${m.role === 'user' ? 'bg-gradient-to-br from-brand-amber to-brand-terra text-white' : 'bg-white text-tt-pink ring-1 ring-tt-line'}`}>
+                    <span className={`grid h-7 w-7 shrink-0 place-items-center rounded-full ${m.role === 'user' ? 'bg-gradient-to-br from-brand-violet to-brand-rose text-white' : 'bg-white text-tt-pink ring-1 ring-tt-line'}`}>
                       {m.role === 'user' ? <User className="h-3.5 w-3.5" /> : <Bot className="h-3.5 w-3.5" />}
                     </span>
-                    <div className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${m.role === 'user' ? 'rounded-tr-md bg-gradient-to-br from-brand-amber to-brand-terra text-white' : 'rounded-tl-md border border-tt-line bg-white text-tt-ink'}`}>
+                    <div className={`rounded-2xl px-3.5 py-2 text-sm leading-relaxed ${m.role === 'user' ? 'rounded-tr-md bg-gradient-to-br from-brand-violet to-brand-rose text-white' : 'rounded-tl-md border border-tt-line bg-white text-tt-ink'}`}>
                       {m.content}
                     </div>
                   </div>
@@ -313,7 +313,7 @@ export function AIAssistantOverlay({ ctx }: Props) {
               <button
                 onClick={send}
                 disabled={loading || !input.trim()}
-                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-amber to-brand-terra text-white shadow-glow-amber transition hover:scale-105 disabled:opacity-40"
+                className="grid h-10 w-10 shrink-0 place-items-center rounded-full bg-gradient-to-br from-brand-violet to-brand-rose text-white shadow-glow-violet transition hover:scale-105 disabled:opacity-40"
               >
                 <Send className="h-4 w-4" />
               </button>

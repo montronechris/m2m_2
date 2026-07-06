@@ -4,6 +4,30 @@
    Wrapped in @layer components so Tailwind v4 emits these rules.
    ============================================================ */
 @layer components {
+  /* Round terms checkbox — spring-like pop on check, smooth on uncheck. */
+  .auth-round-check-icon {
+    transition:
+      opacity 200ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* Mobile form swap — quick fade + rise so switching tabs feels like
+     one continuous motion instead of a hard cut. */
+  .auth-mobile-fade {
+    animation: auth-mobile-fade-in 320ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @keyframes auth-mobile-fade-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
   /* The overlay panel sits on the right by default with a slanted
      left edge. When the container has `data-active="true"` (signup
      mode), it slides to the left half and the slant flips to the
@@ -11,8 +35,8 @@
   .auth-overlay-panel {
     clip-path: polygon(14% 0, 100% 0, 100% 100%, 0 100%);
     transition:
-      transform 900ms cubic-bezier(0.77, 0, 0.18, 1),
-      clip-path 900ms cubic-bezier(0.77, 0, 0.18, 1);
+      transform 750ms cubic-bezier(0.65, 0, 0.35, 1),
+      clip-path 750ms cubic-bezier(0.65, 0, 0.35, 1);
   }
 
   .auth-container[data-active="true"] .auth-overlay-panel {
@@ -23,9 +47,9 @@
   /* Login form (left half) fades + blurs when switching to signup */
   .auth-form-panel--login {
     transition:
-      opacity 600ms cubic-bezier(0.77, 0, 0.18, 1),
-      transform 600ms cubic-bezier(0.77, 0, 0.18, 1),
-      filter 600ms cubic-bezier(0.77, 0, 0.18, 1);
+      opacity 550ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 550ms cubic-bezier(0.22, 1, 0.36, 1),
+      filter 550ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   .auth-container[data-active="true"] .auth-form-panel--login {
@@ -42,9 +66,9 @@
     filter: blur(6px);
     pointer-events: none;
     transition:
-      opacity 600ms cubic-bezier(0.77, 0, 0.18, 1) 150ms,
-      transform 600ms cubic-bezier(0.77, 0, 0.18, 1) 150ms,
-      filter 600ms cubic-bezier(0.77, 0, 0.18, 1) 150ms;
+      opacity 550ms cubic-bezier(0.22, 1, 0.36, 1) 100ms,
+      transform 550ms cubic-bezier(0.22, 1, 0.36, 1) 100ms,
+      filter 550ms cubic-bezier(0.22, 1, 0.36, 1) 100ms;
   }
 
   .auth-container[data-active="true"] .auth-form-panel--signup {
@@ -57,8 +81,8 @@
   /* Overlay content panels fade depending on which side the overlay is on */
   .auth-overlay-content {
     transition:
-      opacity 500ms cubic-bezier(0.77, 0, 0.18, 1),
-      transform 500ms cubic-bezier(0.77, 0, 0.18, 1);
+      opacity 450ms cubic-bezier(0.22, 1, 0.36, 1),
+      transform 450ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
   /* Right-side content (signup promo) visible by default */
@@ -117,6 +141,70 @@
     background: rgba(255, 107, 0, 0.25);
     border-radius: 9999px;
   }
+
+  /* Post-login choice card: entrance + exit-to-the-right transitions */
+  .post-login-card {
+    animation: post-login-in 480ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+    transition:
+      transform 500ms cubic-bezier(0.55, 0, 0.85, 0.35),
+      opacity 500ms cubic-bezier(0.55, 0, 0.85, 0.35);
+  }
+  .post-login-card--exiting {
+    transform: translateX(120%) rotate(4deg);
+    opacity: 0;
+  }
+
+  /* ---------- Restaurant creation page animations ---------- */
+  /* Step transitions: slide + fade in/out, forward (next) and back (previous) */
+  .step-enter-forward {
+    animation: step-enter-right 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .step-exit-forward {
+    animation: step-exit-left 320ms cubic-bezier(0.4, 0, 1, 1) both;
+  }
+  .step-enter-back {
+    animation: step-enter-left 420ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+  .step-exit-back {
+    animation: step-exit-right 320ms cubic-bezier(0.4, 0, 1, 1) both;
+  }
+
+  /* Staggered fade-in-up for inner elements (fields, list items, buttons) */
+  .stagger-item {
+    opacity: 0;
+    animation: stagger-fade-up 480ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  /* Selection list item — subtle scale pulse on selection.
+     Combined with .stagger-item on the same element, so it must list both
+     animations together — otherwise this shorthand replaces the entrance
+     fade entirely and leaves the item stuck at opacity: 0. */
+  .stagger-item.type-item-selected {
+    animation:
+      stagger-fade-up 480ms cubic-bezier(0.22, 1, 0.36, 1) both,
+      type-select-pulse 320ms cubic-bezier(0.34, 1.56, 0.64, 1);
+  }
+
+  /* Custom scrollbar for the establishment type list */
+  .type-list-scroll {
+    scrollbar-width: thin;
+    scrollbar-color: rgba(255, 107, 0, 0.3) transparent;
+    -webkit-overflow-scrolling: touch;
+  }
+  .type-list-scroll::-webkit-scrollbar { width: 5px; }
+  .type-list-scroll::-webkit-scrollbar-track { background: transparent; }
+  .type-list-scroll::-webkit-scrollbar-thumb {
+    background: rgba(255, 107, 0, 0.25);
+    border-radius: 9999px;
+  }
+  .type-list-scroll::-webkit-scrollbar-thumb:hover {
+    background: rgba(255, 107, 0, 0.45);
+  }
+
+  /* Progress bar segment fill animation */
+  .progress-segment {
+    transition: background-color 500ms cubic-bezier(0.22, 1, 0.36, 1);
+  }
 }
 
 
@@ -132,4 +220,33 @@
   0% { transform: scale(0.2); opacity: 0; }
   60% { transform: scale(1.25); opacity: 1; }
   100% { transform: scale(1); opacity: 1; }
+}
+@keyframes post-login-in {
+  0% { transform: translateY(24px) scale(0.96); opacity: 0; }
+  100% { transform: translateY(0) scale(1); opacity: 1; }
+}
+@keyframes step-enter-right {
+  0% { opacity: 0; transform: translateX(48px) scale(0.98); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes step-exit-left {
+  0% { opacity: 1; transform: translateX(0) scale(1); }
+  100% { opacity: 0; transform: translateX(-48px) scale(0.98); }
+}
+@keyframes step-enter-left {
+  0% { opacity: 0; transform: translateX(-48px) scale(0.98); }
+  100% { opacity: 1; transform: translateX(0) scale(1); }
+}
+@keyframes step-exit-right {
+  0% { opacity: 1; transform: translateX(0) scale(1); }
+  100% { opacity: 0; transform: translateX(48px) scale(0.98); }
+}
+@keyframes stagger-fade-up {
+  0% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+@keyframes type-select-pulse {
+  0% { transform: scale(1); }
+  50% { transform: scale(1.015); }
+  100% { transform: scale(1); }
 }

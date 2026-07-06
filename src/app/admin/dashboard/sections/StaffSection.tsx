@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Users, Shield, UtensilsCrossed, MoreHorizontal, AlertCircle, X, Check, Loader2, Copy, UserCog, Trash2, UserPlus } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
 import { supabase } from '@/lib/supabase'
@@ -243,7 +244,12 @@ export function StaffSection({ ctx }: Props) {
             const bucketMeta = roleMeta[bucket] ?? roleMeta['staff']
             const BucketIcon = bucketMeta.icon
             if (bucketMembers.length === 0) {
-              if (bucket !== 'manager') return null
+              if (bucket !== 'manager' && bucket !== 'cameriere' && bucket !== 'cucina') return null
+              const emptyCopy = {
+                manager: { title: T.noManager, hint: T.addManagerHint },
+                cameriere: { title: T.noCameriere, hint: T.addCameriereHint },
+                cucina: { title: T.noCucina, hint: T.addCucinaHint },
+              }[bucket]
               return (
                 <div key={bucket}>
                   <div className="mb-2 flex items-center gap-2 px-1">
@@ -253,7 +259,7 @@ export function StaffSection({ ctx }: Props) {
                     <span className="text-xs text-tt-muted">0</span>
                   </div>
                   <button
-                    onClick={() => { if (limitReached) { setError(T.staffLimitReached(ctx.maxStaff!)); return }; setInviteRole('manager'); setShowInvite(true); setGeneratedCode(null); setError(null) }}
+                    onClick={() => { if (limitReached) { setError(T.staffLimitReached(ctx.maxStaff!)); return }; setInviteRole(bucket); setShowInvite(true); setGeneratedCode(null); setError(null) }}
                     style={{ borderColor: bucketMeta.border }}
                     className="tt-card flex w-full items-center gap-3 rounded-2xl border-2 border-dashed p-4 text-left transition hover:bg-tt-surfaceAlt2"
                   >
@@ -261,8 +267,8 @@ export function StaffSection({ ctx }: Props) {
                       <BucketIcon className="h-5 w-5" />
                     </div>
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-bold text-tt-ink">{T.noManager}</p>
-                      <p className="truncate text-xs text-tt-muted">{T.addManagerHint}</p>
+                      <p className="truncate text-sm font-bold text-tt-ink">{emptyCopy.title}</p>
+                      <p className="truncate text-xs text-tt-muted">{emptyCopy.hint}</p>
                     </div>
                     <UserPlus className="h-5 w-5 shrink-0 text-tt-pink" />
                   </button>
@@ -353,12 +359,21 @@ export function StaffSection({ ctx }: Props) {
       )}
 
       {/* Invite modal */}
+      <AnimatePresence>
       {showInvite && (
-        <div
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.2, ease: 'easeOut' }}
           className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm"
           onClick={() => setShowInvite(false)}
         >
-          <div
+          <motion.div
+            initial={{ opacity: 0, scale: 0.95, y: 12 }}
+            animate={{ opacity: 1, scale: 1, y: 0 }}
+            exit={{ opacity: 0, scale: 0.95, y: 12 }}
+            transition={{ duration: 0.22, ease: [0.16, 1, 0.3, 1] }}
             onClick={(e) => e.stopPropagation()}
             className="w-full max-w-sm rounded-3xl bg-white p-6 shadow-2xl"
           >
@@ -425,9 +440,10 @@ export function StaffSection({ ctx }: Props) {
                 </button>
               </>
             )}
-          </div>
-        </div>
+          </motion.div>
+        </motion.div>
       )}
+      </AnimatePresence>
 
       {/* Remove member confirmation */}
       {confirmRemove && (

@@ -26,19 +26,39 @@ export async function POST(req: Request) {
   const { email, password, firstName, lastName, secretCode } = parsed.data;
   const code = secretCode.trim().toUpperCase();
 
-  const { data: invite, error: inviteError } = await supabaseServer
+  // Reclamiamo il codice atomicamente (used_at passa da null a "adesso" in un'unica
+  // query condizionale): se due richieste arrivano in parallelo con lo stesso codice,
+  // solo una riesce a fare l'update e ottiene la riga; l'altra riceve `claimed === null`.
+  const { data: claimed, error: claimError } = await supabaseServer
     .from("staff_invite_codes")
-    .select("id, restaurant_id, role, used_at, expires_at")
+    .update({ used_at: new Date().toISOString() })
     .eq("code", code)
-    .single();
+    .is("used_at", null)
+    .select("id, restaurant_id, role, expires_at")
+    .maybeSingle();
 
-  if (inviteError || !invite) {
-    return NextResponse.json({ error: "Codice non valido." }, { status: 404 });
+  if (claimError) {
+    return NextResponse.json({ error: "Errore nella verifica del codice." }, { status: 500 });
   }
-  if (invite.used_at) {
+
+  if (!claimed) {
+    const { data: existing } = await supabaseServer
+      .from("staff_invite_codes")
+      .select("used_at")
+      .eq("code", code)
+      .maybeSingle();
+
+    if (!existing) {
+      return NextResponse.json({ error: "Codice non valido." }, { status: 404 });
+    }
     return NextResponse.json({ error: "Codice già utilizzato." }, { status: 410 });
   }
-  if (new Date(invite.expires_at) < new Date()) {
+
+  const releaseClaim = () =>
+    supabaseServer.from("staff_invite_codes").update({ used_at: null }).eq("id", claimed.id);
+
+  if (new Date(claimed.expires_at) < new Date()) {
+    await releaseClaim();
     return NextResponse.json({ error: "Codice scaduto." }, { status: 410 });
   }
 
@@ -49,6 +69,7 @@ export async function POST(req: Request) {
   });
 
   if (createError || !created?.user) {
+    await releaseClaim();
     return NextResponse.json({ error: createError?.message ?? "Errore nella creazione dell'utente." }, { status: 400 });
   }
 
@@ -61,19 +82,20 @@ export async function POST(req: Request) {
       email,
       first_name: firstName,
       last_name: lastName,
-      restaurant_id: invite.restaurant_id,
-      role: invite.role,
+      restaurant_id: claimed.restaurant_id,
+      role: claimed.role,
     });
 
   if (profileError) {
     await supabaseServer.auth.admin.deleteUser(userId);
+    await releaseClaim();
     return NextResponse.json({ error: "Errore nella creazione del profilo." }, { status: 500 });
   }
 
   await supabaseServer
     .from("staff_invite_codes")
-    .update({ used_by: userId, used_at: new Date().toISOString() })
-    .eq("id", invite.id);
+    .update({ used_by: userId })
+    .eq("id", claimed.id);
 
   return NextResponse.json({ success: true });
 }

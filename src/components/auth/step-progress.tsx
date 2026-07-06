@@ -29,9 +29,10 @@ export function StepProgress({
   const doneCount = steps.filter((s) => s.done).length
   const total = steps.length
 
-  // Line fill = done steps / (total - 1) segments. When all done, 100%.
+  // Line fill = done steps / (total - 1) segments, capped at 100% so the
+  // last step's checkmark doesn't push the line past the final circle.
   const lineFillPercent =
-    total <= 1 ? 100 : (doneCount / (total - 1)) * 100
+    total <= 1 ? 100 : Math.min((doneCount / (total - 1)) * 100, 100)
 
   return (
     <div className="w-full select-none" aria-label="Avanzamento registrazione">

@@ -16,13 +16,14 @@
 import React from "react";
 import { Wrench } from "lucide-react";
 import type { SectionId, ThemeMode } from "../types";
+import { useI18n } from "@/components/i18n/I18nProvider";
 
 interface Props {
   id:    SectionId;
   theme: ThemeMode;
 }
 
-const LABELS: Record<SectionId, string> = {
+const LABELS_IT: Record<SectionId, string> = {
   dashboard: "Dashboard",
   orders:    "Ordini",
   menu:      "Menu",
@@ -34,12 +35,30 @@ const LABELS: Record<SectionId, string> = {
   history:   "Cronologia",
   calendar:  "Presenze",
   settings:  "Impostazioni",
+  payment:   "Pagamenti",
+};
+
+const LABELS_EN: Record<SectionId, string> = {
+  dashboard: "Dashboard",
+  orders:    "Orders",
+  menu:      "Menu",
+  tables:    "Tables",
+  analytics: "Analytics",
+  staff:     "Staff",
+  branding:  "Branding",
+  waiter:    "Waiter",
+  history:   "History",
+  calendar:  "Attendance",
+  settings:  "Settings",
+  payment:   "Payments",
 };
 
 export function PlaceholderSection({ id, theme }: Props) {
+  const { lang } = useI18n();
   const dark  = theme === "dark";
   const muted = dark ? "text-gray-500" : "text-gray-400";
   const txt   = dark ? "text-white"    : "text-gray-900";
+  const labels = lang === "en" ? LABELS_EN : LABELS_IT;
 
   return (
     <div className="flex items-center justify-center min-h-[60vh] p-6">
@@ -47,9 +66,9 @@ export function PlaceholderSection({ id, theme }: Props) {
         <div className="w-14 h-14 rounded-2xl bg-green-500/10 flex items-center justify-center mx-auto">
           <Wrench className="w-7 h-7 text-green-500/60" />
         </div>
-        <p className={`text-lg font-bold ${txt}`}>{LABELS[id]}</p>
+        <p className={`text-lg font-bold ${txt}`}>{labels[id]}</p>
         <p className={`text-sm ${muted}`}>
-          Sezione in costruzione — disponibile a breve.
+          {lang === "en" ? "Work in progress." : "Lavori in corso."}
         </p>
       </div>
     </div>

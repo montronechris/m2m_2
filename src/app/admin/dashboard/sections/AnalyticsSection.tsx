@@ -37,6 +37,7 @@ export function AnalyticsSection({ ctx }: Props) {
   const [topRange, setTopRange] = useState<'1h' | '3h' | '1d' | '3d' | '7d' | '30d'>('7d')
   const [topDishes, setTopDishes] = useState<{ name: string; v: number }[]>([])
   const [topLoading, setTopLoading] = useState(true)
+  const [isRefreshing, setIsRefreshing] = useState(false)
 
   // Load from DATABASE via admin-service
   useEffect(() => {
@@ -52,6 +53,15 @@ export function AnalyticsSection({ ctx }: Props) {
       active = false
     }
   }, [ctx.restaurantId, period])
+
+  const handleRefresh = () => {
+    if (isRefreshing) return
+    setIsRefreshing(true)
+    getAnalytics(ctx.restaurantId, period as unknown as 7 | 30)
+      .then((d) => setData(d))
+      .catch((e) => setError(e.message ?? t.errorLoad))
+    setTimeout(() => setIsRefreshing(false), 1000)
+  }
 
   // Load top dishes with dedicated time filter
   useEffect(() => {
@@ -115,8 +125,13 @@ export function AnalyticsSection({ ctx }: Props) {
               </button>
             ))}
           </div>
-          <button className="grid h-8 w-8 place-items-center rounded-full border border-tt-line bg-white text-tt-muted transition hover:text-tt-ink" title={t.refresh}>
-            <RefreshCw className="h-4 w-4" />
+          <button
+            onClick={handleRefresh}
+            disabled={isRefreshing}
+            className="grid h-8 w-8 place-items-center rounded-full border border-tt-line bg-white text-tt-muted transition hover:text-tt-ink disabled:opacity-70"
+            title={t.refresh}
+          >
+            <RefreshCw className={`h-4 w-4 transition-transform duration-1000 ease-in-out ${isRefreshing ? 'animate-spin' : ''}`} />
           </button>
         </div>
       </div>
@@ -165,7 +180,7 @@ export function AnalyticsSection({ ctx }: Props) {
             <EmptyChart label={t.noRevenue} />
           )}
           <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-tt-pink/10 px-3 py-1.5 text-xs text-tt-pink">
-            <Sparkles className="h-3 w-3" /> {data.insights.revenue}
+            <Sparkles className="h-3 w-3" /> {t.revenueInsight}
           </div>
         </div>
 
@@ -188,7 +203,10 @@ export function AnalyticsSection({ ctx }: Props) {
             <EmptyChart label={t.noOrders} />
           )}
           <div className="mt-2 flex items-center gap-1.5 rounded-lg bg-tt-pink/10 px-3 py-1.5 text-xs text-tt-pink">
-            <Sparkles className="h-3 w-3" /> {data.insights.hourly}
+            <Sparkles className="h-3 w-3" />{' '}
+            {data.insights.peakHour !== null
+              ? t.peakHourInsight.replace('{h}', data.insights.peakHour)
+              : t.noDataInsight}
           </div>
         </div>
 

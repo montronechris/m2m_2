@@ -29,6 +29,7 @@ import { PageShell } from '@/components/landing/PageShell'
 import { useI18n } from '@/components/i18n/I18nProvider'
 import { cn } from '@/lib/utils'
 import { CategoryFilter } from '@/components/client/order/CategoryFilter'
+import { ScanError } from '@/components/client/scan/ScanError'
 import { MenuItemCard, type MenuItem } from '@/components/client/order/MenuItemCard'
 import { buildPalette, DEFAULT_BRAND, type Palette } from '@/components/client/order/palette'
 import { useOrderSession } from '@/hooks/useOrderSession'
@@ -138,6 +139,7 @@ export default function OrderPage({ params }: { params: Promise<{ token: string 
   const {
     restaurant,
     tableNumber,
+    tableCode,
     tableId,
     restaurantId,
     categories: dbCategories,
@@ -505,24 +507,7 @@ if (!loaderDone) {
   }
 
   if (sessionError || !restaurant) {
-    return (
-      <PageShell bare>
-        <div className="grid min-h-screen place-items-center px-4">
-          <div className="max-w-sm rounded-3xl border border-ink/10 bg-white/90 p-8 text-center shadow-sm">
-            <AlertCircle className="mx-auto mb-4 h-10 w-10 text-amber-500" />
-            <h2 className="mb-2 text-lg font-bold text-ink">
-              {isEn ? 'Session expired' : 'Sessione scaduta'}
-            </h2>
-            <p className="mb-6 text-sm text-ink/60">
-              {sessionError ?? (isEn ? 'Please scan the QR code again.' : 'Scansiona di nuovo il QR code al tavolo.')}
-            </p>
-            <Button asChild className="w-full rounded-full">
-              <Link href="/">{tr.common.backHome}</Link>
-            </Button>
-          </div>
-        </div>
-      </PageShell>
-    )
+    return <ScanError error={sessionError} tableCode={tableCode ?? undefined} />
   }
 
   const isImageBg =
@@ -624,8 +609,8 @@ className="mt-6 rounded-3xl border border-black/10 bg-white/85 p-4 shadow-sm bac
                   className={cn(
                     'flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold shadow-sm transition',
                     filterVeg
-                      ? 'border border-emerald-300 bg-emerald-50 text-emerald-700'
-                      : 'border border-ink/5 bg-white text-ink/55 hover:bg-white/90 hover:text-ink'
+                      ? 'border border-emerald-400 bg-emerald-50 text-emerald-500'
+                      : 'border border-emerald-300 bg-white text-emerald-400 hover:bg-emerald-50/60'
                   )}
                 >
                   <Leaf className="h-4 w-4" /> {vegLabel} {filterVeg && '✓'}
@@ -635,8 +620,8 @@ className="mt-6 rounded-3xl border border-black/10 bg-white/85 p-4 shadow-sm bac
                   className={cn(
                     'flex items-center gap-1.5 rounded-full px-3.5 py-1.5 text-sm font-semibold shadow-sm transition',
                     filterGF
-                      ? 'border border-emerald-300 bg-emerald-50 text-emerald-700'
-                      : 'border border-ink/5 bg-white text-ink/55 hover:bg-white/90 hover:text-ink'
+                      ? 'border border-amber-500 bg-amber-50 text-amber-700'
+                      : 'border border-amber-400 bg-white text-amber-600 hover:bg-amber-50/60'
                   )}
                 >
                   <Wheat className="h-4 w-4" /> {gfLabel} {filterGF && '✓'}

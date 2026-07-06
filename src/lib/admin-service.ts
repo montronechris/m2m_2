@@ -89,6 +89,7 @@ export interface MenuItem {
   is_available: boolean;
   is_vegetarian: boolean;
   is_gluten_free: boolean;
+  allergens: string[];
   image_url: string | null;
   created_at: string;
 }
@@ -414,6 +415,18 @@ export const deleteMenuItem = async (itemId: string) => {
   if (error) throw error;
 };
 
+/**
+ * Elimina tutti i piatti del menu di un ristorante
+ */
+export const deleteAllMenuItems = async (restaurantId: string): Promise<void> => {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("menu_items")
+    .delete()
+    .eq("restaurant_id", restaurantId);
+  if (error) throw error;
+};
+
 // ─── Tables ──────────────────────────────────────────────────────────────────
 
 /**
@@ -626,6 +639,22 @@ export const getMenuCategories = async (restaurantId: string): Promise<MenuCateg
     .order("sort_order", { ascending: true });
   if (error) throw error;
   return (data as MenuCategory[]) ?? [];
+};
+
+export const createMenuCategory = async (
+  restaurantId: string,
+  name: string,
+  isDrink: boolean = false,
+  sortOrder: number = 0
+): Promise<MenuCategory> => {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("menu_categories")
+    .insert({ restaurant_id: restaurantId, name, is_drink: isDrink, sort_order: sortOrder })
+    .select("id, name, is_drink, sort_order")
+    .single();
+  if (error) throw error;
+  return data as MenuCategory;
 };
 
 // ─── Menu item photo upload (Supabase Storage) ───────────────────────────────
@@ -979,7 +1008,7 @@ export interface AnalyticsData {
   topDishes: { name: string; v: number }[];
   payments: { name: string; v: number; color: string }[];
   avgTicketByDay: { d: string; v: number }[];
-  insights: { revenue: string; hourly: string };
+  insights: { peakHour: string | null };
 }
 
 export const getAnalytics = async (
@@ -1112,8 +1141,7 @@ export const getAnalytics = async (
     payments,
     avgTicketByDay,
     insights: {
-      revenue: "Dati aggregati in tempo reale dal database.",
-      hourly: hourly.length > 0 ? `Picco alle ${hourly.reduce((a, b) => (a.v > b.v ? a : b)).h}:00.` : "Nessun dato.",
+      peakHour: hourly.some((h) => h.v > 0) ? String(hourly.reduce((a, b) => (a.v > b.v ? a : b)).h) : null,
     },
   };
 };

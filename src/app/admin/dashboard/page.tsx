@@ -1,7 +1,8 @@
 'use client'
 
-import { useState, useEffect, useMemo } from 'react'
+import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
+import { motion, AnimatePresence } from 'framer-motion'
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -43,7 +44,7 @@ import { SettingsSection } from './sections/SettingsSection'
 import { WaiterSection } from './sections/WaiterSection'
 import { PaymentSection } from './sections/PaymentSection'
 import { HistorySection } from './sections/HistorySection'
-import { CalendarSection } from './sections/CalendarSection'
+import { PlaceholderSection } from './sections/PlaceholderSection'
 import { AIAssistantOverlay } from './components/AIAssistantOverlay'
 
 // ─── Section renderer ────────────────────────────────────────────────────────
@@ -83,7 +84,7 @@ function SectionRenderer({
     case 'history':
       return <HistorySection ctx={ctx} theme={theme} />
     case 'calendar':
-      return <CalendarSection ctx={ctx} theme={theme} />
+      return <PlaceholderSection id="calendar" theme={theme} />
   }
 }
 
@@ -105,17 +106,28 @@ function BottomNavItem({
   return (
     <button
       onClick={onClick}
-      className="flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 px-2 py-2 transition-all duration-200"
+      className="relative flex flex-1 min-w-0 flex-col items-center justify-center gap-0.5 px-2 py-2"
     >
-      <div className="relative flex items-center justify-center">
+      {isActive && (
+        <motion.span
+          layoutId="bottomNavPill"
+          transition={{ type: 'spring', stiffness: 380, damping: 32 }}
+          className="absolute inset-x-1 inset-y-0.5 rounded-2xl bg-tt-pink/10"
+        />
+      )}
+      <motion.div
+        className="relative flex items-center justify-center"
+        animate={{ scale: isActive ? 1.08 : 1 }}
+        transition={{ type: 'spring', stiffness: 380, damping: 24 }}
+      >
         <Icon isActive={isActive} />
         {badge !== undefined && badge > 0 && (
           <span className="absolute -right-1 -top-1 flex h-4 min-w-[16px] items-center justify-center rounded-full bg-tt-pink px-1 text-[10px] font-bold text-white">
             {badge > 9 ? '9+' : badge}
           </span>
         )}
-      </div>
-      <span className={`max-w-full truncate text-[10px] transition-colors duration-200 ${
+      </motion.div>
+      <span className={`relative max-w-full truncate text-[10px] transition-colors duration-200 ${
         isActive ? 'text-tt-ink font-bold' : 'text-tt-muted font-medium'
       }`}>{navLabel(tr, item.id)}</span>
     </button>
@@ -136,6 +148,27 @@ function MoreDrawer({
   onSelect: (s: SectionId) => void
 }) {
   const { tr } = useI18n()
+  const [dragY, setDragY] = useState(0)
+  const [dragging, setDragging] = useState(false)
+  const dragStartY = useRef<number | null>(null)
+
+  const handleHandlePointerDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    dragStartY.current = e.clientY
+    setDragging(true)
+    e.currentTarget.setPointerCapture(e.pointerId)
+  }
+  const handleHandlePointerMove = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (dragStartY.current === null) return
+    setDragY(Math.max(0, e.clientY - dragStartY.current))
+  }
+  const handleHandlePointerUp = () => {
+    if (dragStartY.current === null) return
+    if (dragY > 120) onClose()
+    setDragY(0)
+    setDragging(false)
+    dragStartY.current = null
+  }
+
   const operationsItems = NAV_ITEMS.filter((i) => OPERATIONS_GROUP_IDS.includes(i.id))
   const managementItems = NAV_ITEMS.filter((i) => MANAGEMENT_GROUP_IDS.includes(i.id))
   const otherItems = NAV_ITEMS.filter(
@@ -193,12 +226,18 @@ function MoreDrawer({
         onClick={onClose}
       />
       <div
-        className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl bg-tt-surfaceAlt shadow-2xl transition-transform duration-300 ease-out lg:hidden ${
+        className={`fixed bottom-0 left-0 right-0 z-50 rounded-t-3xl bg-tt-surfaceAlt shadow-2xl lg:hidden ${
           open ? 'translate-y-0' : 'translate-y-full'
-        }`}
-        style={{ maxHeight: '85vh' }}
+        } ${dragging ? '' : 'transition-transform duration-300 ease-out'}`}
+        style={{ maxHeight: '85vh', transform: open ? `translateY(${dragY}px)` : undefined }}
       >
-        <div className="flex justify-center pb-1 pt-3">
+        <div
+          className="flex touch-none justify-center pb-1 pt-3"
+          onPointerDown={handleHandlePointerDown}
+          onPointerMove={handleHandlePointerMove}
+          onPointerUp={handleHandlePointerUp}
+          onPointerCancel={handleHandlePointerUp}
+        >
           <div className="h-1.5 w-10 rounded-full bg-tt-line" />
         </div>
         <div className="flex items-center justify-between border-b border-tt-line px-5 py-3">
@@ -342,13 +381,22 @@ export default function AdminDashboardPage() {
     setSoundMuted(isNotificationSoundMuted())
   }, [])
 
+  const [notifToast, setNotifToast] = useState<'on' | 'off' | null>(null)
+
   const toggleSoundMuted = () => {
     setSoundMuted((prev) => {
       const next = !prev
       setNotificationSoundMuted(next)
+      setNotifToast(next ? 'off' : 'on')
       return next
     })
   }
+
+  useEffect(() => {
+    if (!notifToast) return
+    const timer = setTimeout(() => setNotifToast(null), 2000)
+    return () => clearTimeout(timer)
+  }, [notifToast])
 
   const handleLogout = async () => {
     try {
@@ -408,9 +456,10 @@ export default function AdminDashboardPage() {
         supabase.from('waiter_calls').select('id', { count: 'exact', head: true })
           .eq('restaurant_id', restaurant.id).eq('type', 'payment').eq('status', 'pending')
           .then(({ count: c }) => setPendingPaymentsCount(c ?? 0))
-      } catch (err) {
-        console.error('Errore caricamento dashboard:', err)
-        if (active) router.push('/login')
+      } catch {
+        // Nessun profilo/ristorante associato all'utente — non è un errore
+        // applicativo, riportiamo alla scelta post-login con un avviso.
+        if (active) router.push('/login?error=no-restaurant')
       } finally {
         if (active) setIsLoading(false)
       }
@@ -540,6 +589,22 @@ export default function AdminDashboardPage() {
 
   return (
     <div className="flex min-h-screen bg-tt-surfaceAlt">
+      <AnimatePresence>
+        {notifToast && (
+          <motion.div
+            initial={{ opacity: 0, y: -20, x: '-50%' }}
+            animate={{ opacity: 1, y: 0, x: '-50%' }}
+            exit={{ opacity: 0, y: -20, x: '-50%' }}
+            transition={{ duration: 0.3 }}
+            className="fixed left-1/2 top-4 z-[100] flex items-center gap-2 rounded-full bg-tt-ink px-4 py-2.5 text-sm font-medium text-white shadow-lg"
+          >
+            {notifToast === 'off' ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
+            {notifToast === 'off'
+              ? tr.admin.home.recentOrders.notificationsOff
+              : tr.admin.home.recentOrders.notificationsOn}
+          </motion.div>
+        )}
+      </AnimatePresence>
       {/* ════════════════════════════════════════════════════════════════════
           DESKTOP SIDEBAR (lg+) — fixed left, full nav grouped
           ════════════════════════════════════════════════════════════════════ */}

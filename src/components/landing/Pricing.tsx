@@ -132,7 +132,7 @@ export function Pricing() {
                     : 'sheen bg-ink text-white hover:bg-ink/90'
                 )}
               >
-                <Link href="/#contattaci">
+                <Link href={plan.href ?? '/#contattaci'}>
                   {plan.cta}
                 </Link>
               </Button>

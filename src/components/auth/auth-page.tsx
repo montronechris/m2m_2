@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useSearchParams } from 'next/navigation'
 import {
   Mail,
   Lock,
@@ -16,6 +17,7 @@ import {
   Check,
   X,
   Phone,
+  Ticket,
   RefreshCw,
 } from 'lucide-react'
 import { useToast } from '@/hooks/use-toast'
@@ -24,7 +26,9 @@ import {
   evaluatePassword,
 } from '@/components/auth/password-strength'
 import { StepProgress, type StepState } from '@/components/auth/step-progress'
+import { PostLoginChoice } from '@/components/auth/post-login-choice'
 import { supabase } from '@/lib/supabase'
+import { useI18n } from '@/components/i18n/I18nProvider'
 
 /* ------------------------------------------------------------------ */
 /*  Color tokens (restaurant palette from reference image)            */
@@ -44,14 +48,24 @@ const C = {
 /*  Small presentational helpers                                       */
 /* ------------------------------------------------------------------ */
 
-function FieldLabel({ children }: { children: React.ReactNode }) {
+function FieldLabel({ children, required, error }: { children: React.ReactNode; required?: boolean; error?: boolean }) {
   return (
     <label
       className="mb-1.5 block text-[13px] font-medium tracking-wide"
-      style={{ color: C.gray }}
+      style={{ color: error ? '#F44336' : C.gray }}
     >
       {children}
+      {required && <span style={{ color: error ? '#F44336' : C.orange }} className="ml-0.5">*</span>}
     </label>
+  )
+}
+
+function FieldError({ children }: { children: React.ReactNode }) {
+  if (!children) return null
+  return (
+    <p className="mt-1.5 text-xs font-medium" style={{ color: '#F44336' }}>
+      {children}
+    </p>
   )
 }
 
@@ -215,12 +229,15 @@ function GithubIcon() {
 /*  Form panels                                                       */
 /* ------------------------------------------------------------------ */
 
-function LoginForm() {
+function LoginForm({ onLoginSuccess }: { onLoginSuccess: (name: string | null) => void }) {
   const { toast } = useToast()
+  const { tr } = useI18n()
+  const t = tr.auth.login
   const [showPw, setShowPw] = useState(false)
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
+  const [rememberMe, setRememberMe] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -232,18 +249,12 @@ function LoginForm() {
         password,
       })
       if (error) {
-        toast({ variant: 'destructive', title: 'Accesso fallito', description: error.message })
+        toast({ variant: 'destructive', title: t.failedTitle, description: error.message })
         return
       }
-      toast({
-        title: 'Accesso effettuato!',
-        description: data.user?.user_metadata?.full_name
-          ? `Bentornato, ${data.user.user_metadata.full_name}.`
-          : 'Login completato con successo.',
-      })
-      window.location.href = '/'
+      onLoginSuccess(data.user?.user_metadata?.full_name ?? null)
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Errore di rete', description: err?.message })
+      toast({ variant: 'destructive', title: t.networkErrorTitle, description: err?.message })
     } finally {
       setLoading(false)
     }
@@ -260,36 +271,36 @@ function LoginForm() {
         style={{ background: 'rgba(255,107,0,0.1)', color: C.orange }}
       >
         <Sparkles className="h-3.5 w-3.5" />
-        Bentornato
+        {t.title}
       </div>
 
       <h1 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ color: C.ink }}>
-        Accedi
+        {t.submit}
       </h1>
       <p className="mt-2 text-[15px]" style={{ color: C.gray }}>
-        Inserisci i tuoi dati per continuare.
+        {t.subtitle}
       </p>
 
       <div className="mt-7 space-y-4">
         <div>
-          <FieldLabel>Email</FieldLabel>
+          <FieldLabel>{t.email}</FieldLabel>
           <IconInput
             icon={<Mail className="h-4 w-4" />}
             type="email"
             name="email"
-            placeholder="nome@ristorante.it"
+            placeholder={t.emailPlaceholder}
             autoComplete="email"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
           />
         </div>
         <div>
-          <FieldLabel>Password</FieldLabel>
+          <FieldLabel>{t.password}</FieldLabel>
           <IconInput
             icon={<Lock className="h-4 w-4" />}
             type={showPw ? 'text' : 'password'}
             name="password"
-            placeholder="••••••••"
+            placeholder={t.passwordPlaceholder}
             autoComplete="current-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
@@ -299,7 +310,7 @@ function LoginForm() {
                 onClick={() => setShowPw((v) => !v)}
                 className="shrink-0 rounded-md p-1 transition-colors hover:bg-black/5"
                 style={{ color: C.gray }}
-                aria-label={showPw ? 'Nascondi password' : 'Mostra password'}
+                aria-label={showPw ? t.hidePassword : t.showPassword}
               >
                 {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
@@ -308,54 +319,49 @@ function LoginForm() {
         </div>
 
         <div className="flex items-center justify-between pt-1">
-          <label className="group flex cursor-pointer select-none items-center gap-2.5 text-sm" style={{ color: C.gray }}>
-            <span className="relative inline-block h-[18px] w-[18px] shrink-0">
-              <input type="checkbox" className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-              <span
-                aria-hidden
-                className="absolute inset-0 rounded-lg border-2 bg-white shadow-sm transition-all duration-300 ease-out peer-checked:scale-[1.08] peer-checked:border-transparent peer-checked:bg-gradient-to-br peer-checked:from-[#FF6B00] peer-checked:to-[#FF3D00] peer-checked:shadow-[0_6px_18px_-6px_rgba(255,107,0,0.55)] peer-focus-visible:ring-2 peer-focus-visible:ring-[#FF6B00]/40 group-hover:border-[#FF6B00]/60"
-                style={{ borderColor: 'rgba(33,33,33,0.18)' }}
+          <label className="flex cursor-pointer items-center gap-2.5 text-sm select-none" style={{ color: C.gray }}>
+            <button
+              type="button"
+              role="checkbox"
+              aria-checked={rememberMe}
+              onClick={() => setRememberMe((v) => !v)}
+              className="auth-round-check flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200 ease-out active:scale-90"
+              style={{
+                borderColor: rememberMe ? C.orange : 'rgba(33,33,33,0.25)',
+                background: rememberMe ? C.orange : 'transparent',
+                boxShadow: rememberMe ? '0 0 0 4px rgba(255,107,0,0.15)' : 'none',
+              }}
+            >
+              <Check
+                className="auth-round-check-icon h-3 w-3 text-white"
+                strokeWidth={3.5}
+                style={{
+                  opacity: rememberMe ? 1 : 0,
+                  transform: rememberMe ? 'scale(1)' : 'scale(0.4)',
+                }}
               />
-              <svg
-                viewBox="0 0 20 20"
-                fill="none"
-                aria-hidden
-                className="pointer-events-none absolute inset-0 h-full w-full scale-50 text-white opacity-0 transition-all duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] peer-checked:scale-100 peer-checked:opacity-100"
-              >
-                <path
-                  d="M4.5 10.5 L8.4 14 L15.5 6.5"
-                  stroke="currentColor"
-                  strokeWidth="2.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              </svg>
-              <span
-                aria-hidden
-                className="pointer-events-none absolute inset-0 rounded-lg ring-0 ring-[#FF6B00]/20 transition-all duration-500 peer-checked:ring-8"
-              />
-            </span>
-            <span className="transition-colors group-hover:text-[#212121]">Ricordami</span>
+            </button>
+            {t.rememberMe}
           </label>
           <a
             href="#"
             className="text-sm font-semibold transition-colors hover:underline"
             style={{ color: C.orange }}
           >
-            Password dimenticata?
+            {t.forgotPassword}
           </a>
         </div>
 
         <div className="pt-2">
-          <PrimaryButton type="submit" loading={loading} loadingText="Verifica credenziali…">
-            Accedi
+          <PrimaryButton type="submit" loading={loading} loadingText={t.submitting}>
+            {t.submit}
           </PrimaryButton>
         </div>
 
         <div className="flex items-center gap-3 py-2">
           <div className="h-px flex-1" style={{ background: 'rgba(33,33,33,0.1)' }} />
           <span className="text-xs uppercase tracking-wider" style={{ color: C.gray }}>
-            oppure
+            {t.or}
           </span>
           <div className="h-px flex-1" style={{ background: 'rgba(33,33,33,0.1)' }} />
         </div>
@@ -368,22 +374,30 @@ function LoginForm() {
         style={{ color: C.gray }}
       >
         <ShieldCheck className="h-3.5 w-3.5" style={{ color: C.green }} />
-        Accesso sicuro · crittografia SSL · verifica OTP
+        {t.secureAccess}
       </div>
     </form>
   )
 }
 
-function SignupForm() {
+function SignupForm({ onSignupSuccess }: { onSignupSuccess: (name: string | null) => void }) {
   const { toast } = useToast()
+  const { tr } = useI18n()
+  const t = tr.auth.signup
   const [showPw, setShowPw] = useState(false)
   const [showConfirmPw, setShowConfirmPw] = useState(false)
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [phone, setPhone] = useState('')
+  const [inviteCode, setInviteCode] = useState('')
   const [password, setPassword] = useState('')
   const [confirm, setConfirm] = useState('')
   const [loading, setLoading] = useState(false)
+  const [submitted, setSubmitted] = useState(false)
+  const [termsAccepted, setTermsAccepted] = useState(false)
+  const [inviteError, setInviteError] = useState<string | null>(null)
+  const [emailTaken, setEmailTaken] = useState(false)
+  const [phoneTaken, setPhoneTaken] = useState(false)
 
   const { allPassed } = evaluatePassword(password)
   const confirmTouched = confirm.length > 0
@@ -398,36 +412,126 @@ function SignupForm() {
 
   // --- step validity (one circle per required field) ---
   const steps: StepState[] = [
-    { id: 'name', label: 'Nome', done: name.trim().length >= 2 },
+    { id: 'name', label: t.name, done: name.trim().length >= 2 },
     {
       id: 'email',
-      label: 'Email',
+      label: t.steps.email,
       done: /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email),
     },
-    { id: 'password', label: 'Password', done: allPassed },
-    { id: 'confirm', label: 'Conferma', done: passwordsMatch },
+    { id: 'password', label: t.steps.password, done: allPassed },
+    { id: 'confirm', label: t.steps.confirm, done: passwordsMatch },
   ]
+
+  // --- per-field inline errors (shown after first submit attempt) ---
+  const nameError = submitted && name.trim().length === 0
+  const emailError = submitted && email.trim().length === 0
+  const passwordError = submitted && password.length === 0
+  const confirmError = submitted && confirm.length === 0
+  const isValidPhone = (value: string) => /^\+?[0-9()\s-]{7,20}$/.test(value) && value.replace(/\D/g, '').length >= 7
+  const phoneError = submitted && phone.trim().length > 0 && !isValidPhone(phone.trim())
+  const termsError = submitted && !termsAccepted
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (loading) return
+
+    // Mark as submitted to trigger inline validation
+    setSubmitted(true)
+
+    // Check required fields first
+    const hasEmptyFields = !name.trim() || !email.trim() || !password || !confirm
+    if (hasEmptyFields) return
+
+    if (phone.trim().length > 0 && !isValidPhone(phone.trim())) return
+
+    if (!termsAccepted) return
+
+    setEmailTaken(false)
+    setPhoneTaken(false)
+    try {
+      const availabilityRes = await fetch('/api/auth/check-availability', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: email.trim(), phone: phone.trim() || undefined }),
+      })
+      const availability = await availabilityRes.json().catch(() => ({}))
+      if (availabilityRes.ok) {
+        if (availability.emailTaken) {
+          setEmailTaken(true)
+          return
+        }
+        if (availability.phoneTaken) {
+          setPhoneTaken(true)
+          return
+        }
+      }
+    } catch {
+      // Se il controllo fallisce per un problema di rete, si prosegue: l'errore
+      // di duplicato verrà comunque intercettato dal backend in fase di creazione.
+    }
+
+    // Only show password toast if password is filled but insecure
     if (!allPassed) {
       toast({
         variant: 'destructive',
-        title: 'Password non sicura',
-        description: 'Rispetta tutti i requisiti della password prima di continuare.',
+        title: t.insecurePasswordTitle,
+        description: t.insecurePasswordDesc,
       })
       return
     }
     if (password !== confirm) {
       toast({
         variant: 'destructive',
-        title: 'Le password non corrispondono',
-        description: 'Assicurati che la conferma coincida con la password.',
+        title: t.mismatchToastTitle,
+        description: t.mismatchToastDesc,
       })
       return
     }
     setLoading(true)
+    setInviteError(null)
+
+    if (inviteCode.trim()) {
+      try {
+        const nameParts = name.trim().split(/\s+/)
+        const firstName = nameParts[0] || name.trim()
+        const lastName = nameParts.slice(1).join(' ') || firstName
+
+        const res = await fetch('/api/register-staff', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: email.trim(),
+            password,
+            firstName,
+            lastName,
+            secretCode: inviteCode.trim(),
+          }),
+        })
+        const json = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          setInviteError(json.error || t.failedTitle)
+          toast({ variant: 'destructive', title: t.failedTitle, description: json.error })
+          return
+        }
+        const { error: signInError } = await supabase.auth.signInWithPassword({
+          email: email.trim(),
+          password,
+        })
+        if (signInError) {
+          toast({ variant: 'destructive', title: t.failedTitle, description: signInError.message })
+          return
+        }
+        toast({ title: t.accountCreatedTitle, description: t.redirectingDesc })
+        window.location.href = '/admin/dashboard'
+        return
+      } catch (err: any) {
+        toast({ variant: 'destructive', title: t.networkErrorTitle, description: err?.message })
+        return
+      } finally {
+        setLoading(false)
+      }
+    }
+
     try {
       const { data, error } = await supabase.auth.signUp({
         email: email.trim(),
@@ -435,25 +539,26 @@ function SignupForm() {
         options: { data: { full_name: name.trim(), phone: phone.trim() || null } },
       })
       if (error) {
-        toast({ variant: 'destructive', title: 'Registrazione fallita', description: error.message })
+        toast({ variant: 'destructive', title: t.failedTitle, description: error.message })
         return
       }
       if (data.session) {
-        toast({ title: 'Account creato!', description: 'Reindirizzamento in corso…' })
-        window.location.href = '/'
+        toast({ title: t.accountCreatedTitle, description: t.redirectingDesc })
+        onSignupSuccess(name.trim() || null)
         return
       }
       toast({
-        title: 'Account creato!',
-        description: 'Controlla la tua email per confermare l’indirizzo.',
+        title: t.accountCreatedTitle,
+        description: t.checkEmailDesc,
       })
       setName('')
       setEmail('')
       setPhone('')
       setPassword('')
       setConfirm('')
+      setSubmitted(false)
     } catch (err: any) {
-      toast({ variant: 'destructive', title: 'Errore di rete', description: err?.message })
+      toast({ variant: 'destructive', title: t.networkErrorTitle, description: err?.message })
     } finally {
       setLoading(false)
     }
@@ -469,14 +574,14 @@ function SignupForm() {
         style={{ background: 'rgba(255,107,0,0.1)', color: C.orange }}
       >
         <UtensilsCrossed className="h-3.5 w-3.5" />
-        Unisciti a noi
+        {t.title}
       </div>
 
       <h1 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ color: C.ink }}>
-        Crea account
+        {t.submit}
       </h1>
       <p className="mt-2 text-[15px]" style={{ color: C.gray }}>
-        Registrati in pochi secondi e accedi al tuo ristorante.
+        {t.subtitle}
       </p>
 
       {/* Step progress indicator */}
@@ -486,86 +591,108 @@ function SignupForm() {
 
       <div className="mt-5 space-y-4">
         <div>
-          <FieldLabel>Nome completo</FieldLabel>
+          <FieldLabel required error={nameError}>{t.name}</FieldLabel>
           <IconInput
             icon={<User className="h-4 w-4" />}
             type="text"
             name="name"
-            placeholder="Mario Rossi"
+            placeholder={t.namePlaceholder}
             autoComplete="name"
             value={name}
             onChange={(e) => setName(e.target.value)}
-            state={name.trim().length >= 2 ? 'valid' : 'default'}
+            state={nameError ? 'invalid' : name.trim().length >= 2 ? 'valid' : 'default'}
           />
+          <FieldError>{nameError ? t.nameErrorMsg : undefined}</FieldError>
         </div>
         <div>
-          <FieldLabel>Email</FieldLabel>
+          <FieldLabel required error={emailError || emailTaken}>{t.email}</FieldLabel>
           <IconInput
             icon={<Mail className="h-4 w-4" />}
             type="email"
             name="email"
-            placeholder="nome@ristorante.it"
+            placeholder={t.emailPlaceholder}
             autoComplete="email"
             value={email}
-            onChange={(e) => setEmail(e.target.value)}
+            onChange={(e) => { setEmail(e.target.value); setEmailTaken(false) }}
             state={
-              email.length > 0
-                ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
-                  ? 'valid'
-                  : 'invalid'
-                : 'default'
+              emailError || emailTaken
+                ? 'invalid'
+                : email.length > 0
+                  ? /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
+                    ? 'valid'
+                    : 'invalid'
+                  : 'default'
             }
           />
+          <FieldError>{emailError ? t.emailErrorMsg : emailTaken ? t.emailTakenErrorMsg : undefined}</FieldError>
         </div>
         <div>
-          <FieldLabel>
-            Telefono <span style={{ color: C.gray, fontWeight: 400 }}>(opzionale, per OTP via SMS)</span>
+          <FieldLabel error={phoneError || phoneTaken}>
+            {t.phoneLabel} <span style={{ color: C.gray, fontWeight: 400 }}>{t.phoneOptional}</span>
           </FieldLabel>
           <IconInput
             icon={<Phone className="h-4 w-4" />}
             type="tel"
             name="phone"
-            placeholder="+39 333 1234567"
+            placeholder={t.phonePlaceholder}
             autoComplete="tel"
             value={phone}
-            onChange={(e) => setPhone(e.target.value)}
+            onChange={(e) => { setPhone(e.target.value); setPhoneTaken(false) }}
           />
+          <FieldError>{phoneError ? t.phoneErrorMsg : phoneTaken ? t.phoneTakenErrorMsg : undefined}</FieldError>
         </div>
         <div>
-          <FieldLabel>Password</FieldLabel>
+          <FieldLabel>
+            {t.inviteCodeLabel} <span style={{ color: C.gray, fontWeight: 400 }}>{t.inviteCodeOptional}</span>
+          </FieldLabel>
+          <IconInput
+            icon={<Ticket className="h-4 w-4" />}
+            type="text"
+            name="inviteCode"
+            placeholder={t.inviteCodePlaceholder}
+            autoComplete="off"
+            value={inviteCode}
+            onChange={(e) => setInviteCode(e.target.value.toUpperCase())}
+          />
+          {inviteError && <FieldError>{inviteError}</FieldError>}
+        </div>
+        <div>
+          <FieldLabel required error={passwordError}>{t.password}</FieldLabel>
           <IconInput
             icon={<Lock className="h-4 w-4" />}
             type={showPw ? 'text' : 'password'}
             name="password"
-            placeholder="Crea una password sicura"
+            placeholder={t.passwordPlaceholder}
             autoComplete="new-password"
             value={password}
             onChange={(e) => setPassword(e.target.value)}
+            state={passwordError ? 'invalid' : password.length > 0 && allPassed ? 'valid' : 'default'}
             rightSlot={
               <button
                 type="button"
                 onClick={() => setShowPw((v) => !v)}
                 className="shrink-0 rounded-md p-1 transition-colors hover:bg-black/5"
                 style={{ color: C.gray }}
-                aria-label={showPw ? 'Nascondi password' : 'Mostra password'}
+                aria-label={showPw ? tr.auth.login.hidePassword : tr.auth.login.showPassword}
               >
                 {showPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
               </button>
             }
           />
           <PasswordStrength password={password} />
+          <FieldError>{passwordError ? t.passwordErrorMsg : undefined}</FieldError>
         </div>
         <div>
-          <FieldLabel>Conferma password</FieldLabel>
+          <FieldLabel required error={confirmError}>{t.confirmPassword}</FieldLabel>
           <IconInput
             icon={<Lock className="h-4 w-4" />}
             type={showConfirmPw ? 'text' : 'password'}
             name="confirmPassword"
-            placeholder="Ripeti la password"
+            placeholder={t.confirmPasswordPlaceholder}
             autoComplete="new-password"
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            state={confirmState}
+            state={confirmError ? 'invalid' : confirmState}
             rightSlot={
               <>
                 {passwordsMatch && (
@@ -583,67 +710,59 @@ function SignupForm() {
                   onClick={() => setShowConfirmPw((v) => !v)}
                   className="shrink-0 rounded-md p-1 transition-colors hover:bg-black/5"
                   style={{ color: C.gray }}
-                  aria-label={showConfirmPw ? 'Nascondi password' : 'Mostra password'}
+                  aria-label={showConfirmPw ? tr.auth.login.hidePassword : tr.auth.login.showPassword}
                 >
                   {showConfirmPw ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                 </button>
               </>
             }
           />
-          {confirmMismatch && (
-            <p className="mt-1.5 text-xs font-medium" style={{ color: '#F44336' }}>
-              Le password non corrispondono
-            </p>
-          )}
-          {passwordsMatch && (
+          <FieldError>{confirmError ? t.confirmErrorMsg : confirmMismatch ? t.mismatchErrorMsg : undefined}</FieldError>
+          {passwordsMatch && !confirmError && (
             <p className="mt-1.5 text-xs font-medium" style={{ color: C.green }}>
-              Le password corrispondono
+              {t.passwordsMatchMsg}
             </p>
           )}
         </div>
 
-        <label className="group flex cursor-pointer select-none items-start gap-2.5 pt-1 text-sm" style={{ color: C.gray }}>
-          <span className="relative mt-0.5 inline-block h-[18px] w-[18px] shrink-0">
-            <input type="checkbox" className="peer absolute inset-0 h-full w-full cursor-pointer opacity-0" />
-            <span
-              aria-hidden
-              className="absolute inset-0 rounded-lg border-2 bg-white shadow-sm transition-all duration-300 ease-out peer-checked:scale-[1.08] peer-checked:border-transparent peer-checked:bg-gradient-to-br peer-checked:from-[#FF6B00] peer-checked:to-[#FF3D00] peer-checked:shadow-[0_6px_18px_-6px_rgba(255,107,0,0.55)] peer-focus-visible:ring-2 peer-focus-visible:ring-[#FF6B00]/40 group-hover:border-[#FF6B00]/60"
-              style={{ borderColor: 'rgba(33,33,33,0.18)' }}
+        <label className="flex cursor-pointer items-start gap-2.5 pt-1 text-sm select-none" style={{ color: C.gray }}>
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={termsAccepted}
+            onClick={() => setTermsAccepted((v) => !v)}
+            className="auth-round-check mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200 ease-out active:scale-90"
+            style={{
+              borderColor: termsAccepted ? C.orange : termsError ? '#F44336' : 'rgba(33,33,33,0.25)',
+              background: termsAccepted ? C.orange : 'transparent',
+              boxShadow: termsAccepted ? '0 0 0 4px rgba(255,107,0,0.15)' : 'none',
+            }}
+          >
+            <Check
+              className="auth-round-check-icon h-3 w-3 text-white"
+              strokeWidth={3.5}
+              style={{
+                opacity: termsAccepted ? 1 : 0,
+                transform: termsAccepted ? 'scale(1)' : 'scale(0.4)',
+              }}
             />
-            <svg
-              viewBox="0 0 20 20"
-              fill="none"
-              aria-hidden
-              className="pointer-events-none absolute inset-0 h-full w-full scale-50 text-white opacity-0 transition-all duration-300 ease-[cubic-bezier(.34,1.56,.64,1)] peer-checked:scale-100 peer-checked:opacity-100"
-            >
-              <path
-                d="M4.5 10.5 L8.4 14 L15.5 6.5"
-                stroke="currentColor"
-                strokeWidth="2.6"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            </svg>
-            <span
-              aria-hidden
-              className="pointer-events-none absolute inset-0 rounded-lg ring-0 ring-[#FF6B00]/20 transition-all duration-500 peer-checked:ring-8"
-            />
-          </span>
+          </button>
           <span>
-            Accetto i{' '}
+            {t.termsPrefix}{' '}
             <a href="#" className="font-semibold hover:underline" style={{ color: C.orange }}>
-              Termini di servizio
+              {t.termsOfService}
             </a>{' '}
-            e la{' '}
+            {t.termsAnd}{' '}
             <a href="#" className="font-semibold hover:underline" style={{ color: C.orange }}>
-              Privacy Policy
+              {t.privacyPolicy}
             </a>
           </span>
         </label>
+        <FieldError>{termsError ? t.termsErrorMsg : undefined}</FieldError>
 
         <div className="pt-1">
-          <PrimaryButton type="submit" loading={loading} loadingText="Creazione account…">
-            Crea account
+          <PrimaryButton type="submit" loading={loading} loadingText={t.submitting}>
+            {t.submit}
           </PrimaryButton>
         </div>
       </div>
@@ -653,7 +772,7 @@ function SignupForm() {
         style={{ color: C.gray }}
       >
         <CheckCircle2 className="h-3.5 w-3.5" style={{ color: C.green }} />
-        Prova gratuita 14 giorni · nessuna carta richiesta
+        {t.freeTrial}
       </div>
     </form>
   )
@@ -687,34 +806,33 @@ function OverlayDeco() {
 }
 
 function OverlayRight({ onSwitch }: { onSwitch: () => void }) {
+  const { tr } = useI18n()
+  const t = tr.auth.overlay
   return (
-    <div className="auth-overlay-content auth-overlay-content--right absolute inset-0 flex flex-col justify-center px-10 lg:px-14">
+    <div className="auth-overlay-content auth-overlay-content--right absolute inset-0 flex flex-col justify-center pl-[16%] pr-8 lg:pr-12">
       <OverlayDeco />
       <div className="relative">
         <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm">
           <ChefHat className="h-7 w-7 text-white" />
         </div>
         <h2 className="text-3xl font-bold leading-tight text-white sm:text-4xl">
-          Nuovo da queste parti?
+          {t.rightTitle}
         </h2>
         <p className="mt-3 max-w-sm text-[15px] leading-relaxed text-white/85">
-          Crea un account e sblocca l&apos;esperienza completa. Gestisci menu,
-          prenotazioni e clienti da un unico posto.
+          {t.rightDesc}
         </p>
 
         <ul className="mt-6 space-y-2.5">
-          {['Menu digitale always-on', 'Prenotazioni in tempo reale', 'Statistiche e insight'].map(
-            (t) => (
-              <li key={t} className="flex items-center gap-2.5 text-sm text-white/90">
-                <CheckCircle2 className="h-4 w-4 shrink-0 text-white" />
-                {t}
-              </li>
-            ),
-          )}
+          {t.rightFeatures.map((f) => (
+            <li key={f} className="flex items-center gap-2.5 text-sm text-white/90">
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-white" />
+              {f}
+            </li>
+          ))}
         </ul>
 
         <div className="mt-8 max-w-[220px]">
-          <GhostButton onClick={onSwitch}>Crea account</GhostButton>
+          <GhostButton onClick={onSwitch}>{t.rightCta}</GhostButton>
         </div>
       </div>
     </div>
@@ -722,32 +840,33 @@ function OverlayRight({ onSwitch }: { onSwitch: () => void }) {
 }
 
 function OverlayLeft({ onSwitch }: { onSwitch: () => void }) {
+  const { tr } = useI18n()
+  const t = tr.auth.overlay
   return (
-    <div className="auth-overlay-content auth-overlay-content--left absolute inset-0 flex flex-col justify-center px-10 lg:px-14">
+    <div className="auth-overlay-content auth-overlay-content--left absolute inset-0 flex flex-col justify-center pl-8 lg:pl-12 pr-[16%]">
       <OverlayDeco />
       <div className="relative">
         <div className="mb-6 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/15 backdrop-blur-sm">
           <ChefHat className="h-7 w-7 text-white" />
         </div>
         <h2 className="text-3xl font-bold leading-tight text-white sm:text-4xl">
-          Già un membro?
+          {t.leftTitle}
         </h2>
         <p className="mt-3 max-w-sm text-[15px] leading-relaxed text-white/85">
-          Accedi al tuo account e riprendi da dove avevi lasciato. Il tuo
-          ristorante ti aspetta.
+          {t.leftDesc}
         </p>
 
         <ul className="mt-6 space-y-2.5">
-          {['Dashboard sempre aggiornata', 'Ordini in tempo reale', 'Supporto 24/7'].map((t) => (
-            <li key={t} className="flex items-center gap-2.5 text-sm text-white/90">
+          {t.leftFeatures.map((f) => (
+            <li key={f} className="flex items-center gap-2.5 text-sm text-white/90">
               <CheckCircle2 className="h-4 w-4 shrink-0 text-white" />
-              {t}
+              {f}
             </li>
           ))}
         </ul>
 
         <div className="mt-8 max-w-[220px]">
-          <GhostButton onClick={onSwitch}>Accedi</GhostButton>
+          <GhostButton onClick={onSwitch}>{t.leftCta}</GhostButton>
         </div>
       </div>
     </div>
@@ -765,42 +884,32 @@ function MobileTabs({
   mode: 'login' | 'signup'
   setMode: (m: 'login' | 'signup') => void
 }) {
-  const isSignup = mode === 'signup'
+  const { tr } = useI18n()
+  const t = tr.auth.mobileTabs
   return (
     <div
       className="relative flex rounded-xl p-1 lg:hidden"
       style={{ background: 'rgba(33,33,33,0.06)' }}
     >
-      {/* Sliding thumb */}
-      <span
-        aria-hidden
-        className="pointer-events-none absolute inset-y-1 left-1 rounded-lg transition-transform duration-500 ease-[cubic-bezier(.4,.14,.2,1.02)]"
+      <div
+        className="absolute inset-y-1 w-[calc(50%-4px)] rounded-lg transition-transform duration-300 ease-out"
         style={{
-          width: 'calc(50% - 4px)',
           background: C.white,
-          boxShadow: '0 1px 3px rgba(0,0,0,0.08), 0 4px 12px -6px rgba(255,107,0,0.25)',
-          transform: isSignup ? 'translateX(100%)' : 'translateX(0)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.08)',
+          transform: mode === 'login' ? 'translateX(0)' : 'translateX(calc(100% + 8px))',
         }}
       />
-      {(['login', 'signup'] as const).map((m) => {
-        const active = mode === m
-        return (
-          <button
-            key={m}
-            type="button"
-            onClick={() => setMode(m)}
-            className="relative z-10 flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors duration-300"
-            style={{ color: active ? C.orange : C.gray }}
-          >
-            <span
-              className="inline-block transition-transform duration-500 ease-[cubic-bezier(.4,.14,.2,1.02)]"
-              style={{ transform: active ? 'scale(1.04)' : 'scale(1)' }}
-            >
-              {m === 'login' ? 'Accedi' : 'Registrati'}
-            </span>
-          </button>
-        )
-      })}
+      {(['login', 'signup'] as const).map((m) => (
+        <button
+          key={m}
+          type="button"
+          onClick={() => setMode(m)}
+          className="relative z-10 flex-1 rounded-lg px-4 py-2.5 text-sm font-semibold transition-colors duration-300"
+          style={{ color: mode === m ? C.orange : C.gray }}
+        >
+          {m === 'login' ? t.login : t.signup}
+        </button>
+      ))}
     </div>
   )
 }
@@ -810,25 +919,89 @@ function MobileTabs({
 /* ------------------------------------------------------------------ */
 
 export function AuthPage() {
+  const { tr } = useI18n()
   const [isSignup, setIsSignup] = useState(false)
   const [mobileMode, setMobileMode] = useState<'login' | 'signup'>('login')
+  const [view, setView] = useState<'auth' | 'choice'>('auth')
+  const [loggedInName, setLoggedInName] = useState<string | null>(null)
+  const [choiceError, setChoiceError] = useState<string | null>(null)
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    if (searchParams.get('error') !== 'no-restaurant') return
+    supabase.auth.getUser().then(({ data }) => {
+      if (!data.user) return
+      setLoggedInName(data.user.user_metadata?.full_name ?? null)
+      setChoiceError(tr.auth.choice.noRestaurantError)
+      setView('choice')
+    })
+  }, [searchParams, tr])
 
   const toggle = () => {
     setIsSignup((v) => !v)
     setMobileMode((m) => (m === 'login' ? 'signup' : 'login'))
   }
 
+  const handleLoginSuccess = (name: string | null) => {
+    setLoggedInName(name)
+    setChoiceError(null)
+    setView('choice')
+  }
+
+  if (view === 'choice') {
+    return (
+      <PostLoginChoice
+        name={loggedInName}
+        errorMessage={choiceError}
+        onChoose={(choice) => {
+          if (choice === 'dashboard') {
+            window.location.href = '/admin/dashboard'
+          } else if (choice === 'create-restaurant') {
+            window.location.href = '/create'
+          } else {
+            window.location.href = '/'
+          }
+        }}
+      />
+    )
+  }
+
   return (
-    <main
-      className="flex min-h-screen w-full flex-col"
-      style={{
-        background:
-          'radial-gradient(1200px 600px at 15% 10%, #FFF7EE 0%, transparent 60%), radial-gradient(1000px 500px at 85% 90%, #FFE3D1 0%, transparent 55%), #F5F1E8',
-      }}
-    >
-      {/* Top brand bar */}
-      <header className="flex items-center justify-between px-6 py-5 lg:px-10">
-        <div className="flex items-center gap-2.5">
+    <main className="relative min-h-screen w-full overflow-hidden bg-[#F5F1E8]">
+      {/* ---------- Desktop split layout (full-screen, no card) ---------- */}
+      <div
+        className="auth-container relative hidden h-screen w-full lg:block"
+        data-active={isSignup ? 'true' : 'false'}
+      >
+        {/* Login form (left half) */}
+        <div className="auth-form-panel auth-form-panel--login absolute left-0 top-0 h-full w-1/2">
+          <div className="h-full w-full" style={{ background: C.cream }}>
+            <LoginForm onLoginSuccess={handleLoginSuccess} />
+          </div>
+        </div>
+
+        {/* Signup form (right half) */}
+        <div className="auth-form-panel auth-form-panel--signup absolute right-0 top-0 h-full w-1/2">
+          <div className="h-full w-full" style={{ background: C.cream }}>
+            <SignupForm onSignupSuccess={handleLoginSuccess} />
+          </div>
+        </div>
+
+        {/* Sliding overlay */}
+        <div
+          className="auth-overlay-panel pointer-events-none absolute right-0 top-0 h-full w-1/2"
+          style={{
+            background: `linear-gradient(160deg, ${C.orange} 0%, ${C.orangeDeep} 100%)`,
+          }}
+        >
+          <div className="pointer-events-auto absolute inset-0 overflow-hidden">
+            <OverlayRight onSwitch={toggle} />
+            <OverlayLeft onSwitch={toggle} />
+          </div>
+        </div>
+
+        {/* Brand logo — fixed top-left overlay */}
+        <div className="pointer-events-none absolute left-8 top-6 z-20 flex items-center gap-2.5">
           <div
             className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-md"
             style={{ background: `linear-gradient(135deg, ${C.orange}, ${C.orangeDeep})` }}
@@ -839,70 +1012,58 @@ export function AuthPage() {
             Tavola<span style={{ color: C.orange }}>.</span>
           </span>
         </div>
-        <a
-          href="#"
-          className="text-sm font-medium transition-colors hover:underline"
+
+        {/* Footer — fixed bottom overlay on the cream (form) side */}
+        <div
+          className="pointer-events-none absolute bottom-4 left-0 z-20 w-1/2 px-8 text-center text-xs lg:px-14"
           style={{ color: C.gray }}
         >
-          Hai bisogno di aiuto?
-        </a>
-      </header>
-
-      {/* Auth card */}
-      <div className="flex flex-1 items-center justify-center px-4 pb-8 sm:px-6 lg:pb-12">
-        <div
-          className="auth-container relative w-full max-w-5xl overflow-hidden bg-white shadow-2xl shadow-[#FF3D00]/10 ring-1 ring-black/5 lg:h-[840px]"
-          data-active={isSignup ? 'true' : 'false'}
-          style={{ borderRadius: 24 }}
-        >
-          {/* ---------- Desktop split layout ---------- */}
-          {/* Login form (left half) */}
-          <div className="auth-form-panel auth-form-panel--login absolute left-0 top-0 hidden h-full w-1/2 lg:block">
-            <div className="h-full w-full" style={{ background: C.cream }}>
-              <LoginForm />
-            </div>
-          </div>
-
-          {/* Signup form (right half) */}
-          <div className="auth-form-panel auth-form-panel--signup absolute right-0 top-0 hidden h-full w-1/2 lg:block">
-            <div className="h-full w-full" style={{ background: C.cream }}>
-              <SignupForm />
-            </div>
-          </div>
-
-          {/* Sliding overlay (desktop only) */}
-          <div
-            className="auth-overlay-panel pointer-events-none absolute right-0 top-0 hidden h-full w-1/2 lg:block"
-            style={{
-              background: `linear-gradient(160deg, ${C.orange} 0%, ${C.orangeDeep} 100%)`,
-            }}
-          >
-            <div className="pointer-events-auto absolute inset-0 overflow-hidden">
-              <OverlayRight onSwitch={toggle} />
-              <OverlayLeft onSwitch={toggle} />
-            </div>
-          </div>
-
-          {/* ---------- Mobile single-panel layout ---------- */}
-          <div className="lg:hidden">
-            <div className="px-5 pt-6">
-              <MobileTabs mode={mobileMode} setMode={setMobileMode} />
-            </div>
-            <div className="auth-scroll max-h-[calc(100vh-220px)] overflow-y-auto px-5 pb-6 pt-4">
-              {mobileMode === 'login' ? <LoginForm /> : <SignupForm />}
-            </div>
-          </div>
+          © {new Date().getFullYear()} Tavola. {tr.auth.login.footerRights} · Made with{' '}
+          <span style={{ color: C.orange }}>♥</span> in Italia
         </div>
       </div>
 
-      {/* Footer (sticky to bottom) */}
-      <footer
-        className="mt-auto border-t px-6 py-4 text-center text-xs sm:px-10"
-        style={{ borderColor: 'rgba(33,33,33,0.08)', color: C.gray }}
-      >
-        © {new Date().getFullYear()} Tavola. Tutti i diritti riservati · Made with{' '}
-        <span style={{ color: C.orange }}>♥</span> in Italia
-      </footer>
+      {/* ---------- Mobile single-panel layout (full-screen, no card) ---------- */}
+      <div className="flex min-h-screen w-full flex-col lg:hidden">
+        {/* Brand bar */}
+        <header className="flex items-center justify-between px-6 py-5">
+          <div className="flex items-center gap-2.5">
+            <div
+              className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-md"
+              style={{ background: `linear-gradient(135deg, ${C.orange}, ${C.orangeDeep})` }}
+            >
+              <ChefHat className="h-5 w-5" />
+            </div>
+            <span className="text-lg font-bold tracking-tight" style={{ color: C.ink }}>
+              Tavola<span style={{ color: C.orange }}>.</span>
+            </span>
+          </div>
+          <a
+            href="#"
+            className="text-sm font-medium transition-colors hover:underline"
+            style={{ color: C.gray }}
+          >
+            {tr.auth.login.helpLink}
+          </a>
+        </header>
+
+        <div className="px-5 pt-2">
+          <MobileTabs mode={mobileMode} setMode={setMobileMode} />
+        </div>
+        <div className="auth-scroll flex-1 overflow-y-auto px-5 pb-6 pt-4">
+          <div key={mobileMode} className="auth-mobile-fade">
+            {mobileMode === 'login' ? <LoginForm onLoginSuccess={handleLoginSuccess} /> : <SignupForm onSignupSuccess={handleLoginSuccess} />}
+          </div>
+        </div>
+
+        <footer
+          className="border-t px-6 py-4 text-center text-xs"
+          style={{ borderColor: 'rgba(33,33,33,0.08)', color: C.gray }}
+        >
+          © {new Date().getFullYear()} Tavola. {tr.auth.login.footerRights} · Made with{' '}
+          <span style={{ color: C.orange }}>♥</span> in Italia
+        </footer>
+      </div>
     </main>
   )
 }
