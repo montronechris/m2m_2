@@ -33,9 +33,8 @@ const LABELS_IT: Record<SectionId, string> = {
   branding:  "Branding",
   waiter:    "Cameriere",
   history:   "Cronologia",
-  calendar:  "Presenze",
+  calendar:  "In arrivo",
   settings:  "Impostazioni",
-  payment:   "Pagamenti",
 };
 
 const LABELS_EN: Record<SectionId, string> = {
@@ -48,9 +47,8 @@ const LABELS_EN: Record<SectionId, string> = {
   branding:  "Branding",
   waiter:    "Waiter",
   history:   "History",
-  calendar:  "Attendance",
+  calendar:  "Coming soon",
   settings:  "Settings",
-  payment:   "Payments",
 };
 
 export function PlaceholderSection({ id, theme }: Props) {

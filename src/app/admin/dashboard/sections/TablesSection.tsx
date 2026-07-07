@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { QrCode, Plus, Copy, Trash2, AlertCircle, Check, X, Loader2, Download, Printer } from 'lucide-react'
+import { QrCode, Plus, Copy, Trash2, AlertCircle, Check, X, Loader2, Download, Printer, ExternalLink } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
 import { getTables, createTable, deleteTable, setTableActive, type Table } from '@/lib/admin-service'
 import { useI18n } from '@/components/i18n/I18nProvider'
@@ -278,6 +278,13 @@ export function TablesSection({ ctx }: Props) {
                     className="tt-pill bg-emerald-500 text-white hover:bg-emerald-600"
                   >
                     <Printer className="h-3 w-3" /> {T.printQr}
+                  </button>
+                  <button
+                    onClick={() => window.open(buildOrderUrl(t.code), '_blank', 'noopener,noreferrer')}
+                    title={T.orderCode}
+                    className="tt-pill bg-tt-surfaceAlt2 text-tt-ink hover:bg-tt-line"
+                  >
+                    <ExternalLink className="h-3 w-3" />
                   </button>
                   <span className="tt-pill bg-tt-pink/10 text-tt-pink">{T.table}</span>
                 </div>

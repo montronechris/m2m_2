@@ -653,6 +653,8 @@ const it = {
     layout: {
       allSections: 'Tutte le sezioni',
       main: 'Principale',
+      waiterKitchen: 'Cameriere-Cucina',
+      comingSoon: 'In arrivo',
       operations: 'Operazioni',
       management: 'Gestione',
       other: 'Altro',
@@ -2100,6 +2102,8 @@ const en: typeof it = {
     layout: {
       allSections: 'All sections',
       main: 'Main',
+      waiterKitchen: 'Waiter-Kitchen',
+      comingSoon: 'Coming soon',
       operations: 'Operations',
       management: 'Management',
       other: 'Other',

@@ -22,7 +22,7 @@ import {
   Settings,
   ChefHat,
 } from 'lucide-react'
-import { NAV_ITEMS, OPERATIONS_GROUP_IDS, MANAGEMENT_GROUP_IDS } from './nav-config'
+import { NAV_ITEMS, WAITER_KITCHEN_GROUP_IDS, OPERATIONS_GROUP_IDS, MANAGEMENT_GROUP_IDS } from './nav-config'
 import type { RestaurantCtx, SectionId, ThemeMode } from './types'
 import { supabase } from '@/lib/supabase'
 import { getRestaurantByUser, signOut } from '@/lib/admin-service'
@@ -42,7 +42,6 @@ import { BrandingSection } from './sections/BrandingSection'
 import { StaffSection } from './sections/StaffSection'
 import { SettingsSection } from './sections/SettingsSection'
 import { WaiterSection } from './sections/WaiterSection'
-import { PaymentSection } from './sections/PaymentSection'
 import { HistorySection } from './sections/HistorySection'
 import { PlaceholderSection } from './sections/PlaceholderSection'
 import { AIAssistantOverlay } from './components/AIAssistantOverlay'
@@ -79,8 +78,6 @@ function SectionRenderer({
       return <SettingsSection ctx={ctx} theme={theme} />
     case 'waiter':
       return <WaiterSection ctx={ctx} theme={theme} />
-    case 'payment':
-      return <PaymentSection ctx={ctx} theme={theme} />
     case 'history':
       return <HistorySection ctx={ctx} theme={theme} />
     case 'calendar':
@@ -169,10 +166,15 @@ function MoreDrawer({
     dragStartY.current = null
   }
 
+  const waiterKitchenItems = NAV_ITEMS.filter((i) => WAITER_KITCHEN_GROUP_IDS.includes(i.id))
   const operationsItems = NAV_ITEMS.filter((i) => OPERATIONS_GROUP_IDS.includes(i.id))
   const managementItems = NAV_ITEMS.filter((i) => MANAGEMENT_GROUP_IDS.includes(i.id))
   const otherItems = NAV_ITEMS.filter(
-    (i) => i.id !== 'dashboard' && !OPERATIONS_GROUP_IDS.includes(i.id) && !MANAGEMENT_GROUP_IDS.includes(i.id)
+    (i) =>
+      i.id !== 'dashboard' &&
+      !WAITER_KITCHEN_GROUP_IDS.includes(i.id) &&
+      !OPERATIONS_GROUP_IDS.includes(i.id) &&
+      !MANAGEMENT_GROUP_IDS.includes(i.id)
   )
 
   const handleSelect = (id: SectionId) => {
@@ -279,6 +281,7 @@ function MoreDrawer({
               })()}
             </div>
           </div>
+          <GroupBlock label={tr.admin.layout.waiterKitchen} items={waiterKitchenItems} />
           <GroupBlock label={tr.admin.layout.operations} items={operationsItems} />
           <GroupBlock label={tr.admin.layout.management} items={managementItems} />
           <GroupBlock label={tr.admin.layout.other} items={otherItems} />
@@ -301,6 +304,23 @@ function MoreDrawer({
                   {tr.admin.nav.settings}
                 </span>
                 {activeSection === 'settings' && <span className="h-2 w-2 animate-pulse rounded-full bg-tt-pink" />}
+              </button>
+              <button
+                onClick={() => handleSelect('calendar')}
+                className={`flex w-full items-center gap-3 border-t border-tt-line px-4 py-3.5 transition-colors duration-150 ${
+                  activeSection === 'calendar' ? 'bg-tt-pink/10' : 'hover:bg-tt-surfaceAlt2'
+                }`}
+              >
+                <div
+                  className={`flex h-9 w-9 items-center justify-center rounded-xl ${activeSection === 'calendar' ? 'text-white' : 'bg-tt-surfaceAlt2 text-tt-ink'}`}
+                  style={activeSection === 'calendar' ? { background: 'var(--color-tt-gradient)' } : undefined}
+                >
+                  <CalendarDays className="h-5 w-5" />
+                </div>
+                <span className={`flex-1 text-left text-sm font-semibold ${activeSection === 'calendar' ? 'text-tt-pink' : 'text-tt-ink'}`}>
+                  {tr.admin.layout.comingSoon}
+                </span>
+                {activeSection === 'calendar' && <span className="h-2 w-2 animate-pulse rounded-full bg-tt-pink" />}
               </button>
             </div>
           </div>
@@ -584,6 +604,7 @@ export default function AdminDashboardPage() {
   const isSectionInBottomNav = (id: SectionId) => bottomNavSlots.some((s) => s.item?.id === id)
 
   // Desktop sidebar groups
+  const waiterKitchenItems = NAV_ITEMS.filter((i) => WAITER_KITCHEN_GROUP_IDS.includes(i.id))
   const operationsItems = NAV_ITEMS.filter((i) => OPERATIONS_GROUP_IDS.includes(i.id))
   const managementItems = NAV_ITEMS.filter((i) => MANAGEMENT_GROUP_IDS.includes(i.id))
 
@@ -635,6 +656,20 @@ export default function AdminDashboardPage() {
             </div>
           </div>
           <div className="mb-4">
+            <p className="tt-section-title px-2">{tr.admin.layout.waiterKitchen}</p>
+            <div className="space-y-1">
+              {waiterKitchenItems.map((it) => (
+                <SidebarItem
+                  key={it.id}
+                  item={it}
+                  isActive={activeSection === it.id}
+                  onClick={() => setActiveSection(it.id)}
+                  badge={it.id === 'orders' ? activeOrdersCount : it.id === 'waiter' ? pendingWaiterCount : undefined}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="mb-4">
             <p className="tt-section-title px-2">{tr.admin.layout.operations}</p>
             <div className="space-y-1">
               {operationsItems.map((it) => (
@@ -643,7 +678,6 @@ export default function AdminDashboardPage() {
                   item={it}
                   isActive={activeSection === it.id}
                   onClick={() => setActiveSection(it.id)}
-                  badge={it.id === 'orders' ? activeOrdersCount : it.id === 'payment' ? pendingPaymentsCount : it.id === 'waiter' ? pendingWaiterCount : undefined}
                 />
               ))}
             </div>
@@ -668,6 +702,11 @@ export default function AdminDashboardPage() {
                 item={{ id: 'settings', label: 'Impostazioni', icon: Settings }}
                 isActive={activeSection === 'settings'}
                 onClick={() => setActiveSection('settings')}
+              />
+              <SidebarItem
+                item={{ id: 'calendar', label: tr.admin.layout.comingSoon, icon: CalendarDays }}
+                isActive={activeSection === 'calendar'}
+                onClick={() => setActiveSection('calendar')}
               />
             </div>
           </div>
@@ -797,7 +836,7 @@ export default function AdminDashboardPage() {
             )
           }
           if (!slot.item) return null
-          const showBadge = slot.item.id === 'orders' ? activeOrdersCount : slot.item.id === 'payment' ? pendingPaymentsCount : slot.item.id === 'waiter' ? pendingWaiterCount : undefined
+          const showBadge = slot.item.id === 'orders' ? activeOrdersCount : slot.item.id === 'waiter' ? pendingWaiterCount : undefined
           return (
             <BottomNavItem
               key={slot.item.id}
