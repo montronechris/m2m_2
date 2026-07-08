@@ -26,9 +26,10 @@ import {
   evaluatePassword,
 } from '@/components/auth/password-strength'
 import { StepProgress, type StepState } from '@/components/auth/step-progress'
-import { PostLoginChoice } from '@/components/auth/post-login-choice'
 import { supabase } from '@/lib/supabase'
+import { getRestaurantByUser } from '@/lib/admin-service'
 import { useI18n } from '@/components/i18n/I18nProvider'
+import { loadPendingRestaurant, clearPendingRestaurant } from '@/lib/pending-restaurant'
 
 /* ------------------------------------------------------------------ */
 /*  Color tokens (restaurant palette from reference image)            */
@@ -920,58 +921,112 @@ function MobileTabs({
 
 export function AuthPage() {
   const { tr } = useI18n()
-  const [isSignup, setIsSignup] = useState(false)
-  const [mobileMode, setMobileMode] = useState<'login' | 'signup'>('login')
-  const [view, setView] = useState<'auth' | 'choice'>('auth')
-  const [loggedInName, setLoggedInName] = useState<string | null>(null)
-  const [choiceError, setChoiceError] = useState<string | null>(null)
   const searchParams = useSearchParams()
+  const needsAccountForRestaurant = searchParams.get('next') === 'create-pending'
+  const cameFromNoRestaurant = searchParams.get('error') === 'no-restaurant'
+  const [isSignup, setIsSignup] = useState(needsAccountForRestaurant)
+  const [mobileMode, setMobileMode] = useState<'login' | 'signup'>(needsAccountForRestaurant ? 'signup' : 'login')
+  const [redirecting, setRedirecting] = useState(cameFromNoRestaurant)
+  const [cameFrom, setCameFrom] = useState('/')
 
   useEffect(() => {
-    if (searchParams.get('error') !== 'no-restaurant') return
+    try {
+      if (document.referrer) {
+        const ref = new URL(document.referrer)
+        if (ref.origin === window.location.origin && ref.pathname !== '/login') {
+          setCameFrom(ref.pathname)
+        }
+      }
+    } catch {}
+  }, [])
+
+  // Landed here already authenticated (e.g. dashboard redirected because there's no restaurant yet)
+  useEffect(() => {
+    if (!cameFromNoRestaurant) return
+    let cancelled = false
     supabase.auth.getUser().then(({ data }) => {
-      if (!data.user) return
-      setLoggedInName(data.user.user_metadata?.full_name ?? null)
-      setChoiceError(tr.auth.choice.noRestaurantError)
-      setView('choice')
+      if (cancelled || !data.user) {
+        if (!cancelled) setRedirecting(false)
+        return
+      }
+      getRestaurantByUser()
+        .then(() => { if (!cancelled) window.location.href = '/admin/dashboard' })
+        .catch(() => { if (!cancelled) window.location.href = '/create' })
     })
-  }, [searchParams, tr])
+    return () => { cancelled = true }
+  }, [cameFromNoRestaurant])
 
   const toggle = () => {
     setIsSignup((v) => !v)
     setMobileMode((m) => (m === 'login' ? 'signup' : 'login'))
   }
 
-  const handleLoginSuccess = (name: string | null) => {
-    setLoggedInName(name)
-    setChoiceError(null)
-    setView('choice')
+  const handleLoginSuccess = async (name: string | null) => {
+    const pending = loadPendingRestaurant()
+    if (pending) {
+      setRedirecting(true)
+      try {
+        const res = await fetch('/api/restaurants/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({
+            name: pending.name,
+            city: pending.city,
+            logoIcon: pending.logoIcon,
+            establishmentType: pending.establishmentType,
+            establishmentTypeCustom: pending.establishmentTypeCustom,
+          }),
+        })
+        clearPendingRestaurant()
+        if (res.ok) {
+          window.location.href = '/admin/dashboard'
+          return
+        }
+      } catch {
+        clearPendingRestaurant()
+      }
+      setRedirecting(false)
+      return
+    }
+
+    setRedirecting(true)
+    try {
+      await getRestaurantByUser()
+      window.location.href = '/admin/dashboard'
+    } catch {
+      window.location.href = cameFrom
+    }
   }
 
-  if (view === 'choice') {
+  if (redirecting) {
     return (
-      <PostLoginChoice
-        name={loggedInName}
-        errorMessage={choiceError}
-        onChoose={(choice) => {
-          if (choice === 'dashboard') {
-            window.location.href = '/admin/dashboard'
-          } else if (choice === 'create-restaurant') {
-            window.location.href = '/create'
-          } else {
-            window.location.href = '/'
-          }
-        }}
-      />
+      <main className="flex min-h-screen w-full items-center justify-center bg-[#F5F1E8]">
+        <div className="flex flex-col items-center gap-3">
+          <svg className="size-8 animate-spin" viewBox="0 0 24 24" fill="none" style={{ color: C.orange }}>
+            <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+            <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+          </svg>
+        </div>
+      </main>
     )
   }
 
   return (
     <main className="relative min-h-screen w-full overflow-hidden bg-[#F5F1E8]">
+      {needsAccountForRestaurant && (
+        <div
+          className="relative z-50 px-4 py-3 text-center text-sm font-semibold text-white shadow-md"
+          style={{ background: '#F44336' }}
+        >
+          Devi creare un account per completare la creazione del tuo locale. I dati inseriti andranno persi se non completi la registrazione.
+        </div>
+      )}
       {/* ---------- Desktop split layout (full-screen, no card) ---------- */}
       <div
-        className="auth-container relative hidden h-screen w-full lg:block"
+        className={`auth-container relative hidden w-full lg:block ${needsAccountForRestaurant ? '' : 'h-screen'}`}
         data-active={isSignup ? 'true' : 'false'}
+        style={needsAccountForRestaurant ? { height: 'calc(100vh - 46px)' } : undefined}
       >
         {/* Login form (left half) */}
         <div className="auth-form-panel auth-form-panel--login absolute left-0 top-0 h-full w-1/2">

@@ -15,8 +15,6 @@ import { Label } from '@/components/ui/label'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { useI18n } from '@/components/i18n/I18nProvider'
 import { restaurantAvatars as logoIcons } from '@/lib/restaurant-avatars'
-import { supabase } from '@/lib/supabase'
-import { savePendingRestaurant } from '@/lib/pending-restaurant'
 
 /* Restaurant theme (same as login page) */
 const ORANGE = '#FF6B00'
@@ -520,19 +518,6 @@ function StepSuccess({
     setIsCreating(true)
     setCreateError(null)
     try {
-      const { data: { user } } = await supabase.auth.getUser()
-      if (!user) {
-        savePendingRestaurant({
-          name: formData.nomeLocale,
-          city: formData.citta,
-          logoIcon: formData.logoIcon,
-          establishmentType: selectedType,
-          establishmentTypeCustom: customType,
-        })
-        window.location.href = '/login?next=create-pending'
-        return
-      }
-
       const res = await fetch('/api/restaurants/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

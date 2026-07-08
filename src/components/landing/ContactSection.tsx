@@ -5,9 +5,8 @@ import { motion } from 'framer-motion'
 import {
   Mail,
   Phone,
-  MapPin,
-  Clock,
   Send,
+  Check,
   CheckCircle2,
   AlertCircle,
   MessageSquare,
@@ -105,12 +104,10 @@ export function ContactSection() {
   const contactItems = [
     { icon: Mail, label: c.emailLabelShort, value: 'ciao@m2m.app', tint: 'text-brand-amber' },
     { icon: Phone, label: c.phoneLabelShort, value: '+39 055 123 4567', tint: 'text-brand-emerald' },
-    { icon: MapPin, label: c.addressLabelShort, value: 'Via del Gusto 12, Firenze', tint: 'text-brand-rose' },
-    { icon: Clock, label: c.hoursLabelShort, value: c.hours, tint: 'text-brand-violet' },
   ]
 
   return (
-    <section id="contattaci" className="relative scroll-mt-28 overflow-hidden py-16 sm:py-20 lg:py-24">
+    <section id="contattaci" className="relative scroll-mt-28 overflow-hidden pb-16 pt-8 sm:pb-20 sm:pt-10 lg:pb-24 lg:pt-12">
       {/* Soft decorative background */}
       <div aria-hidden className="pointer-events-none absolute -left-10 top-1/4 h-56 w-56 rounded-full bg-brand-amber/10 blur-3xl animate-float-soft" />
       <div aria-hidden className="pointer-events-none absolute -right-10 bottom-1/4 h-64 w-64 rounded-full bg-brand-emerald/10 blur-3xl animate-blob" />
@@ -142,7 +139,7 @@ export function ContactSection() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, margin: '-60px' }}
             transition={{ duration: 0.6 }}
-            className="noise-overlay relative flex flex-col overflow-hidden rounded-3xl bg-gradient-to-br from-brand-emerald via-brand-emerald to-brand-sky p-7 text-white shadow-glow-emerald sm:p-8 lg:col-span-2"
+            className="noise-overlay relative order-2 flex flex-col overflow-hidden rounded-3xl bg-gradient-to-br from-brand-emerald via-brand-emerald to-brand-sky p-7 text-white shadow-glow-emerald sm:p-8 lg:col-span-2"
           >
             <div aria-hidden className="absolute inset-0 bg-grid-soft opacity-20" />
             <div className="relative flex h-full flex-col">
@@ -181,7 +178,7 @@ export function ContactSection() {
             whileInView={{ opacity: 1, x: 0 }}
             viewport={{ once: true, margin: '-60px' }}
             transition={{ duration: 0.6, delay: 0.1 }}
-            className="card-gradient-border lift-hover noise-overlay relative rounded-3xl bg-white/85 p-6 shadow-sm backdrop-blur sm:p-8 lg:col-span-3"
+            className="card-gradient-border lift-hover noise-overlay relative order-1 rounded-3xl bg-white/85 p-6 shadow-sm backdrop-blur sm:p-8 lg:col-span-3"
           >
             {status === 'success' ? (
               <div className="flex min-h-[24rem] flex-col items-center justify-center text-center">
@@ -258,7 +255,7 @@ export function ContactSection() {
                     <Label htmlFor="contact-topic" className="text-sm font-semibold text-ink">
                       {c.topicLabel}
                     </Label>
-                    <Select value={form.topic} onValueChange={(v) => update('topic', v)}>
+                    <Select value={form.topic} onValueChange={(v) => update('topic', v)} modal={false}>
                       <SelectTrigger id="contact-topic" className="h-11 rounded-xl">
                         <SelectValue placeholder={c.topicLabel} />
                       </SelectTrigger>
@@ -293,13 +290,32 @@ export function ContactSection() {
                   )}
                 </div>
 
-                <label className="flex cursor-pointer items-start gap-2.5 text-sm text-ink/70">
-                  <input
-                    type="checkbox"
-                    checked={form.consent}
-                    onChange={(e) => update('consent', e.target.checked)}
-                    className="mt-0.5 h-4 w-4 shrink-0 cursor-pointer rounded border-ink/30 text-brand-emerald accent-brand-emerald focus-visible:ring-brand-emerald/40"
-                  />
+                <label className="flex cursor-pointer items-start gap-2.5 text-sm select-none text-ink/70">
+                  <button
+                    type="button"
+                    role="checkbox"
+                    aria-checked={form.consent}
+                    onClick={() => update('consent', !form.consent)}
+                    className="mt-0.5 flex h-5 w-5 shrink-0 items-center justify-center rounded-full border-2 transition-all duration-200 ease-out active:scale-90"
+                    style={{
+                      borderColor: form.consent
+                        ? 'var(--color-brand-emerald)'
+                        : fieldError === 'consent'
+                          ? '#F44336'
+                          : 'rgba(33,33,33,0.25)',
+                      background: form.consent ? 'var(--color-brand-emerald)' : 'transparent',
+                      boxShadow: form.consent ? '0 0 0 4px rgba(16,185,129,0.15)' : 'none',
+                    }}
+                  >
+                    <Check
+                      className="h-3 w-3 text-white"
+                      strokeWidth={3.5}
+                      style={{
+                        opacity: form.consent ? 1 : 0,
+                        transform: form.consent ? 'scale(1)' : 'scale(0.4)',
+                      }}
+                    />
+                  </button>
                   <span className={fieldError === 'consent' ? 'text-red-500' : ''}>{c.consent}</span>
                 </label>
 
@@ -328,8 +344,6 @@ export function ContactSection() {
             )}
           </motion.div>
         </div>
-
-        <div className="mx-auto mt-16 h-px divider-gradient" />
       </div>
     </section>
   )

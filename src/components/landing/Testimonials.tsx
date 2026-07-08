@@ -109,7 +109,7 @@ export function Testimonials() {
   const t = tr.testimonials
 
   return (
-    <section id="recensioni" className="relative overflow-hidden py-16 scroll-mt-24 sm:py-20 lg:py-24">
+    <section id="recensioni" className="relative overflow-hidden pb-16 pt-8 scroll-mt-24 sm:pb-20 sm:pt-10 lg:pb-24 lg:pt-12">
       {/* Giant decorative quote mark in the background */}
       <span
         aria-hidden

@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { motion, AnimatePresence } from 'framer-motion'
+import { hasUnsavedChanges, setUnsavedChanges } from '@/lib/unsaved-changes'
 import {
   LayoutDashboard,
   ShoppingCart,
@@ -16,11 +17,13 @@ import {
   CalendarDays,
   Bell,
   BellOff,
+  Store,
   X,
   LogOut,
   MoreHorizontal,
   Settings,
   ChefHat,
+  AlertTriangle,
 } from 'lucide-react'
 import { NAV_ITEMS, WAITER_KITCHEN_GROUP_IDS, OPERATIONS_GROUP_IDS, MANAGEMENT_GROUP_IDS } from './nav-config'
 import type { RestaurantCtx, SectionId, ThemeMode } from './types'
@@ -372,6 +375,14 @@ function SidebarItem({
 export default function AdminDashboardPage() {
   const router = useRouter()
   const { tr, lang } = useI18n()
+
+  useEffect(() => {
+    if (sessionStorage.getItem('tt-already-has-restaurant')) {
+      sessionStorage.removeItem('tt-already-has-restaurant')
+      setNotifToast('restaurant')
+    }
+  }, [])
+
   const [activeSection, setActiveSection] = useState<SectionId>(() => {
     if (typeof window === 'undefined') return 'dashboard'
     return (sessionStorage.getItem('tt-admin-active-section') as SectionId | null) ?? 'dashboard'
@@ -380,6 +391,22 @@ export default function AdminDashboardPage() {
   useEffect(() => {
     sessionStorage.setItem('tt-admin-active-section', activeSection)
   }, [activeSection])
+
+  const [pendingSection, setPendingSection] = useState<SectionId | null>(null)
+
+  const changeSection = (id: SectionId) => {
+    if (hasUnsavedChanges()) {
+      setPendingSection(id)
+      return
+    }
+    setActiveSection(id)
+  }
+
+  const confirmLeaveWithoutSaving = () => {
+    setUnsavedChanges(false)
+    if (pendingSection) setActiveSection(pendingSection)
+    setPendingSection(null)
+  }
   const [moreDrawerOpen, setMoreDrawerOpen] = useState(false)
   const [soundMuted, setSoundMuted] = useState(false)
   const [confirmLogout, setConfirmLogout] = useState(false)
@@ -401,7 +428,7 @@ export default function AdminDashboardPage() {
     setSoundMuted(isNotificationSoundMuted())
   }, [])
 
-  const [notifToast, setNotifToast] = useState<'on' | 'off' | null>(null)
+  const [notifToast, setNotifToast] = useState<'on' | 'off' | 'restaurant' | null>(null)
 
   const toggleSoundMuted = () => {
     setSoundMuted((prev) => {
@@ -414,7 +441,7 @@ export default function AdminDashboardPage() {
 
   useEffect(() => {
     if (!notifToast) return
-    const timer = setTimeout(() => setNotifToast(null), 2000)
+    const timer = setTimeout(() => setNotifToast(null), notifToast === 'restaurant' ? 4000 : 2000)
     return () => clearTimeout(timer)
   }, [notifToast])
 
@@ -619,10 +646,18 @@ export default function AdminDashboardPage() {
             transition={{ duration: 0.3 }}
             className="fixed left-1/2 top-4 z-[100] flex items-center gap-2 rounded-full bg-tt-ink px-4 py-2.5 text-sm font-medium text-white shadow-lg"
           >
-            {notifToast === 'off' ? <BellOff className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
-            {notifToast === 'off'
-              ? tr.admin.home.recentOrders.notificationsOff
-              : tr.admin.home.recentOrders.notificationsOn}
+            {notifToast === 'restaurant' ? (
+              <Store className="h-4 w-4" />
+            ) : notifToast === 'off' ? (
+              <BellOff className="h-4 w-4" />
+            ) : (
+              <Bell className="h-4 w-4" />
+            )}
+            {notifToast === 'restaurant'
+              ? tr.auth.create.alreadyRegisteredTitle
+              : notifToast === 'off'
+                ? tr.admin.home.recentOrders.notificationsOff
+                : tr.admin.home.recentOrders.notificationsOn}
           </motion.div>
         )}
       </AnimatePresence>
@@ -651,7 +686,7 @@ export default function AdminDashboardPage() {
               <SidebarItem
                 item={NAV_ITEMS.find((i) => i.id === 'dashboard')!}
                 isActive={activeSection === 'dashboard'}
-                onClick={() => setActiveSection('dashboard')}
+                onClick={() => changeSection('dashboard')}
               />
             </div>
           </div>
@@ -663,7 +698,7 @@ export default function AdminDashboardPage() {
                   key={it.id}
                   item={it}
                   isActive={activeSection === it.id}
-                  onClick={() => setActiveSection(it.id)}
+                  onClick={() => changeSection(it.id)}
                   badge={it.id === 'orders' ? activeOrdersCount : it.id === 'waiter' ? pendingWaiterCount : undefined}
                 />
               ))}
@@ -677,7 +712,7 @@ export default function AdminDashboardPage() {
                   key={it.id}
                   item={it}
                   isActive={activeSection === it.id}
-                  onClick={() => setActiveSection(it.id)}
+                  onClick={() => changeSection(it.id)}
                 />
               ))}
             </div>
@@ -690,7 +725,7 @@ export default function AdminDashboardPage() {
                   key={it.id}
                   item={it}
                   isActive={activeSection === it.id}
-                  onClick={() => setActiveSection(it.id)}
+                  onClick={() => changeSection(it.id)}
                 />
               ))}
             </div>
@@ -701,12 +736,12 @@ export default function AdminDashboardPage() {
               <SidebarItem
                 item={{ id: 'settings', label: 'Impostazioni', icon: Settings }}
                 isActive={activeSection === 'settings'}
-                onClick={() => setActiveSection('settings')}
+                onClick={() => changeSection('settings')}
               />
               <SidebarItem
                 item={{ id: 'calendar', label: tr.admin.layout.comingSoon, icon: CalendarDays }}
                 isActive={activeSection === 'calendar'}
-                onClick={() => setActiveSection('calendar')}
+                onClick={() => changeSection('calendar')}
               />
             </div>
           </div>
@@ -759,7 +794,7 @@ export default function AdminDashboardPage() {
               {soundMuted ? <BellOff className="h-5 w-5" /> : <Bell className="h-5 w-5" />}
             </button>
             <button
-              onClick={() => setActiveSection('settings')}
+              onClick={() => changeSection('settings')}
               className="h-9 w-9 overflow-hidden rounded-full border-2 border-tt-pink shadow-tt transition hover:scale-105"
             >
               {ctx.userAvatarUrl ? (
@@ -802,6 +837,54 @@ export default function AdminDashboardPage() {
           </div>
         )}
 
+        <AnimatePresence>
+          {pendingSection && (
+            <motion.div
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              transition={{ duration: 0.18 }}
+              className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4 backdrop-blur-sm"
+              onClick={() => setPendingSection(null)}
+            >
+              <motion.div
+                initial={{ opacity: 0, scale: 0.94, y: 12 }}
+                animate={{ opacity: 1, scale: 1, y: 0 }}
+                exit={{ opacity: 0, scale: 0.94, y: 12 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="w-full max-w-sm rounded-2xl border border-tt-line bg-white p-5 shadow-tt"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className="mb-3 grid h-10 w-10 place-items-center rounded-xl bg-tt-danger/10 text-tt-danger">
+                  <AlertTriangle className="h-5 w-5" />
+                </div>
+                <h3 className="mb-1 font-serif text-lg font-extrabold text-tt-ink">
+                  {lang === 'en' ? 'Unsaved changes' : 'Modifiche non salvate'}
+                </h3>
+                <p className="mb-4 text-sm text-tt-muted">
+                  {lang === 'en'
+                    ? 'You have unsaved changes. Are you sure you want to leave without saving?'
+                    : 'Hai delle modifiche non salvate. Sei sicuro di voler uscire senza salvare?'}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setPendingSection(null)}
+                    className="h-11 flex-1 rounded-full border border-tt-line bg-white text-sm font-bold text-tt-muted transition hover:text-tt-ink"
+                  >
+                    {lang === 'en' ? 'Stay' : 'Rimani'}
+                  </button>
+                  <button
+                    onClick={confirmLeaveWithoutSaving}
+                    className="flex h-11 flex-1 items-center justify-center gap-1.5 whitespace-nowrap rounded-full bg-tt-danger px-3 text-sm font-bold text-white shadow-tt transition hover:scale-105"
+                  >
+                    {lang === 'en' ? 'Leave' : 'Esci senza salvare'}
+                  </button>
+                </div>
+              </motion.div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
         {/* Main content */}
         <main className="flex-1 overflow-y-auto tt-scroll" style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
           <div className="mx-auto max-w-5xl px-4 py-5 lg:px-6 lg:py-7">
@@ -810,7 +893,7 @@ export default function AdminDashboardPage() {
                 section={activeSection}
                 ctx={ctx}
                 theme={theme}
-                onSectionChange={setActiveSection}
+                onSectionChange={changeSection}
               />
             </div>
           </div>
@@ -842,7 +925,7 @@ export default function AdminDashboardPage() {
               key={slot.item.id}
               item={slot.item}
               isActive={activeSection === slot.item.id}
-              onClick={() => setActiveSection(slot.item!.id)}
+              onClick={() => changeSection(slot.item!.id)}
               badge={showBadge}
             />
           )
@@ -854,7 +937,7 @@ export default function AdminDashboardPage() {
         open={moreDrawerOpen}
         onClose={() => setMoreDrawerOpen(false)}
         activeSection={activeSection}
-        onSelect={(id) => setActiveSection(id)}
+        onSelect={(id) => changeSection(id)}
       />
 
       {/* AI Assistant overlay (all viewports) */}

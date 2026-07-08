@@ -266,28 +266,40 @@ export function ScanInstructions({
             boxShadow: "0 2px 16px rgba(0,0,0,0.07)",
           }}
         >
-          <div
+          <motion.div
+            whileTap={{ scale: 0.9 }}
+            role="checkbox"
+            aria-checked={confirmed}
             style={{
               width: 20,
               height: 20,
-              borderRadius: 6,
+              borderRadius: "50%",
               border: `2px solid ${confirmed ? brand : "#B5A898"}`,
               background: confirmed ? brand : "transparent",
+              boxShadow: confirmed ? `0 0 0 4px ${brand}26` : "none",
               flexShrink: 0,
               marginTop: 1,
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
-              transition: "background 0.2s, border-color 0.2s",
+              transition: "background 0.2s ease-out, border-color 0.2s ease-out, box-shadow 0.2s ease-out",
             }}
             onClick={() => setConfirmed(v => !v)}
           >
-            {confirmed && (
-              <svg width="12" height="12" viewBox="0 0 12 12" fill="none">
-                <path d="M2 6l3 3 5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            )}
-          </div>
+            <svg
+              width="12"
+              height="12"
+              viewBox="0 0 12 12"
+              fill="none"
+              style={{
+                opacity: confirmed ? 1 : 0,
+                transform: confirmed ? "scale(1)" : "scale(0.4)",
+                transition: "opacity 0.2s ease-out, transform 0.2s ease-out",
+              }}
+            >
+              <path d="M2 6l3 3 5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+          </motion.div>
           <span style={{ fontSize: 14, color: "#3D3530", lineHeight: 1.5 }}>
             {t.readAndReady}
           </span>

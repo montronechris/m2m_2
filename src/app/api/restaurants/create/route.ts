@@ -8,6 +8,9 @@ const CreateSchema = z.object({
   name: z.string().min(1).max(128),
   city: z.string().min(1).max(128),
   logoUrl: z.string().optional().nullable(),
+  logoIcon: z.string().optional().nullable(),
+  establishmentType: z.string().optional().nullable(),
+  establishmentTypeCustom: z.string().max(80).optional().nullable(),
 });
 
 export async function POST(req: Request) {
@@ -21,7 +24,7 @@ export async function POST(req: Request) {
     const firstError = parsed.error.issues[0]?.message ?? "Dati non validi.";
     return NextResponse.json({ error: firstError }, { status: 400 });
   }
-  const { name, city, logoUrl } = parsed.data;
+  const { name, city, logoUrl, logoIcon, establishmentType, establishmentTypeCustom } = parsed.data;
 
   const authed = await createServerSupabase();
   const { data: { user }, error: userError } = await authed.auth.getUser();
@@ -63,6 +66,9 @@ export async function POST(req: Request) {
       slug,
       city,
       logo_url: logoUrl || null,
+      logo_icon: logoIcon || 'chef-hat',
+      establishment_type: establishmentType || 'ristorante',
+      establishment_type_custom: establishmentType === 'altro' ? (establishmentTypeCustom || null) : null,
       status: "open",
       plan: "free_trial",
       max_staff: 2,

@@ -12,7 +12,6 @@ import {
   BrainCircuit,
   Receipt,
   BarChart3,
-  ArrowLeft,
   ArrowRight,
   Sprout,
   Recycle,
@@ -54,7 +53,7 @@ export default function GreenPage() {
   return (
     <PageShell>
       {/* Hero */}
-      <section className="relative overflow-hidden pt-44 pb-12 sm:pt-52 lg:pt-56 sm:pb-16">
+      <section className="relative overflow-hidden pt-28 pb-12 sm:pt-32 lg:pt-36 sm:pb-16">
         {/* Decorative floating orbs + icons */}
         <div aria-hidden className="pointer-events-none absolute -left-20 top-32 h-44 w-44 rounded-full bg-brand-emerald/20 blur-3xl animate-float-soft" />
         <div aria-hidden className="pointer-events-none absolute right-0 top-24 h-40 w-40 rounded-full bg-brand-amber/15 blur-3xl animate-blob" />
@@ -110,16 +109,11 @@ export default function GreenPage() {
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ delay: 0.3 }}
-            className="mt-7 flex flex-wrap items-center justify-center gap-3"
+            className="mt-7 flex justify-center"
           >
             <Button asChild className="sheen group gap-2 rounded-full bg-gradient-to-r from-brand-emerald to-brand-sky font-semibold text-white shadow-glow-emerald">
-              <Link href="/#prezzi">
+              <Link href="/create">
                 {tr.cta.primary} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
-              </Link>
-            </Button>
-            <Button asChild variant="outline" className="lift-hover gap-2 rounded-full">
-              <Link href="/">
-                <ArrowLeft className="h-4 w-4" /> {tr.common.backHome}
               </Link>
             </Button>
           </motion.div>

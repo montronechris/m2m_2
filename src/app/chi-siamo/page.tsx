@@ -3,18 +3,15 @@
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import {
-  Shield,
+  Users,
+  Utensils,
+  Sparkles,
+  Headset,
+  RefreshCcw,
   ShieldCheck,
-  Lock,
-  FileCheck2,
-  CreditCard,
-  DatabaseBackup,
-  KeyRound,
-  ScrollText,
+  Leaf,
   ArrowRight,
-  CheckCircle2,
-  Fingerprint,
-  ServerCog,
+  Heart,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { PageShell } from '@/components/landing/PageShell'
@@ -22,35 +19,35 @@ import { Counter } from '@/components/landing/Counter'
 import { useI18n } from '@/components/i18n/I18nProvider'
 import { ContactSection } from '@/components/landing/ContactSection'
 
-const icons = [Lock, FileCheck2, CreditCard, DatabaseBackup, KeyRound, ScrollText]
+const icons = [Utensils, Sparkles, Headset, RefreshCcw, ShieldCheck, Leaf]
 const themes = [
-  { wrap: 'bg-brand-emerald/15 text-brand-emerald', ring: 'group-hover:ring-brand-emerald/30', glow: 'group-hover:shadow-glow-emerald' },
-  { wrap: 'bg-brand-sky/15 text-brand-sky', ring: 'group-hover:ring-brand-sky/30', glow: 'group-hover:shadow-[0_18px_40px_-16px_oklch(0.6_0.15_235_/_0.35)]' },
   { wrap: 'bg-brand-amber/15 text-brand-amber', ring: 'group-hover:ring-brand-amber/30', glow: 'group-hover:shadow-glow-amber' },
   { wrap: 'bg-brand-violet/15 text-brand-violet', ring: 'group-hover:ring-brand-violet/30', glow: 'group-hover:shadow-glow-violet' },
   { wrap: 'bg-brand-rose/15 text-brand-rose', ring: 'group-hover:ring-brand-rose/30', glow: 'group-hover:shadow-glow-rose' },
+  { wrap: 'bg-brand-sky/15 text-brand-sky', ring: 'group-hover:ring-brand-sky/30', glow: 'group-hover:shadow-[0_18px_40px_-16px_oklch(0.6_0.15_235_/_0.35)]' },
+  { wrap: 'bg-brand-emerald/15 text-brand-emerald', ring: 'group-hover:ring-brand-emerald/30', glow: 'group-hover:shadow-glow-emerald' },
   { wrap: 'bg-brand-terra/15 text-brand-terra', ring: 'group-hover:ring-brand-terra/30', glow: 'group-hover:shadow-[0_18px_40px_-16px_oklch(0.64_0.21_38_/_0.35)]' },
 ]
 
 const heroFloatIcons = [
-  { Icon: Shield, className: 'left-[6%] top-28 h-14 w-14 text-brand-sky/25', delay: '0s' },
-  { Icon: Lock, className: 'right-[8%] top-36 h-16 w-16 text-brand-violet/25', delay: '1.2s' },
-  { Icon: Fingerprint, className: 'left-[14%] bottom-16 h-12 w-12 text-brand-emerald/25', delay: '2s' },
-  { Icon: ServerCog, className: 'right-[12%] bottom-24 h-16 w-16 text-brand-amber/20', delay: '2.6s' },
+  { Icon: Users, className: 'left-[6%] top-28 h-14 w-14 text-brand-violet/25', delay: '0s' },
+  { Icon: Heart, className: 'right-[8%] top-36 h-16 w-16 text-brand-rose/25', delay: '1.2s' },
+  { Icon: Utensils, className: 'left-[14%] bottom-16 h-12 w-12 text-brand-amber/25', delay: '2s' },
+  { Icon: Sparkles, className: 'right-[12%] bottom-24 h-16 w-16 text-brand-emerald/20', delay: '2.6s' },
 ]
 
-export default function SecurityPage() {
+export default function AboutPage() {
   const { tr } = useI18n()
-  const s = tr.pages.security
+  const a = tr.pages.about
 
   return (
     <PageShell>
       {/* Hero */}
       <section className="relative overflow-hidden pt-28 pb-12 sm:pt-32 lg:pt-36 sm:pb-16">
         {/* Decorative floating orbs + icons */}
-        <div aria-hidden className="pointer-events-none absolute -left-20 top-32 h-44 w-44 rounded-full bg-brand-sky/20 blur-3xl animate-float-soft" />
-        <div aria-hidden className="pointer-events-none absolute right-0 top-24 h-40 w-40 rounded-full bg-brand-violet/15 blur-3xl animate-blob" />
-        <div aria-hidden className="pointer-events-none absolute -right-24 bottom-10 h-48 w-48 rounded-full bg-brand-emerald/15 blur-3xl animate-float-soft" style={{ animationDelay: '1.5s' }} />
+        <div aria-hidden className="pointer-events-none absolute -left-20 top-32 h-44 w-44 rounded-full bg-brand-violet/20 blur-3xl animate-float-soft" />
+        <div aria-hidden className="pointer-events-none absolute right-0 top-24 h-40 w-40 rounded-full bg-brand-rose/15 blur-3xl animate-blob" />
+        <div aria-hidden className="pointer-events-none absolute -right-24 bottom-10 h-48 w-48 rounded-full bg-brand-amber/15 blur-3xl animate-float-soft" style={{ animationDelay: '1.5s' }} />
 
         {heroFloatIcons.map(({ Icon, className, delay }, i) => (
           <motion.div
@@ -71,9 +68,9 @@ export default function SecurityPage() {
           <motion.span
             initial={{ opacity: 0, y: 10 }}
             animate={{ opacity: 1, y: 0 }}
-            className="eyebrow border border-brand-sky/30 bg-brand-sky/10 text-brand-sky"
+            className="eyebrow border border-brand-violet/30 bg-brand-violet/10 text-brand-violet"
           >
-            <Shield className="h-3.5 w-3.5" /> {s.badge}
+            <Users className="h-3.5 w-3.5" /> {a.badge}
           </motion.span>
           <motion.h1
             initial={{ opacity: 0, y: 20 }}
@@ -81,12 +78,12 @@ export default function SecurityPage() {
             transition={{ delay: 0.1 }}
             className="mt-5 font-serif text-4xl font-black tracking-tight text-ink sm:text-6xl lg:text-7xl"
           >
-            {s.title}{' '}
+            {a.title}{' '}
             <span
               className="bg-clip-text text-transparent"
-              style={{ backgroundImage: 'linear-gradient(110deg, oklch(0.45 0.16 162), oklch(0.42 0.21 295), oklch(0.45 0.16 235))' }}
+              style={{ backgroundImage: 'linear-gradient(110deg, oklch(0.42 0.21 295), oklch(0.6 0.21 20), oklch(0.7 0.19 60))' }}
             >
-              {s.titleHighlight}
+              {a.titleHighlight}
             </span>
           </motion.h1>
           <motion.p
@@ -95,7 +92,7 @@ export default function SecurityPage() {
             transition={{ delay: 0.2 }}
             className="mx-auto mt-5 max-w-2xl text-lg leading-relaxed text-ink/70"
           >
-            {s.subtitle}
+            {a.subtitle}
           </motion.p>
           <motion.div
             initial={{ opacity: 0, y: 20 }}
@@ -103,7 +100,7 @@ export default function SecurityPage() {
             transition={{ delay: 0.3 }}
             className="mt-7 flex justify-center"
           >
-            <Button asChild className="sheen group gap-2 rounded-full bg-gradient-to-r from-brand-sky to-brand-violet font-semibold text-white shadow-glow-violet">
+            <Button asChild className="sheen group gap-2 rounded-full bg-gradient-to-r from-brand-violet to-brand-rose font-semibold text-white shadow-glow-violet">
               <Link href="/create">
                 {tr.cta.primary} <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
               </Link>
@@ -119,13 +116,12 @@ export default function SecurityPage() {
             initial={{ opacity: 0, y: 24 }}
             whileInView={{ opacity: 1, y: 0 }}
             viewport={{ once: true }}
-            className="noise-overlay grid grid-cols-2 gap-4 rounded-3xl border border-ink/5 bg-white/85 p-6 shadow-xl backdrop-blur lg:grid-cols-4"
+            className="noise-overlay mx-auto grid max-w-md grid-cols-2 gap-4 rounded-3xl border border-ink/5 bg-white/85 p-6 shadow-xl backdrop-blur"
           >
-            {s.stats.map((st) => (
+            {a.stats.map((st) => (
               <div key={st.label} className="text-center">
                 <Counter
                   to={st.value}
-                  decimals={'decimals' in st ? st.decimals : 0}
                   suffix={'suffix' in st ? st.suffix : ''}
                   className="tabular font-serif text-3xl font-black text-gradient-warm sm:text-4xl"
                 />
@@ -149,14 +145,14 @@ export default function SecurityPage() {
             viewport={{ once: true }}
             className="mx-auto mb-10 flex max-w-2xl flex-col items-center gap-4 text-center"
           >
-            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-brand-sky to-brand-violet text-white shadow-glow-violet">
-              <ShieldCheck className="h-6 w-6" />
+            <span className="grid h-12 w-12 place-items-center rounded-2xl bg-gradient-to-br from-brand-violet to-brand-rose text-white shadow-glow-violet">
+              <Heart className="h-6 w-6" />
             </span>
-            <p className="text-lg leading-relaxed text-ink/75">{s.intro}</p>
+            <p className="text-lg leading-relaxed text-ink/75">{a.intro}</p>
           </motion.div>
 
           <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-            {s.pillars.map((p, i) => {
+            {a.pillars.map((p, i) => {
               const Icon = icons[i]
               const t = themes[i]
               return (
@@ -179,7 +175,7 @@ export default function SecurityPage() {
           </div>
         </div>
       </section>
-      
+
       <ContactSection />
     </PageShell>
   )

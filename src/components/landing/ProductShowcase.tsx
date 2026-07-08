@@ -18,7 +18,7 @@ export function ProductShowcase() {
   const week = [s.week.lun, s.week.mar, s.week.mer, s.week.gio, s.week.ven, s.week.sab, s.week.dom]
 
   return (
-    <section className="relative py-16 sm:py-20 lg:py-24">
+    <section className="relative pb-16 pt-8 sm:pb-20 sm:pt-10 lg:pb-24 lg:pt-12">
       <div className="mx-auto max-w-6xl px-4">
         <motion.div
           initial={{ opacity: 0, y: 24 }}
@@ -68,7 +68,7 @@ export function ProductShowcase() {
                 />
               ))}
             </div>
-            <div className="mt-2 flex justify-between text-[10px] text-white/60">
+            <div className="mt-2 flex justify-between text-[10px] font-medium text-white/90">
               {week.map((d) => (
                 <span key={d}>{d}</span>
               ))}

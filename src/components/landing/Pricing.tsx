@@ -5,7 +5,6 @@ import { motion } from 'framer-motion'
 import {
   Check,
   Sparkles,
-  ShieldCheck,
   RefreshCcw,
   Headset,
   CreditCard,
@@ -22,20 +21,12 @@ const trustLine: { icon: LucideIcon; label: string }[] = [
   { icon: Headset, label: 'Supporto 7/7' },
 ]
 
-// Visual-only "included in every plan" mini list
-const includedEverywhere = [
-  'Menù digitale QR',
-  'Aggiornamenti gratuiti',
-  'Crittografia end-to-end',
-  'Backup automatici',
-]
-
 export function Pricing() {
   const { tr } = useI18n()
   const p = tr.pricing
 
   return (
-    <section id="prezzi" className="relative overflow-hidden py-16 scroll-mt-24 sm:py-20 lg:py-24">
+    <section id="prezzi" className="relative overflow-hidden pb-16 pt-8 scroll-mt-24 sm:pb-20 sm:pt-10 lg:pb-24 lg:pt-12">
       {/* Floating decorative orbs */}
       <div aria-hidden className="pointer-events-none absolute -left-12 top-24 h-44 w-44 rounded-full bg-brand-violet/10 blur-3xl animate-float-soft" />
       <div aria-hidden className="pointer-events-none absolute right-0 top-1/3 h-48 w-48 rounded-full bg-brand-amber/10 blur-3xl animate-blob" />
@@ -116,10 +107,17 @@ export function Pricing() {
                 </span>
               </div>
 
-              {/* "Risparmia 2 mesi" pill on featured plan (visual-only) */}
-              {plan.featured && (
-                <span className="relative mt-3 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-[11px] font-bold text-white ring-1 ring-inset ring-white/30 backdrop-blur">
-                  <Sparkles className="h-3 w-3" /> Risparmia 2 mesi con il piano annuale
+              {/* Annual-billing savings pill (visual-only) */}
+              {plan.note && (
+                <span
+                  className={cn(
+                    'relative mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold backdrop-blur',
+                    plan.featured
+                      ? 'bg-white/15 text-white ring-1 ring-inset ring-white/30'
+                      : 'bg-brand-amber/10 text-brand-terra ring-1 ring-inset ring-brand-amber/30'
+                  )}
+                >
+                  <Sparkles className="h-3 w-3" /> {plan.note}
                 </span>
               )}
 
@@ -129,7 +127,7 @@ export function Pricing() {
                   'mt-5 w-full rounded-full font-semibold',
                   plan.featured
                     ? 'sheen bg-white text-brand-violet hover:bg-white/90 shadow-lg'
-                    : 'sheen bg-ink text-white hover:bg-ink/90'
+                    : 'sheen bg-gradient-to-r from-brand-amber to-brand-terra text-white shadow-glow-amber hover:opacity-95 hover:shadow-glow-amber'
                 )}
               >
                 <Link href={plan.href ?? '/#contattaci'}>
@@ -137,9 +135,9 @@ export function Pricing() {
                 </Link>
               </Button>
 
-              <ul className="relative mt-6 space-y-2.5">
+              <ul className="relative mt-6 grid grid-cols-2 gap-x-3 gap-y-2.5">
                 {plan.features.map((f) => (
-                  <li key={f} className="flex items-start gap-2.5 text-sm">
+                  <li key={f} className="flex items-start gap-2 text-sm">
                     <span
                       className={cn(
                         'mt-0.5 grid h-4 w-4 shrink-0 place-items-center rounded-full',
@@ -159,37 +157,12 @@ export function Pricing() {
           ))}
         </div>
 
-        {/* "Tutti i piani includono" comparison hint */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          whileInView={{ opacity: 1, y: 0 }}
-          viewport={{ once: true, margin: '-60px' }}
-          transition={{ duration: 0.5, delay: 0.2 }}
-          className="mx-auto mt-8 max-w-3xl rounded-2xl border border-ink/5 bg-white/60 p-4 shadow-sm backdrop-blur"
-        >
-          <p className="flex items-center justify-center gap-2 text-center text-xs font-semibold uppercase tracking-wide text-ink/50">
-            <ShieldCheck className="h-4 w-4 text-brand-emerald" />
-            Tutti i piani includono
-          </p>
-          <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-            {includedEverywhere.map((f) => (
-              <span
-                key={f}
-                className="inline-flex items-center gap-1.5 rounded-full bg-brand-emerald/10 px-3 py-1 text-xs font-medium text-ink/70 ring-1 ring-inset ring-brand-emerald/15"
-              >
-                <Check className="h-3 w-3 text-brand-emerald" strokeWidth={3} />
-                {f}
-              </span>
-            ))}
-          </div>
-        </motion.div>
-
         {/* Trust line with icons */}
         <motion.div
           initial={{ opacity: 0 }}
           whileInView={{ opacity: 1 }}
           viewport={{ once: true }}
-          transition={{ duration: 0.5, delay: 0.3 }}
+          transition={{ duration: 0.5, delay: 0.2 }}
           className="mx-auto mt-8 flex max-w-3xl flex-wrap items-center justify-center gap-x-6 gap-y-2 text-sm text-ink/55"
         >
           {trustLine.map(({ icon: Icon, label }) => (

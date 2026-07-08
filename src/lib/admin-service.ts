@@ -567,15 +567,17 @@ export const getInviteCodes = async (restaurantId: string): Promise<InviteCode[]
 
 export interface BrandingData {
   name: string;
-  tagline: string;
   logo_url: string;
+  logo_icon: string;
+  establishment_type: string;
+  establishment_type_custom: string | null;
+  establishment_type_changed_at: string | null;
   cover_url: string;
   brand_color: string;
   background_image_url: string;  // ← nuovo: URL immagine o valore colore hex
   background_type: string;       // ← nuovo: 'gradient' | 'image' | 'color'
-  welcome_message: string;
-  confirm_message: string;
   address: string;
+  city: string;
   phone: string;
   instagram: string;
   facebook: string;
@@ -588,22 +590,24 @@ export const getBranding = async (restaurantId: string): Promise<BrandingData> =
   const { data, error } = await supabase
     .from("restaurants")
     .select(
-      "name,tagline,logo_url,cover_url,brand_color,background_image_url,background_type,welcome_message,confirm_message,address,phone,instagram,facebook,tripadvisor,website"
+      "name,logo_url,logo_icon,establishment_type,establishment_type_custom,establishment_type_changed_at,cover_url,brand_color,background_image_url,background_type,address,city,phone,instagram,facebook,tripadvisor,website"
     )
     .eq("id", restaurantId)
     .single();
   if (error) throw error;
   return {
     name: data.name ?? "",
-    tagline: data.tagline ?? "",
     logo_url: data.logo_url ?? "",
+    logo_icon: data.logo_icon ?? "chef-hat",
+    establishment_type: data.establishment_type ?? "ristorante",
+    establishment_type_custom: data.establishment_type_custom ?? null,
+    establishment_type_changed_at: data.establishment_type_changed_at ?? null,
     cover_url: data.cover_url ?? "",
     brand_color: data.brand_color ?? "#d97706",
     background_image_url: data.background_image_url ?? "",
     background_type: data.background_type ?? "gradient",
-    welcome_message: data.welcome_message ?? "",
-    confirm_message: data.confirm_message ?? "",
     address: data.address ?? "",
+    city: data.city ?? "",
     phone: data.phone ?? "",
     instagram: data.instagram ?? "",
     facebook: data.facebook ?? "",
@@ -619,6 +623,34 @@ export const updateBranding = async (
   const supabase = getSupabase();
   const { error } = await supabase.from("restaurants").update(updates).eq("id", restaurantId);
   if (error) throw error;
+};
+
+export class EstablishmentTypeCooldownError extends Error {
+  constructor() {
+    super("establishment_type_cooldown_active");
+    this.name = "EstablishmentTypeCooldownError";
+  }
+}
+
+export const updateEstablishmentType = async (
+  restaurantId: string,
+  establishmentType: string,
+  establishmentTypeCustom?: string | null
+): Promise<void> => {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("restaurants")
+    .update({
+      establishment_type: establishmentType,
+      establishment_type_custom: establishmentType === "altro" ? (establishmentTypeCustom || null) : null,
+    })
+    .eq("id", restaurantId);
+  if (error) {
+    if (error.message?.includes("establishment_type_cooldown_active")) {
+      throw new EstablishmentTypeCooldownError();
+    }
+    throw error;
+  }
 };
 
 // ─── Menu categories (for the create-dish dropdown) ──────────────────────────

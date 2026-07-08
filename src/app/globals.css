@@ -160,6 +160,23 @@ body {
   font-family: var(--font-serif);
 }
 
+/* Impedisce agli elementi decorativi animati (orb, blob) posizionati oltre il bordo
+   di allargare la larghezza scrollabile della pagina. */
+html,
+body {
+  overflow-x: hidden;
+  scrollbar-gutter: stable;
+}
+
+/* Radix (Select/Dropdown) applica margin-right/padding-right inline su <html>
+   quando blocca lo scroll, anche con modal={false}. Con scrollbar-gutter già
+   riservato questo causa uno spostamento indesiderato del layout: lo annulliamo. */
+html[data-scroll-locked] {
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+  overflow: visible !important;
+}
+
 /* Custom keyframes */
 @keyframes blob-float {
   0%, 100% { transform: translate(0, 0) scale(1); }

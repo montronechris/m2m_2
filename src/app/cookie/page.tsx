@@ -1,8 +1,8 @@
-// src/app/terms/page.tsx
-// Termini e Condizioni — pagina self-contained.
+// src/app/cookie/page.tsx
+// Cookie Policy — pagina self-contained.
 // Palette ispirata alla homepage: pesca #FFF5E6, arancione #FF6B35,
 // viola #9333EA, teal #10B981, charcoal #1F2937.
-// Stessa grafica, animazioni in/out ed effetti della pagina Privacy.
+// Stessa grafica, animazioni in/out ed effetti della pagina Terms.
 "use client";
 
 import { useEffect, useState } from "react";
@@ -10,14 +10,14 @@ import Link from "next/link";
 import { motion, AnimatePresence, type Variants } from "framer-motion";
 import {
   ArrowLeft,
-  Scale,
+  Cookie,
   Mail,
   FileText,
-  Users,
-  UtensilsCrossed,
-  CreditCard,
-  ShieldAlert,
-  BookOpen,
+  Settings2,
+  BarChart3,
+  Share2,
+  ToggleLeft,
+  RefreshCw,
   Globe,
   type LucideIcon,
 } from "lucide-react";
@@ -88,202 +88,202 @@ const ACCENTS: Record<
 const TRANSLATIONS: Record<Language, T> = {
   IT: {
     back: "Torna alla home",
-    eyebrow: "Contratto & Condizioni",
-    title: "Termini e Condizioni",
+    eyebrow: "Trasparenza & Tracciamento",
+    title: "Cookie Policy",
     updated: "Ultimo aggiornamento: Giugno 2026",
     intro:
-      "I presenti Termini regolano l'utilizzo della piattaforma TavolaRapida da parte di ristoratori, staff e clienti. Accedendo al servizio accetti integralmente le condizioni qui descritte: ti invitiamo a leggerle con attenzione, perché definiscono diritti, doveri e responsabilità di ciascuna delle parti coinvolte.",
+      "Questa Cookie Policy descrive i tipi di cookie e tecnologie simili utilizzate da TavolaRapida, le relative finalità e le modalità con cui puoi gestire le tue preferenze. Crediamo in un tracciamento minimo e trasparente: usiamo solo i cookie strettamente necessari al funzionamento del servizio e, previo consenso, cookie analitici aggregati per migliorare l'esperienza.",
     badges: [
-      { label: "GDPR", icon: Scale, accent: "orange" },
-      { label: "SLA 99.9%", icon: ShieldAlert, accent: "purple" },
-      { label: "PCI DSS", icon: CreditCard, accent: "teal" },
-      { label: "ISO 27001 ready", icon: ShieldAlert, accent: "orange" },
+      { label: "GDPR Art. 13", icon: Cookie, accent: "orange" },
+      { label: "ePrivacy", icon: FileText, accent: "purple" },
+      { label: "Tracciamento minimo", icon: ToggleLeft, accent: "teal" },
+      { label: "Consenso granulare", icon: Settings2, accent: "orange" },
     ],
     stats: [
-      { value: "14 giorni", label: "Periodo di prova" },
-      { value: "30 giorni", label: "Preavviso disdetta" },
-      { value: "99.9%", label: "Uptime garantito SLA" },
+      { value: "4", label: "Categorie di cookie" },
+      { value: "100%", label: "Cookie sotto controllo" },
+      { value: "0", label: "Cookie pubblicitari" },
     ],
     sections: [
       {
-        id: "accettazione",
+        id: "cosasono",
+        icon: Cookie,
+        accent: "orange",
+        title: "1. Cosa sono i cookie",
+        body:
+          "I cookie sono piccoli file di testo che il sito web visitato salva sul dispositivo dell'utente. Permettono di memorizzare informazioni sulle preferenze, mantenere la sessione attiva e raccogliere dati statistici aggregati sull'utilizzo. Esistono cookie di sessione (cancellati alla chiusura del browser) e cookie persistenti (mantenuti fino alla scadenza o alla cancellazione manuale). Le tecnologie simili (localStorage, pixel, fingerprint) svolgono funzioni analoghe e sono disciplinate dalla stessa normativa.",
+      },
+      {
+        id: "categorie",
         icon: FileText,
-        accent: "orange",
-        title: "1. Accettazione dei termini",
-        body:
-          "L'accesso e l'utilizzo di TavolaRapida implicano l'accettazione integrale e incondizionata dei presenti Termini e Condizioni. Se non accetti una o più clausole, ti chiediamo di non utilizzare il servizio. Le condizioni possono essere aggiornate periodicamente: le modifiche entrano in vigore dalla pubblicazione sulla piattaforma e ti segnaliamo sostanziali variazioni tramite email all'indirizzo associato al tuo account.",
-      },
-      {
-        id: "definizioni",
-        icon: BookOpen,
         accent: "purple",
-        title: "2. Definizioni",
+        title: "2. Categorie di cookie utilizzati",
         body:
-          "Per «TavolaRapida» si intende la piattaforma di ordinazione QR per ristoranti. Per «Gestore» si intende il titolare del ristorante che utilizza il servizio in qualità di amministratore. Per «Staff» si intendono i collaboratori abilitati dal Gestore. Per «Cliente» si intende l'utente finale che ordina tramite QR code senza necessità di registrazione. Per «Dati» si intendono le informazioni trattate tramite il servizio come descritte nell'informativa privacy.",
+          "TavolaRapida utilizza quattro categorie di cookie: tecnici necessari (per il funzionamento del servizio e non richiedono consenso), di preferenza (memorizzano lingua e impostazioni), analitici (attivati solo previo consenso, in forma aggregata e anonimizzata) e di terze parti (limitati a provider di pagamento e analytics certificati). Non utilizziamo cookie pubblicitari, profiling commerciale né tracciamento cross-site per finalità di marketing.",
       },
       {
-        id: "account",
-        icon: Users,
+        id: "tecnici",
+        icon: Settings2,
         accent: "teal",
-        title: "3. Account e responsabilità",
+        title: "3. Cookie tecnici e necessari",
         body:
-          "Il Gestore è responsabile della creazione e della gestione degli account Staff, nonché della corretta assegnazione dei permessi. Le credenziali di accesso sono personali e non cedibili: ogni attività effettuata con un account è imputabile al titolare. Il Gestore si impegna a comunicare tempestivamente la cessazione dei rapporti con i collaboratori per disattivarne gli accessi e a mantenere aggiornati i dati dell'account amministratore.",
+          "Questi cookie sono indispensabili per il funzionamento della piattaforma: gestiscono l'autenticazione del Gestore e dello staff, mantengono attiva la sessione del tavolo QR per 10 minuti dall'ultima attività, memorizzano il carrello ordini temporaneo e applicano le preferenze di lingua. Sono esentati dall'obbligo di consenso ai sensi dell'art. 122 del Codice Privacy e non possono essere disattivati, perché la loro disattivazione comprometterebbe le funzionalità base del servizio.",
       },
       {
-        id: "uso",
-        icon: UtensilsCrossed,
+        id: "analytics",
+        icon: BarChart3,
         accent: "orange",
-        title: "4. Uso del servizio",
+        title: "4. Cookie analitici",
         body:
-          "TavolaRapida è concessa in licenza non esclusiva e non trasferibile per l'esercizio dell'attività di ristorazione. È vietato utilizzare la piattaforma per scopi illegali, per raccogliere dati di terzi senza consenso, per sovraccaricare o compromettere l'infrastruttura tecnica, o per reverse engineering. Il Gestore risponde del contenuto dei menu, dei prezzi e delle informazioni pubblicate ai clienti tramite il QR code.",
+          "Previo consenso esplicito dell'utente, raccogliamo metriche di utilizzo aggregate e anonimizzate: numero di ordini per fascia oraria, tempi medi di permanenza, pagine più visitate. I dati sono elaborati in forma statistica e non permettono l'identificazione del singolo utente. Il consenso è raccolto tramite banner iniziale e può essere revocato in qualsiasi momento dal pulsante «Gestisci cookie» in fondo a ogni pagina. La revoca non pregiudica i cookie tecnici.",
       },
       {
-        id: "ordini",
-        icon: CreditCard,
+        id: "terzeparti",
+        icon: Share2,
         accent: "purple",
-        title: "5. Ordini e pagamenti",
+        title: "5. Cookie di terze parti",
         body:
-          "Gli ordini vengono trasmessi in tempo reale al sistema di cucina del ristorante. TavolaRapida non gestisce direttamente i pagamenti: le transazioni sono processate da provider terzi certificati PCI DSS, dei quali il Gestore è diretto contraente. Eventuali controversie su un ordine (errore di preparazione, doubled charge, contestazione cliente) vanno risolte direttamente tra il ristorante e il cliente, restando TavolaRapida estranea al rapporto commerciale sottostante.",
+          "TavolaRapida integra esclusivamente provider terzi certificati e conformi al GDPR: Stripe per i pagamenti (cookie di sessione transazionali, senza profilazione) e Plausible per l'analytics privacy-first (nessun cookie persistente, nessun cross-site tracking). Non integriamo pixel pubblicitari, SDK social né servizi di remarketing. L'elenco aggiornato dei provider e dei domini coinvolti è disponibile su richiesta all'indirizzo privacy@tavolarapida.it.",
       },
       {
-        id: "responsabilita",
-        icon: ShieldAlert,
+        id: "gestione",
+        icon: ToggleLeft,
         accent: "teal",
-        title: "6. Limitazioni di responsabilità",
+        title: "6. Gestione e revoca del consenso",
         body:
-          "TavolaRapida è erogata «così com'è» e la società fornitrice non risponde di interruzioni, perdita di dati o danni indiretti derivanti dall'uso del servizio, nei limiti consentiti dalla legge. Il SLA 99.9% si applica esclusivamente ai clienti con abbonamento attivo e prevede rimborsi calcolati in percentuale sul canone mensile in caso di mancato raggiungimento dell'obiettivo di disponibilità. La responsabilità massima complessiva è limitata all'importo versato negli ultimi 12 mesi.",
+          "Puoi gestire le tue preferenze cookie in qualsiasi momento cliccando su «Gestisci cookie» in fondo alla pagina o tramite le impostazioni del tuo browser. La disattivazione dei cookie tecnici non è supportata perché bloccherebbe l'accesso al servizio; la disattivazione di quelli analitici è invece possibile e non comporta alcuna perdita di funzionalità. Offriamo anche un pulsante «Rifiuta tutto» nel banner iniziale per negare il consenso analitico con un solo clic, in linea con le linee guida EDPB.",
       },
       {
-        id: "legge",
-        icon: Scale,
+        id: "aggiornamenti",
+        icon: RefreshCw,
         accent: "orange",
-        title: "7. Legge applicabile e contatti",
+        title: "7. Aggiornamenti e contatti",
         body:
-          "I presenti Termini sono regolati dal diritto italiano. Per qualsiasi controversia è competente in via esclusiva il Foro di Milano. Per richieste di chiarimento sui termini puoi scrivere a legal@tavolarapida.it (risposta entro 7 giorni lavorativi). Le segnalazioni di violazione contrattuale vanno inviate a compliance@tavolarapida.it. Il responsabile legale è contattabile tramite gli stessi canali.",
+          "La presente Cookie Policy può essere aggiornata per riflettere cambiamenti tecnologici o normativi: le modifiche sostanziali saranno segnalate tramite banner in homepage e, per i Gestori registrati, tramite email all'indirizzo associato all'account. Per domande sui cookie o per esercitare i tuoi diritti puoi scrivere a privacy@tavolarapida.it (risposta entro 30 giorni). Il DPO è contattabile tramite lo stesso canale.",
       },
     ],
-    ctaTitle: "Domande sui termini?",
-    ctaDesc: "Scrivici a legal@tavolarapida.it — risposta entro 7 giorni lavorativi.",
+    ctaTitle: "Domande sui cookie?",
+    ctaDesc: "Scrivici a privacy@tavolarapida.it — risposta entro 30 giorni.",
     ctaButton: "Scrivici",
     nav: [
       { label: "Panoramica", href: "#panoramica" },
-      { label: "Definizioni", href: "#definizioni" },
-      { label: "Uso", href: "#uso" },
-      { label: "Responsabilità", href: "#responsabilita" },
+      { label: "Categorie", href: "#categorie" },
+      { label: "Analytics", href: "#analytics" },
+      { label: "Gestione", href: "#gestione" },
     ],
     footerTagline:
       "La piattaforma di ordinazione QR per ristoranti moderni. Veloce, sicura, trasparente.",
     footerLegal: "Legale",
     footerLegalLinks: [
-      { label: "Termini", href: "#panoramica" },
-      { label: "Responsabilità", href: "#responsabilita" },
+      { label: "Cookie", href: "#panoramica" },
+      { label: "Gestione", href: "#gestione" },
       { label: "Privacy", href: "/privacy" },
     ],
     footerContacts: [
-      { label: "legal@tavolarapida.it", icon: Mail, accent: "orange" },
-      { label: "compliance@tavolarapida.it", icon: ShieldAlert, accent: "purple" },
-      { label: "SLA 99.9% · PCI DSS", icon: Scale, accent: "teal" },
+      { label: "privacy@tavolarapida.it", icon: Mail, accent: "orange" },
+      { label: "Tracciamento minimo", icon: ToggleLeft, accent: "purple" },
+      { label: "GDPR · ePrivacy", icon: Cookie, accent: "teal" },
     ],
     footerRights: "Tutti i diritti riservati.",
     footerCompliance: "Conforme GDPR · ISO 27001 ready",
   },
   EN: {
     back: "Back to home",
-    eyebrow: "Agreement & Terms",
-    title: "Terms of Service",
+    eyebrow: "Transparency & Tracking",
+    title: "Cookie Policy",
     updated: "Last updated: June 2026",
     intro:
-      "These Terms govern the use of the TavolaRapida platform by restaurateurs, staff, and customers. By accessing the service you fully accept the conditions described herein: we invite you to read them carefully, as they define the rights, duties, and responsibilities of each of the parties involved.",
+      "This Cookie Policy describes the types of cookies and similar technologies used by TavolaRapida, their purposes, and how you can manage your preferences. We believe in minimal and transparent tracking: we use only the cookies strictly necessary for the service to function and, with prior consent, aggregated analytical cookies to improve the experience.",
     badges: [
-      { label: "GDPR", icon: Scale, accent: "orange" },
-      { label: "SLA 99.9%", icon: ShieldAlert, accent: "purple" },
-      { label: "PCI DSS", icon: CreditCard, accent: "teal" },
-      { label: "ISO 27001 ready", icon: ShieldAlert, accent: "orange" },
+      { label: "GDPR Art. 13", icon: Cookie, accent: "orange" },
+      { label: "ePrivacy", icon: FileText, accent: "purple" },
+      { label: "Minimal tracking", icon: ToggleLeft, accent: "teal" },
+      { label: "Granular consent", icon: Settings2, accent: "orange" },
     ],
     stats: [
-      { value: "14 days", label: "Trial period" },
-      { value: "30 days", label: "Cancellation notice" },
-      { value: "99.9%", label: "SLA guaranteed uptime" },
+      { value: "4", label: "Cookie categories" },
+      { value: "100%", label: "Cookies under control" },
+      { value: "0", label: "Advertising cookies" },
     ],
     sections: [
       {
-        id: "accettazione",
+        id: "cosasono",
+        icon: Cookie,
+        accent: "orange",
+        title: "1. What cookies are",
+        body:
+          "Cookies are small text files that the visited website saves on the user's device. They allow storing information about preferences, keeping the session active, and collecting aggregate statistical data on usage. There are session cookies (deleted when the browser is closed) and persistent cookies (kept until expiration or manual deletion). Similar technologies (localStorage, pixels, fingerprinting) perform similar functions and are governed by the same regulations.",
+      },
+      {
+        id: "categorie",
         icon: FileText,
-        accent: "orange",
-        title: "1. Acceptance of terms",
-        body:
-          "Accessing and using TavolaRapida implies full and unconditional acceptance of these Terms and Conditions. If you do not accept one or more clauses, we ask you not to use the service. Conditions may be updated periodically: changes take effect upon publication on the platform and we will notify substantial variations by email to the address associated with your account.",
-      },
-      {
-        id: "definizioni",
-        icon: BookOpen,
         accent: "purple",
-        title: "2. Definitions",
+        title: "2. Categories of cookies used",
         body:
-          "«TavolaRapida» means the QR ordering platform for restaurants. «Operator» means the restaurant owner using the service as administrator. «Staff» means the collaborators authorized by the Operator. «Customer» means the end user who orders via QR code without registration. «Data» means the information processed through the service as described in the privacy policy.",
+          "TavolaRapida uses four categories of cookies: technical necessary (required for the service to function and require no consent), preference cookies (store language and settings), analytical cookies (activated only with prior consent, in aggregate and anonymized form), and third-party cookies (limited to certified payment and analytics providers). We do not use advertising cookies, commercial profiling, or cross-site tracking for marketing purposes.",
       },
       {
-        id: "account",
-        icon: Users,
+        id: "tecnici",
+        icon: Settings2,
         accent: "teal",
-        title: "3. Accounts and responsibilities",
+        title: "3. Technical and necessary cookies",
         body:
-          "The Operator is responsible for creating and managing Staff accounts and for correctly assigning permissions. Access credentials are personal and non-transferable: any activity performed with an account is attributable to its holder. The Operator undertakes to promptly communicate the termination of collaborations with collaborators in order to deactivate their access and to keep the administrator account data up to date.",
+          "These cookies are essential for the platform to function: they manage Operator and staff authentication, keep the QR table session active for 10 minutes after the last activity, store the temporary order cart, and apply language preferences. They are exempt from the consent requirement pursuant to Article 122 of the Privacy Code and cannot be disabled, because disabling them would compromise the basic functionalities of the service.",
       },
       {
-        id: "uso",
-        icon: UtensilsCrossed,
+        id: "analytics",
+        icon: BarChart3,
         accent: "orange",
-        title: "4. Service usage",
+        title: "4. Analytical cookies",
         body:
-          "TavolaRapida is licensed on a non-exclusive and non-transferable basis for the exercise of restaurant activity. It is forbidden to use the platform for illegal purposes, to collect third-party data without consent, to overload or compromise the technical infrastructure, or to perform reverse engineering. The Operator is responsible for the content of menus, prices, and information published to customers via the QR code.",
+          "With the user's explicit consent, we collect aggregate and anonymized usage metrics: number of orders by time slot, average dwell times, most visited pages. Data is processed in statistical form and does not allow identification of the individual user. Consent is collected through an initial banner and can be revoked at any time from the «Manage cookies» button at the bottom of each page. Revocation does not affect technical cookies.",
       },
       {
-        id: "ordini",
-        icon: CreditCard,
+        id: "terzeparti",
+        icon: Share2,
         accent: "purple",
-        title: "5. Orders and payments",
+        title: "5. Third-party cookies",
         body:
-          "Orders are transmitted in real time to the restaurant's kitchen system. TavolaRapida does not directly handle payments: transactions are processed by certified third-party PCI DSS providers, of which the Operator is a direct contractor. Any disputes over an order (preparation error, double charge, customer complaint) must be resolved directly between the restaurant and the customer, with TavolaRapida remaining extraneous to the underlying commercial relationship.",
+          "TavolaRapida integrates only certified GDPR-compliant third-party providers: Stripe for payments (transactional session cookies, no profiling) and Plausible for privacy-first analytics (no persistent cookies, no cross-site tracking). We do not integrate advertising pixels, social SDKs, or remarketing services. The updated list of providers and domains involved is available on request at privacy@tavolarapida.it.",
       },
       {
-        id: "responsabilita",
-        icon: ShieldAlert,
+        id: "gestione",
+        icon: ToggleLeft,
         accent: "teal",
-        title: "6. Limitations of liability",
+        title: "6. Consent management and revocation",
         body:
-          "TavolaRapida is provided «as is» and the provider company is not liable for interruptions, data loss, or indirect damages arising from the use of the service, to the extent permitted by law. The 99.9% SLA applies exclusively to customers with an active subscription and provides for refunds calculated as a percentage of the monthly fee in case of failure to meet the availability target. Maximum aggregate liability is limited to the amount paid in the last 12 months.",
+          "You can manage your cookie preferences at any time by clicking «Manage cookies» at the bottom of the page or through your browser settings. Disabling technical cookies is not supported because it would block access to the service; disabling analytical cookies is possible and does not entail any loss of functionality. We also offer a «Reject all» button in the initial banner to deny analytical consent with a single click, in line with EDPB guidelines.",
       },
       {
-        id: "legge",
-        icon: Scale,
+        id: "aggiornamenti",
+        icon: RefreshCw,
         accent: "orange",
-        title: "7. Governing law and contacts",
+        title: "7. Updates and contacts",
         body:
-          "These Terms are governed by Italian law. Any dispute shall be subject to the exclusive jurisdiction of the Court of Milan. For any requests for clarification on the terms you can write to legal@tavolarapida.it (response within 7 business days). Reports of contractual violations should be sent to compliance@tavolarapida.it. The legal representative can be reached through the same channels.",
+          "This Cookie Policy may be updated to reflect technological or regulatory changes: substantial changes will be reported via a banner on the homepage and, for registered Operators, via email to the address associated with the account. For questions about cookies or to exercise your rights, you can write to privacy@tavolarapida.it (response within 30 days). The DPO can be reached through the same channel.",
       },
     ],
-    ctaTitle: "Questions about the terms?",
-    ctaDesc: "Write to legal@tavolarapida.it — response within 7 business days.",
+    ctaTitle: "Questions about cookies?",
+    ctaDesc: "Write to privacy@tavolarapida.it — response within 30 days.",
     ctaButton: "Contact us",
     nav: [
       { label: "Overview", href: "#panoramica" },
-      { label: "Definitions", href: "#definizioni" },
-      { label: "Usage", href: "#uso" },
-      { label: "Liability", href: "#responsabilita" },
+      { label: "Categories", href: "#categorie" },
+      { label: "Analytics", href: "#analytics" },
+      { label: "Management", href: "#gestione" },
     ],
     footerTagline:
       "The QR ordering platform for modern restaurants. Fast, secure, transparent.",
     footerLegal: "Legal",
     footerLegalLinks: [
-      { label: "Terms", href: "#panoramica" },
-      { label: "Liability", href: "#responsabilita" },
+      { label: "Cookie", href: "#panoramica" },
+      { label: "Management", href: "#gestione" },
       { label: "Privacy", href: "/privacy" },
     ],
     footerContacts: [
-      { label: "legal@tavolarapida.it", icon: Mail, accent: "orange" },
-      { label: "compliance@tavolarapida.it", icon: ShieldAlert, accent: "purple" },
-      { label: "SLA 99.9% · PCI DSS", icon: Scale, accent: "teal" },
+      { label: "privacy@tavolarapida.it", icon: Mail, accent: "orange" },
+      { label: "Minimal tracking", icon: ToggleLeft, accent: "purple" },
+      { label: "GDPR · ePrivacy", icon: Cookie, accent: "teal" },
     ],
     footerRights: "All rights reserved.",
     footerCompliance: "GDPR Compliant · ISO 27001 ready",
@@ -293,7 +293,7 @@ const TRANSLATIONS: Record<Language, T> = {
 const STORAGE_KEY = "tavolarapida-language";
 
 /* ------------------------------------------------------------------ */
-/* Animazioni (in / out) — coerenti con la pagina Privacy              */
+/* Animazioni (in / out) — coerenti con la pagina Terms                */
 /* ------------------------------------------------------------------ */
 
 const containerVariants: Variants = {
@@ -348,7 +348,7 @@ const ctaVariants: Variants = {
 /* Componenti inline (header & footer)                                 */
 /* ------------------------------------------------------------------ */
 
-function TermsHeader({
+function CookieHeader({
   language,
   onLanguageChange,
   nav,
@@ -386,7 +386,7 @@ function TermsHeader({
               boxShadow: "0 6px 18px -4px rgba(255, 107, 53, 0.5)",
             }}
           >
-            <UtensilsCrossed className="h-5 w-5" />
+            <Cookie className="h-5 w-5" />
           </span>
           <span className="text-lg font-extrabold tracking-tight text-[#1F2937]">
             Tavola<span className="text-[#FF6B35]">Rapida</span>
@@ -448,7 +448,7 @@ function TermsHeader({
   );
 }
 
-function TermsFooter({ t }: { t: T }) {
+function CookieFooter({ t }: { t: T }) {
   return (
     <footer className="mt-auto border-t border-[#FF6B35]/12 bg-white">
       <div className="mx-auto max-w-6xl px-5 py-12 md:px-6">
@@ -462,7 +462,7 @@ function TermsFooter({ t }: { t: T }) {
                   boxShadow: "0 6px 18px -4px rgba(255, 107, 53, 0.5)",
                 }}
               >
-                <UtensilsCrossed className="h-5 w-5" />
+                <Cookie className="h-5 w-5" />
               </span>
               <span className="text-lg font-extrabold tracking-tight text-[#1F2937]">
                 Tavola<span className="text-[#FF6B35]">Rapida</span>
@@ -490,7 +490,7 @@ function TermsFooter({ t }: { t: T }) {
 
           <div>
             <h4 className="text-xs font-bold uppercase tracking-wider text-[#9CA3AF]">
-              {t.nav.some((n) => n.href === "#responsabilita") ? "Contatti" : "Contacts"}
+              {t.nav.some((n) => n.href === "#gestione") ? "Contatti" : "Contacts"}
             </h4>
             <ul className="mt-4 space-y-2.5 text-sm">
               {t.footerContacts.map(({ label, icon: Icon, accent }) => {
@@ -521,7 +521,7 @@ function TermsFooter({ t }: { t: T }) {
 /* Pagina                                                              */
 /* ------------------------------------------------------------------ */
 
-export default function TermsPage() {
+export default function CookiePage() {
   const [language, setLanguage] = useState<Language>("IT");
 
   // Sincronizza la preferenza lingua persisted (legge da localStorage lato client).
@@ -555,7 +555,7 @@ export default function TermsPage() {
         background: "linear-gradient(120deg, #FFF5E6 0%, #FFF9F0 40%, #F8F9FA 100%)",
       }}
     >
-      {/* Blob decorativi (identici alla pagina Privacy) */}
+      {/* Blob decorativi (identici alla pagina Terms) */}
       <div
         aria-hidden
         className="pointer-events-none absolute -left-32 top-10 h-96 w-96 rounded-full"
@@ -572,7 +572,7 @@ export default function TermsPage() {
         style={{ background: "rgba(16, 185, 129, 0.12)", filter: "blur(110px)" }}
       />
 
-      <TermsHeader
+      <CookieHeader
         language={language}
         onLanguageChange={changeLanguage}
         nav={t.nav}
@@ -622,25 +622,31 @@ export default function TermsPage() {
                 <motion.div
                   className="flex h-14 w-14 items-center justify-center rounded-2xl text-white"
                   style={{
-                    background: "linear-gradient(135deg, #9333EA 0%, #A855F7 100%)",
+                    background: "linear-gradient(135deg, #FF6B35 0%, #F97316 100%)",
                     boxShadow:
-                      "0 10px 28px -6px rgba(147, 51, 234, 0.55), inset 0 1px 0 rgba(255,255,255,0.35)",
+                      "0 10px 28px -6px rgba(255, 107, 53, 0.55), inset 0 1px 0 rgba(255,255,255,0.35)",
                   }}
                   animate={{
+                    rotate: [0, -8, 8, -6, 6, 0],
                     boxShadow: [
-                      "0 10px 28px -6px rgba(147, 51, 234, 0.55), inset 0 1px 0 rgba(255,255,255,0.35)",
-                      "0 10px 32px -4px rgba(147, 51, 234, 0.75), inset 0 1px 0 rgba(255,255,255,0.45)",
-                      "0 10px 28px -6px rgba(147, 51, 234, 0.55), inset 0 1px 0 rgba(255,255,255,0.35)",
+                      "0 10px 28px -6px rgba(255, 107, 53, 0.55), inset 0 1px 0 rgba(255,255,255,0.35)",
+                      "0 10px 32px -4px rgba(255, 107, 53, 0.75), inset 0 1px 0 rgba(255,255,255,0.45)",
+                      "0 10px 28px -6px rgba(255, 107, 53, 0.55), inset 0 1px 0 rgba(255,255,255,0.35)",
                     ],
                   }}
-                  transition={{ duration: 3.5, repeat: Infinity, ease: "easeInOut" }}
+                  transition={{
+                    duration: 5,
+                    repeat: Infinity,
+                    ease: "easeInOut",
+                    times: [0, 0.2, 0.4, 0.6, 0.8, 1],
+                  }}
                 >
-                  <Scale className="h-7 w-7" />
+                  <Cookie className="h-7 w-7" />
                 </motion.div>
                 <div>
                   <span
-                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[#9333EA]"
-                    style={{ background: "rgba(147, 51, 234, 0.10)" }}
+                    className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider text-[#FF6B35]"
+                    style={{ background: "rgba(255, 107, 53, 0.10)" }}
                   >
                     {t.eyebrow}
                   </span>
@@ -782,11 +788,11 @@ export default function TermsPage() {
                 </div>
                 <motion.div whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.97 }}>
                   <a
-                    href="mailto:legal@tavolarapida.it"
+                    href="mailto:privacy@tavolarapida.it"
                     className="inline-flex shrink-0 items-center gap-1.5 rounded-full bg-white px-5 py-2.5 text-sm font-bold text-[#9333EA] transition-transform"
                     style={{ boxShadow: "0 6px 18px -4px rgba(0,0,0,0.2)" }}
                   >
-                    <Scale className="h-4 w-4" />
+                    <Cookie className="h-4 w-4" />
                     {t.ctaButton}
                   </a>
                 </motion.div>
@@ -796,7 +802,7 @@ export default function TermsPage() {
         </AnimatePresence>
       </main>
 
-      <TermsFooter t={t} />
+      <CookieFooter t={t} />
     </div>
   );
 }

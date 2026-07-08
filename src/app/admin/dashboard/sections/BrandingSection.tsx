@@ -1,10 +1,18 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { Palette, Save, CheckCircle2, Globe, Phone, MapPin, Instagram, MessageSquare, AlertCircle, ImageIcon, Trash2 } from 'lucide-react'
+import { motion, AnimatePresence } from 'framer-motion'
+import { Palette, Save, CheckCircle2, Globe, Phone, MapPin, Instagram, AlertCircle, ImageIcon, Trash2 } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
 import { getBranding, updateBranding, type BrandingData } from '@/lib/admin-service'
 import { useI18n } from '@/components/i18n/I18nProvider'
+import { restaurantAvatars } from '@/lib/restaurant-avatars'
+import { establishmentTypes } from '@/lib/establishment-types'
+import { setUnsavedChanges } from '@/lib/unsaved-changes'
+import { updateEstablishmentType, EstablishmentTypeCooldownError } from '@/lib/admin-service'
+
+const DAY_MS = 24 * 60 * 60 * 1000
+const COOLDOWN_DAYS = 30
 
 interface Props {
   ctx: RestaurantCtx
@@ -28,13 +36,28 @@ export function BrandingSection({ ctx }: Props) {
   const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
+  const [pendingType, setPendingType] = useState<string | null>(null)
+  const [pendingCustomType, setPendingCustomType] = useState('')
+  const [typeSaving, setTypeSaving] = useState(false)
+  const [typeError, setTypeError] = useState<string | null>(null)
+  // Remembers the image URL / solid color independently so switching between
+  // "Immagine" and "Colore solido" tabs doesn't clobber the other's value —
+  // both are persisted in the single background_image_url column.
+  const [lastImageUrl, setLastImageUrl] = useState('')
+  const [lastColorValue, setLastColorValue] = useState('#f5f0e8')
 
   // Load from DATABASE via admin-service
   useEffect(() => {
     let active = true
     getBranding(ctx.restaurantId)
       .then((d) => {
-        if (active) setData(d)
+        if (!active) return
+        setData(d)
+        if (d.background_type === 'image' && d.background_image_url) {
+          setLastImageUrl(d.background_image_url)
+        } else if (d.background_type === 'color' && /^#[0-9a-fA-F]{6}$/.test(d.background_image_url)) {
+          setLastColorValue(d.background_image_url)
+        }
       })
       .catch((e) => {
         if (active) setError(e.message ?? t.errorLoad)
@@ -46,6 +69,7 @@ export function BrandingSection({ ctx }: Props) {
 
   function set<K extends keyof BrandingData>(field: K, value: string) {
     setData((prev) => (prev ? { ...prev, [field]: value } : prev))
+    setUnsavedChanges(true)
   }
 
   async function uploadBackground(file: File) {
@@ -61,6 +85,7 @@ export function BrandingSection({ ctx }: Props) {
       .upload(fileName, file, { upsert: true })
     if (upErr) throw upErr
     const { data } = supabase.storage.from('restaurant-logos').getPublicUrl(fileName)
+    setLastImageUrl(data.publicUrl)
     set('background_image_url', data.publicUrl)
     set('background_type', 'image')
   }
@@ -72,23 +97,57 @@ export function BrandingSection({ ctx }: Props) {
     try {
       await updateBranding(ctx.restaurantId, {
         name: data.name.trim() || ctx.restaurantName,
-        tagline: data.tagline,
+        logo_icon: data.logo_icon,
         brand_color: data.brand_color,
         background_image_url: data.background_image_url,
         background_type: data.background_type,
-        welcome_message: data.welcome_message,
-        confirm_message: data.confirm_message,
         address: data.address,
         phone: data.phone,
         instagram: data.instagram,
         website: data.website,
       })
+      setUnsavedChanges(false)
       setSaved(true)
       setTimeout(() => setSaved(false), 2200)
     } catch (e: any) {
       setError(e.message ?? t.errorSave)
     } finally {
       setSaving(false)
+    }
+  }
+
+  const typeCooldownDaysLeft = (() => {
+    if (!data?.establishment_type_changed_at) return 0
+    const elapsedMs = Date.now() - new Date(data.establishment_type_changed_at).getTime()
+    const remainingMs = COOLDOWN_DAYS * DAY_MS - elapsedMs
+    return remainingMs > 0 ? Math.ceil(remainingMs / DAY_MS) : 0
+  })()
+  const typeLocked = typeCooldownDaysLeft > 0
+
+  async function confirmTypeChange() {
+    if (!data || !pendingType) return
+    if (pendingType === 'altro' && !pendingCustomType.trim()) return
+    setTypeSaving(true)
+    setTypeError(null)
+    try {
+      const customType = pendingType === 'altro' ? pendingCustomType.trim() : null
+      await updateEstablishmentType(ctx.restaurantId, pendingType, customType)
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              establishment_type: pendingType,
+              establishment_type_custom: customType,
+              establishment_type_changed_at: new Date().toISOString(),
+            }
+          : prev
+      )
+      setPendingType(null)
+      setPendingCustomType('')
+    } catch (e) {
+      setTypeError(e instanceof EstablishmentTypeCooldownError ? t.typeCooldownError : t.errorSave)
+    } finally {
+      setTypeSaving(false)
     }
   }
 
@@ -137,12 +196,17 @@ export function BrandingSection({ ctx }: Props) {
       {data.logo_url && (
         <div className="tt-card-pink rounded-2xl p-5 shadow-tt">
           <div className="flex items-center gap-4">
-            <img src={data.logo_url} alt="logo" className="h-14 w-14 rounded-2xl bg-white/15 object-contain" />
+            <img src={data.logo_url} alt="logo" className="h-14 w-14 rounded-2xl bg-white/15 object-cover" />
             <div className="min-w-0 flex-1">
               <h3 className="truncate font-serif text-lg font-extrabold text-tt-ink">{data.name}</h3>
-              <p className="truncate text-sm text-tt-muted">{data.tagline}</p>
+              <p className="truncate text-sm text-tt-muted">
+                {data.establishment_type === 'altro'
+                  ? data.establishment_type_custom || t.establishmentType
+                  : tr.auth.create.types[data.establishment_type as keyof typeof tr.auth.create.types] ?? data.establishment_type}
+                {data.city && ` · ${tr.auth.create.venueAt} ${data.city}`}
+              </p>
             </div>
-            <span className="h-6 w-6 rounded-full border-2 border-white shadow" style={{ background: data.brand_color }} />
+            <span className="h-6 w-6 shrink-0 rounded-full border-2 border-white shadow" style={{ background: data.brand_color }} />
           </div>
         </div>
       )}
@@ -159,12 +223,22 @@ export function BrandingSection({ ctx }: Props) {
             />
           </div>
           <div>
-            <label className="mb-1 block text-xs font-bold text-tt-ink">{t.tagline}</label>
-            <input
-              value={data.tagline}
-              onChange={(e) => set('tagline', e.target.value)}
-              className="w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
-            />
+            <label className="mb-2 block text-xs font-bold text-tt-ink">{t.avatar}</label>
+            <div className="flex flex-wrap gap-2">
+              {restaurantAvatars.map((a) => {
+                const isSelected = data.logo_icon === a.id
+                return (
+                  <button
+                    key={a.id}
+                    onClick={() => set('logo_icon', a.id)}
+                    title={a.label}
+                    className={`grid h-11 w-11 place-items-center rounded-xl border-2 transition hover:scale-110 ${isSelected ? 'border-tt-pink bg-tt-pink/10 text-tt-pink' : 'border-tt-line bg-white text-tt-muted'}`}
+                  >
+                    <a.Icon className="h-5 w-5" />
+                  </button>
+                )
+              })}
+            </div>
           </div>
           <div>
             <label className="mb-2 block text-xs font-bold text-tt-ink">{t.brandColor}</label>
@@ -183,33 +257,107 @@ export function BrandingSection({ ctx }: Props) {
         </div>
       </div>
 
-      <div className="tt-card rounded-2xl border border-tt-line p-5 shadow-tt">
-        <p className="tt-section-title">{t.customerMessages}</p>
+      <motion.div
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.25 }}
+        className="tt-card rounded-2xl border border-tt-line p-5 shadow-tt"
+      >
+        <p className="tt-section-title">{t.establishmentType}</p>
         <div className="space-y-3">
-          <div>
-            <label className="mb-1 flex items-center gap-1.5 text-xs font-bold text-tt-ink">
-              <MessageSquare className="h-3.5 w-3.5 text-tt-pink" /> {t.welcomeMessage}
-            </label>
-            <textarea
-              rows={2}
-              value={data.welcome_message}
-              onChange={(e) => set('welcome_message', e.target.value)}
-              className="w-full resize-none rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
-            />
+          <div className="flex items-center justify-between">
+            <span className="text-sm font-bold text-tt-ink">
+              {data.establishment_type === 'altro'
+                ? data.establishment_type_custom || t.establishmentType
+                : tr.auth.create.types[data.establishment_type as keyof typeof tr.auth.create.types] ?? data.establishment_type}
+            </span>
+            <AnimatePresence>
+              {typeLocked && (
+                <motion.span
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="text-xs font-semibold text-tt-muted"
+                >
+                  {t.typeCooldownMessage.replace('{days}', String(typeCooldownDaysLeft))}
+                </motion.span>
+              )}
+            </AnimatePresence>
           </div>
-          <div>
-            <label className="mb-1 flex items-center gap-1.5 text-xs font-bold text-tt-ink">
-              <MessageSquare className="h-3.5 w-3.5 text-tt-pink" /> {t.confirmMessage}
-            </label>
-            <textarea
-              rows={2}
-              value={data.confirm_message}
-              onChange={(e) => set('confirm_message', e.target.value)}
-              className="w-full resize-none rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
-            />
+
+          <div className={`flex flex-wrap gap-2 ${typeLocked ? 'pointer-events-none opacity-40' : ''}`}>
+            {establishmentTypes.map((et) => {
+              const isCurrent = data.establishment_type === et.id
+              const label = tr.auth.create.types[et.id as keyof typeof tr.auth.create.types] ?? et.id
+              return (
+                <motion.button
+                  key={et.id}
+                  disabled={typeLocked}
+                  onClick={() => !isCurrent && (setPendingType(et.id), setPendingCustomType(''), setTypeError(null))}
+                  whileHover={{ scale: 1.06 }}
+                  whileTap={{ scale: 0.96 }}
+                  className={`rounded-full border-2 px-3 py-1.5 text-xs font-bold transition-colors ${isCurrent ? 'border-tt-pink bg-tt-pink/10 text-tt-pink' : 'border-tt-line bg-white text-tt-muted'}`}
+                >
+                  {label}
+                </motion.button>
+              )
+            })}
           </div>
+
+          <AnimatePresence>
+            {pendingType && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: 'auto' }}
+                exit={{ opacity: 0, height: 0 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+                className="overflow-hidden"
+              >
+                <div className="rounded-xl border border-tt-line bg-tt-bg p-3">
+                  <AnimatePresence>
+                    {pendingType === 'altro' && (
+                      <motion.div
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: 'auto' }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={{ duration: 0.2 }}
+                        className="mb-2 overflow-hidden"
+                      >
+                        <label className="mb-1 block text-xs font-bold text-tt-ink">{tr.auth.create.customTypeLabel}</label>
+                        <input
+                          value={pendingCustomType}
+                          onChange={(e) => setPendingCustomType(e.target.value)}
+                          placeholder={tr.auth.create.customTypePlaceholder}
+                          maxLength={80}
+                          className="h-10 w-full rounded-lg border border-tt-line bg-white px-3 text-sm text-tt-ink outline-none focus:border-tt-pink"
+                        />
+                      </motion.div>
+                    )}
+                  </AnimatePresence>
+
+                  <p className="mb-2 text-xs font-semibold text-tt-ink">{t.typeChangeConfirmMessage}</p>
+                  {typeError && <p className="mb-2 text-xs font-semibold text-tt-danger">{typeError}</p>}
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => { setPendingType(null); setPendingCustomType(''); setTypeError(null) }}
+                      className="h-9 flex-1 rounded-full border border-tt-line bg-white text-xs font-bold text-tt-muted transition hover:text-tt-ink"
+                    >
+                      {t.cancel}
+                    </button>
+                    <button
+                      onClick={confirmTypeChange}
+                      disabled={typeSaving || (pendingType === 'altro' && !pendingCustomType.trim())}
+                      className="h-9 flex-1 rounded-full bg-tt-pink text-xs font-bold text-white shadow-tt transition hover:scale-105 disabled:opacity-60"
+                    >
+                      {typeSaving ? '…' : t.confirmTypeChange}
+                    </button>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
         </div>
-      </div>
+      </motion.div>
 
       <div className="tt-card rounded-2xl border border-tt-line p-5 shadow-tt">
         <p className="tt-section-title">{t.customerBackground}</p>
@@ -220,7 +368,14 @@ export function BrandingSection({ ctx }: Props) {
             {(['gradient', 'image', 'color'] as const).map((bt) => (
               <button
                 key={bt}
-                onClick={() => set('background_type', bt)}
+                onClick={() => {
+                  if (bt === 'color') {
+                    set('background_image_url', lastColorValue)
+                  } else if (bt === 'image') {
+                    set('background_image_url', lastImageUrl)
+                  }
+                  set('background_type', bt)
+                }}
                 className={`rounded-full px-3 py-1.5 text-xs font-bold transition border ${
                   data.background_type === bt
                     ? 'bg-tt-ink text-white border-tt-ink'
@@ -243,7 +398,7 @@ export function BrandingSection({ ctx }: Props) {
                     className="h-32 w-full object-cover"
                   />
                   <button
-                    onClick={() => { set('background_image_url', ''); set('background_type', 'gradient') }}
+                    onClick={() => { setLastImageUrl(''); set('background_image_url', ''); set('background_type', 'gradient') }}
                     className="absolute right-2 top-2 grid h-7 w-7 place-items-center rounded-full bg-black/50 text-white hover:bg-black/70"
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -275,24 +430,29 @@ export function BrandingSection({ ctx }: Props) {
           )}
 
           {/* Colore solido */}
-          {data.background_type === 'color' && (
+          {data.background_type === 'color' && (() => {
+            const solidColor = /^#[0-9a-fA-F]{6}$/.test(data.background_image_url)
+              ? data.background_image_url
+              : '#f5f0e8'
+            return (
             <div className="space-y-2">
               <div className="flex items-center gap-3">
                 <input
                   type="color"
-                  value={data.background_image_url || '#f5f0e8'}
-                  onChange={(e) => set('background_image_url', e.target.value)}
+                  value={solidColor}
+                  onChange={(e) => { setLastColorValue(e.target.value); set('background_image_url', e.target.value) }}
                   className="h-10 w-10 cursor-pointer rounded-lg border border-tt-line"
                 />
                 <span className="text-sm font-mono text-tt-muted">
-                  {data.background_image_url || '#f5f0e8'}
+                  {solidColor}
                 </span>
               </div>
               <p className="text-[11px] text-tt-muted">
                 {t.bgColorDesc}
               </p>
             </div>
-          )}
+            )
+          })()}
 
           {/* Gradiente brand */}
           {data.background_type === 'gradient' && (

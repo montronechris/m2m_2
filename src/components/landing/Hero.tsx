@@ -1,11 +1,11 @@
 'use client'
 
+import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { motion } from 'framer-motion'
 import {
   ArrowRight,
   Play,
-  Sparkles,
   QrCode,
   Star,
   UtensilsCrossed,
@@ -26,13 +26,90 @@ const item = {
   show: { y: 0, opacity: 1, transition: { duration: 0.6, ease: 'easeOut' as const } },
 }
 
+type TimeLeft = { days: number; hours: number; minutes: number; seconds: number }
+
+function getTimeLeft(target: number): TimeLeft {
+  const now = Date.now()
+  const diff = Math.max(0, target - now)
+  const totalSeconds = Math.floor(diff / 1000)
+  const days = Math.floor(totalSeconds / 86400)
+  const hours = Math.floor((totalSeconds % 86400) / 3600)
+  const minutes = Math.floor((totalSeconds % 3600) / 60)
+  const seconds = totalSeconds % 60
+  return { days, hours, minutes, seconds }
+}
+
+function pad(n: number): string {
+  return n.toString().padStart(2, '0')
+}
+
+function TimeChip({ value, label }: { value: number; label: string }) {
+  return (
+    <div className="flex min-w-[2.75rem] shrink-0 flex-col items-center rounded-xl bg-[#f5efe0] px-2.5 py-1.5 shadow-sm sm:min-w-[3.5rem] sm:px-4 sm:py-2">
+      <span className="tabular text-sm font-bold leading-none text-ink sm:text-xl">{pad(value)}</span>
+      <span className="mt-0.5 text-[9px] font-semibold uppercase tracking-wide text-ink/60 sm:text-[10px]">
+        {label}
+      </span>
+    </div>
+  )
+}
+
+// Fixed launch-promo deadline — 30 days from launch, does NOT shift with "today".
+// Once it hits zero it stays at zero instead of resetting.
+const PROMO_TARGET = new Date('2026-08-06T23:59:59+02:00').getTime()
+
+function usePromoCountdown() {
+  const [target, setTarget] = useState<number | null>(null)
+  const [timeLeft, setTimeLeft] = useState<TimeLeft>({
+    days: 30,
+    hours: 0,
+    minutes: 0,
+    seconds: 0,
+  })
+
+  // Set on the client (avoids SSR/CSR hydration mismatch); target itself is fixed.
+  useEffect(() => {
+    setTarget(PROMO_TARGET)
+    setTimeLeft(getTimeLeft(PROMO_TARGET))
+  }, [])
+
+  // Tick every minute — seconds aren't displayed. Pauses when tab hidden.
+  useEffect(() => {
+    if (target == null) return
+    let id: number | null = null
+    const tick = () => setTimeLeft(getTimeLeft(target))
+    const start = () => {
+      if (id == null) {
+        tick()
+        id = window.setInterval(tick, 60_000)
+      }
+    }
+    const stop = () => {
+      if (id != null) {
+        window.clearInterval(id)
+        id = null
+      }
+    }
+    const onVis = () => (document.hidden ? stop() : start())
+    start()
+    document.addEventListener('visibilitychange', onVis)
+    return () => {
+      stop()
+      document.removeEventListener('visibilitychange', onVis)
+    }
+  }, [target])
+
+  return { target, timeLeft }
+}
+
 export function Hero() {
   const { tr } = useI18n()
   const h = tr.hero
   const p = tr.promo
+  const { target, timeLeft } = usePromoCountdown()
 
   return (
-    <section className="relative overflow-hidden pt-44 pb-20 sm:pt-52 lg:pt-56 sm:pb-24">
+    <section className="relative overflow-hidden pt-28 pb-8 sm:pt-36 lg:pt-40 sm:pb-10">
       {/* Decorative floating orbs in background */}
       <div aria-hidden className="pointer-events-none absolute -left-20 top-40 h-40 w-40 rounded-full bg-brand-amber/20 blur-3xl animate-float-soft" />
       <div aria-hidden className="pointer-events-none absolute right-10 top-24 h-24 w-24 rounded-full bg-brand-rose/20 blur-2xl animate-float-soft" style={{ animationDelay: '1.5s' }} />
@@ -78,17 +155,29 @@ export function Hero() {
           <motion.div variants={container} initial="hidden" animate="show" className="relative">
             {/* Soft veil so the headline always sits on a clean, high-contrast pad */}
             <div aria-hidden className="hero-veil pointer-events-none absolute -inset-x-10 -inset-y-6 -z-10" />
-            <motion.div variants={item} className="flex flex-wrap items-center gap-2">
-              <span className="eyebrow border border-brand-amber/30 bg-brand-amber/10 text-brand-terra">
-                <Sparkles className="h-3.5 w-3.5 animate-sparkle-spin" />
-                {h.badge}
-              </span>
-              {/* Promo badge — 14 days */}
-              <span className="sheen relative inline-flex items-center gap-2.5 rounded-full bg-gradient-to-r from-brand-rose to-brand-violet px-6 py-2.5 text-base font-bold text-white shadow-glow-rose">
-                <span aria-hidden className="absolute inset-0 rounded-full bg-brand-rose/40 blur-md -z-10 animate-pulse" />
-                <Star className="h-3.5 w-3.5 fill-current" />
-                {p.badge}: {p.text}
-              </span>
+            <motion.div
+              variants={item}
+              className="-mt-8 flex flex-wrap items-center justify-center gap-2 sm:-mt-14 lg:-mt-20"
+            >
+              {/* Promo badge — 14 days + live countdown */}
+              <div className="sheen relative mx-auto flex w-[19rem] max-w-full flex-col items-center gap-2.5 rounded-[2rem] bg-gradient-to-br from-brand-rose to-brand-violet px-5 py-4 text-center text-white shadow-glow-rose sm:w-96 lg:w-[26rem]">
+                <span aria-hidden className="absolute inset-0 rounded-[2rem] bg-brand-rose/40 blur-md -z-10 animate-pulse" />
+                <div>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-white/90">
+                    {p.badge}
+                  </p>
+                  <h3 className="mt-0.5 text-lg font-extrabold leading-tight [text-shadow:0_2px_4px_rgba(0,0,0,0.2)] sm:text-xl">
+                    {p.text}
+                  </h3>
+                </div>
+                {target != null && (
+                  <div className="flex flex-nowrap justify-center gap-2 sm:gap-3">
+                    <TimeChip value={timeLeft.days} label="gg" />
+                    <TimeChip value={timeLeft.hours} label="or" />
+                    <TimeChip value={timeLeft.minutes} label="min" />
+                  </div>
+                )}
+              </div>
             </motion.div>
 
             <motion.h1
@@ -181,10 +270,22 @@ export function Hero() {
                 </div>
               </div>
               <div className="h-8 w-px bg-ink/10" />
-              <div className="flex items-center gap-2 text-ink/60">
-                <span className="status-dot bg-brand-emerald" />
-                <QrCode className="h-5 w-5 text-brand-emerald" />
-                <span className="font-medium">{h.setup}</span>
+              <div className="flex flex-col items-start gap-3">
+                <div className="flex items-center gap-2 text-ink/60">
+                  <span className="status-dot bg-brand-emerald" />
+                  <QrCode className="h-5 w-5 text-brand-emerald" />
+                  <span className="font-medium">{h.setup}</span>
+                </div>
+                <Button
+                  asChild
+                  size="lg"
+                  className="sheen group gap-2 rounded-full bg-gradient-to-r from-brand-emerald to-brand-emerald/80 px-7 text-base font-semibold text-white shadow-glow-emerald hover:opacity-95 hover:shadow-glow-emerald"
+                >
+                  <Link href="/create">
+                    {h.createNow}
+                    <ArrowRight className="h-5 w-5 transition-transform group-hover:translate-x-1" />
+                  </Link>
+                </Button>
               </div>
             </motion.div>
           </motion.div>

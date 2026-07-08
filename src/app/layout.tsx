@@ -29,7 +29,8 @@ export const metadata: Metadata = {
   keywords: ["menù digitale", "ordinazione QR", "software ristorante", "kitchen display", "m2m"],
   authors: [{ name: "m2m" }],
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: "/favicon.png",
+    shortcut: "/favicon.png",
   },
   openGraph: {
     title: "m2m — Transform Your Restaurant Experience",

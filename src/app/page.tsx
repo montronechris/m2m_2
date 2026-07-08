@@ -3,11 +3,9 @@
 import dynamic from 'next/dynamic'
 import { PageShell } from '@/components/landing/PageShell'
 import { Hero } from '@/components/landing/Hero'
-import { StatsBar } from '@/components/landing/StatsBar'
 import { Features } from '@/components/landing/Features'
 
 // Below-the-fold sections — lazy loaded to reduce initial JS + memory.
-const HowItWorks = dynamic(() => import('@/components/landing/HowItWorks').then(m => ({ default: m.HowItWorks })), { ssr: false, loading: () => null })
 const ProductShowcase = dynamic(() => import('@/components/landing/ProductShowcase').then(m => ({ default: m.ProductShowcase })), { ssr: false, loading: () => null })
 const GreenSection = dynamic(() => import('@/components/landing/GreenSection').then(m => ({ default: m.GreenSection })), { ssr: false, loading: () => null })
 const Testimonials = dynamic(() => import('@/components/landing/Testimonials').then(m => ({ default: m.Testimonials })), { ssr: false, loading: () => null })
@@ -18,9 +16,7 @@ export default function Home() {
   return (
     <PageShell>
       <Hero />
-      <StatsBar />
       <Features />
-      <HowItWorks />
       <ProductShowcase />
       <GreenSection />
       <Testimonials />

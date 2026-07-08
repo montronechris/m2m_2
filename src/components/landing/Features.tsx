@@ -37,6 +37,7 @@ const themes = [
     iconWrap: 'bg-brand-amber/15 text-brand-amber',
     glow: 'group-hover:shadow-glow-amber',
     accent: 'text-brand-amber',
+    span: 'lg:col-span-2',
     cornerOrb: 'bg-brand-amber',
   },
   {
@@ -51,6 +52,7 @@ const themes = [
     iconWrap: 'bg-brand-sky/15 text-brand-sky',
     glow: 'group-hover:shadow-glow-emerald',
     accent: 'text-brand-sky',
+    span: 'lg:col-span-2',
     cornerOrb: 'bg-brand-sky',
   },
   {
@@ -58,7 +60,6 @@ const themes = [
     iconWrap: 'bg-brand-terra/15 text-brand-terra',
     glow: 'group-hover:shadow-glow-amber',
     accent: 'text-brand-terra',
-    span: 'lg:col-span-2',
     cornerOrb: 'bg-brand-terra',
   },
 ]
@@ -68,7 +69,7 @@ export function Features() {
   const f = tr.features
 
   return (
-    <section id="funzioni" className="relative py-16 scroll-mt-24 sm:py-20 lg:py-24">
+    <section id="funzioni" className="relative pb-16 pt-14 scroll-mt-24 sm:pb-20 sm:pt-16 lg:pb-24 lg:pt-20">
       {/* Floating decorative orbs in the section background */}
       <div aria-hidden className="pointer-events-none absolute -left-10 top-32 h-44 w-44 rounded-full bg-brand-violet/10 blur-3xl animate-float-soft" />
       <div aria-hidden className="pointer-events-none absolute right-0 top-1/3 h-40 w-40 rounded-full bg-brand-amber/10 blur-3xl animate-blob" />
@@ -143,7 +144,7 @@ export function Features() {
 
 <Link
   href="/funzioni"
-  className={`mt-4 inline-flex items-center gap-1 text-sm font-semibold ${t.accent} opacity-0 transition-all duration-300 group-hover:opacity-100`}
+  className={`mt-4 inline-flex items-center gap-1 text-sm font-semibold ${t.accent} opacity-100 transition-all duration-300 lg:opacity-0 lg:group-hover:opacity-100`}
 >
   {f.more}
   <ArrowUpRight className="h-4 w-4 transition-transform duration-300 group-hover:translate-x-0.5 group-hover:-translate-y-0.5" />

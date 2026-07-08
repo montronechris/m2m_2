@@ -8,17 +8,12 @@ import {
   FileX,
   Code2,
   TreePine,
-  RefreshCw,
-  BrainCircuit,
-  Receipt,
-  BarChart3,
   ArrowRight,
 } from 'lucide-react'
 import { useI18n } from '@/components/i18n/I18nProvider'
 import { Counter } from './Counter'
 
 const pledgeIcons = [Sun, FileX, Code2, TreePine]
-const helpIcons = [RefreshCw, BrainCircuit, Receipt, BarChart3]
 
 const pledgeThemes = [
   { icon: 'bg-brand-amber/15 text-brand-amber', card: 'hover:border-brand-amber/40' },
@@ -26,19 +21,13 @@ const pledgeThemes = [
   { icon: 'bg-brand-sky/15 text-brand-sky', card: 'hover:border-brand-sky/40' },
   { icon: 'bg-brand-violet/15 text-brand-violet', card: 'hover:border-brand-violet/40' },
 ]
-const helpThemes = [
-  { icon: 'bg-brand-emerald/15 text-brand-emerald', card: 'hover:border-brand-emerald/40' },
-  { icon: 'bg-brand-rose/15 text-brand-rose', card: 'hover:border-brand-rose/40' },
-  { icon: 'bg-brand-sky/15 text-brand-sky', card: 'hover:border-brand-sky/40' },
-  { icon: 'bg-brand-amber/15 text-brand-amber', card: 'hover:border-brand-amber/40' },
-]
 
 export function GreenSection() {
   const { tr } = useI18n()
   const g = tr.green
 
   return (
-    <section id="green" className="relative scroll-mt-24 overflow-hidden py-16 sm:py-20 lg:py-24">
+    <section id="green" className="relative scroll-mt-24 overflow-hidden pb-16 pt-8 sm:pb-20 sm:pt-10 lg:pb-24 lg:pt-12">
       {/* Soft green tint band */}
       <div className="pointer-events-none absolute inset-0 -z-10 bg-gradient-to-b from-brand-emerald/5 via-transparent to-transparent" />
       <div aria-hidden className="pointer-events-none absolute right-10 top-20 h-32 w-32 rounded-full bg-brand-emerald/15 blur-3xl animate-float-soft" />
@@ -81,41 +70,6 @@ export function GreenSection() {
           {g.pledge.map((it, i) => {
             const Icon = pledgeIcons[i]
             const t = pledgeThemes[i]
-            return (
-              <motion.article
-                key={it.title}
-                initial={{ opacity: 0, y: 30 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: '-60px' }}
-                transition={{ delay: i * 0.08, duration: 0.5 }}
-                className={`lift-hover noise-overlay group rounded-3xl border border-ink/5 bg-white/80 p-5 shadow-sm backdrop-blur transition-all duration-300 ${t.card}`}
-              >
-                <span className={`grid h-11 w-11 place-items-center rounded-2xl ${t.icon} transition-transform group-hover:scale-110`}>
-                  <Icon className="h-5 w-5" />
-                </span>
-                <h4 className="mt-4 font-bold text-ink">{it.title}</h4>
-                <p className="mt-1.5 text-sm leading-relaxed text-ink/60">{it.desc}</p>
-              </motion.article>
-            )
-          })}
-        </div>
-
-        {/* How we help restaurants */}
-        <motion.h3
-          initial={{ opacity: 0, x: -20 }}
-          whileInView={{ opacity: 1, x: 0 }}
-          viewport={{ once: true }}
-          transition={{ duration: 0.5 }}
-          className="mt-16 mb-5 flex items-center gap-2 font-serif text-2xl font-bold text-ink"
-        >
-          <span className="status-dot bg-brand-rose" />
-          <RefreshCw className="h-6 w-6 text-brand-rose" />
-          {g.helpTitle}
-        </motion.h3>
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {g.help.map((it, i) => {
-            const Icon = helpIcons[i]
-            const t = helpThemes[i]
             return (
               <motion.article
                 key={it.title}

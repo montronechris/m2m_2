@@ -11,6 +11,7 @@ import {
   ChevronDown,
   Shield,
   Leaf,
+  Users,
   Play,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
@@ -25,7 +26,6 @@ import {
 import { cn } from '@/lib/utils'
 import { useI18n } from '@/components/i18n/I18nProvider'
 import { LanguageSwitcher } from './LanguageSwitcher'
-import { PromoCountdown } from './PromoCountdown'
 
 export function Header() {
   const { tr } = useI18n()
@@ -42,7 +42,6 @@ export function Header() {
 
   const navLinks = [
     { label: n.features, href: '/#funzioni' },
-    { label: n.how, href: '/#come-funziona' },
     { label: n.reviews, href: '/#recensioni' },
     { label: n.pricing, href: '/#prezzi' },
   ]
@@ -50,6 +49,7 @@ export function Header() {
   const discoverLinks = [
     { label: n.discoverSecurity, href: '/security', icon: Shield, color: 'text-brand-sky' },
     { label: n.discoverGreen, href: '/green', icon: Leaf, color: 'text-brand-emerald' },
+    { label: n.discoverAbout, href: '/chi-siamo', icon: Users, color: 'text-brand-violet' },
   ]
 
   return (
@@ -95,7 +95,7 @@ export function Header() {
             ))}
 
             {/* Discover more dropdown */}
-            <DropdownMenu>
+            <DropdownMenu modal={false}>
               <DropdownMenuTrigger asChild>
                 <button className="link-underline flex items-center gap-1 rounded-lg px-3 py-2 text-sm font-medium text-ink/70 transition hover:bg-ink/5 hover:text-ink">
                   {n.discover}
@@ -115,8 +115,8 @@ export function Header() {
                         href={d.href}
                         className="flex cursor-pointer items-center gap-2.5 rounded-xl px-2.5 py-2"
                       >
-                        <span className={cn('grid h-8 w-8 place-items-center rounded-lg bg-ink/5', d.color)}>
-                          <Icon className="h-4 w-4" />
+                        <span className="grid h-8 w-8 place-items-center rounded-lg bg-ink/5">
+                          <Icon className={cn('h-4 w-4', d.color)} />
                         </span>
                         <span className="flex-1 text-sm font-medium text-ink">{d.label}</span>
                         <ArrowRight className="h-3.5 w-3.5 text-ink/30" />
@@ -159,11 +159,6 @@ export function Header() {
               {open ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
             </button>
           </div>
-        </div>
-
-        {/* Promo countdown — sits just below the nav bar, still inside the fixed stack */}
-        <div className="mt-2">
-          <PromoCountdown />
         </div>
 
         {/* Mobile menu */}
@@ -228,7 +223,7 @@ export function Header() {
                 </Button>
                 <Button
                   asChild
-                  className="lift-hover mt-2 gap-1.5 rounded-full bg-ink font-semibold text-white hover:bg-ink/90"
+                  className="lift-hover mt-2 gap-1.5 rounded-full bg-brand-emerald font-semibold text-white hover:bg-brand-emerald/90"
                 >
                   <Link href="/login" onClick={() => setOpen(false)}>
                     {n.loginRegister}
