@@ -20,6 +20,7 @@ export interface RestaurantData {
   id: string;
   name: string;
   logo_url: string | null;
+  brand_color: string | null;
   status: string;
   plan: string | null;
   access_expires_at: string | null;
@@ -36,6 +37,7 @@ export interface OrderItem {
   quantity: number;
   unit_price_cents: number;
   customizations: any;
+  note?: string | null;
   portata: number;
   portata_completed?: boolean;
   portata_delivered?: boolean;
@@ -64,7 +66,10 @@ export const getPortataState = (items: OrderItem[]): PortataState => {
   return "in_preparazione";
 };
 
-export type OrderStatus = "pending" | "confirmed" | "preparing" | "ready" | "served" | "delivered" | "cancelled";
+// NB: lo stato "in preparazione" nel runtime dell'app è "cooking" (usato da
+// OrdersSection, WaiterSection, pagina cliente /status, API active-orders e dalle
+// policy RLS realtime). "preparing" resta per retro-compatibilità con vecchi record/API.
+export type OrderStatus = "pending" | "confirmed" | "cooking" | "preparing" | "ready" | "served" | "delivered" | "cancelled";
 
 export interface Order {
   id: string;
@@ -223,7 +228,7 @@ export const getOrders = async (restaurantId: string): Promise<Order[]> => {
   const { data: items, error: itemsErr } = await supabase
     .from("order_items")
     .select(
-      "id, order_id, menu_item_id, quantity, base_price, customizations, name_snapshot, name, portata, portata_completed, portata_delivered, delivered_at, delivered_by, picked_up_at, picked_up_by"
+      "id, order_id, menu_item_id, quantity, base_price, customizations, name_snapshot, name, note, portata, portata_completed, portata_delivered, delivered_at, delivered_by, picked_up_at, picked_up_by"
     )
     .in("order_id", orderIds);
   if (itemsErr) throw itemsErr;
@@ -302,20 +307,10 @@ export const markPortataDelivered = async (orderId: string, portata: number, pro
     .eq("portata", portata);
   if (error) throw error;
 
-  // Se tutte le portate sono consegnate → ordine → served
-  const { data: allItems } = await supabase
-    .from("order_items")
-    .select("portata_delivered")
-    .eq("order_id", orderId);
-  const allDelivered = (allItems ?? []).length > 0 && (allItems ?? []).every(it => it.portata_delivered);
-  if (allDelivered) {
-    const { error: statusError } = await supabase
-      .from("orders")
-      .update({ status: "served", updated_at: new Date().toISOString() })
-      .eq("id", orderId)
-      .in("status", ["confirmed", "cooking", "ready"]);
-    if (statusError) console.error("[markPortataDelivered] status→served:", statusError);
-  }
+  // NB: l'ordine NON passa a "served" qui, anche se tutte le portate sono
+  // consegnate: "served" indica che tutte le portate sono state RITIRATE
+  // (vedi markPortataPickedUp). Impostarlo già alla consegna faceva sparire
+  // l'ordine dalla lista "da ritirare" del Cameriere prima del ritiro reale.
 };
 
 /**
@@ -710,7 +705,7 @@ export const uploadMenuItemPhoto = async (
 
 export const updateUserProfile = async (
   userId: string,
-  updates: { first_name?: string; last_name?: string }
+  updates: { first_name?: string; last_name?: string; avatar_url?: string | null }
 ): Promise<void> => {
   const supabase = getSupabase();
   const { error } = await supabase
@@ -915,7 +910,7 @@ export const getReadyOrders = async (restaurantId: string): Promise<Order[]> => 
   const { data: items } = await supabase
     .from("order_items")
     .select(
-      "id, order_id, menu_item_id, quantity, base_price, name_snapshot, name, portata, portata_completed, portata_delivered, delivered_at, delivered_by, picked_up_at, picked_up_by"
+      "id, order_id, menu_item_id, quantity, base_price, name_snapshot, name, note, portata, portata_completed, portata_delivered, delivered_at, delivered_by, picked_up_at, picked_up_by"
     )
     .in("order_id", orderIds)
     .eq("portata_completed", true)

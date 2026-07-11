@@ -1,7 +1,7 @@
 // src/components/client/scan/ScanInstructions.tsx
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, Sparkles, ShoppingCart, Layers2, Star } from "lucide-react";
 import { useI18n } from "@/components/i18n/I18nProvider";
@@ -26,6 +26,8 @@ export function ScanInstructions({
   const t = tr.client.scan;
   const [confirmed, setConfirmed] = useState(false);
   const [ticked, setTicked] = useState(false);
+  const [showCheckboxError, setShowCheckboxError] = useState(false);
+  const checkboxCardRef = useRef<HTMLLabelElement>(null);
 
   const STEPS = [
     { number: "1", title: t.step1Title, description: t.step1Desc, icon: (color: string) => <ShoppingCart size={22} color={color} strokeWidth={1.8} /> },
@@ -39,21 +41,30 @@ export function ScanInstructions({
 
   const brand = primaryColor ?? "#1A3D2B";
   const canContinue = ready && confirmed;
+  const errorColor = "#E0473E";
 
   function handleContinue() {
-    if (!canContinue) return;
+    if (!ready) return;
+    if (!confirmed) {
+      setShowCheckboxError(true);
+      checkboxCardRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+      return;
+    }
     setTicked(true);
     setTimeout(onContinue, 600);
+  }
+
+  function handleCheckboxToggle() {
+    setConfirmed(v => !v);
+    setShowCheckboxError(false);
   }
 
   return (
     <div
       style={{
-        minHeight: "100dvh",
-        backgroundImage: "url('/food-bg.jpg')",
-        backgroundSize: "cover",
-        backgroundPosition: "center top",
-        backgroundRepeat: "no-repeat",
+        position: "relative",
+        height: "100dvh",
+        overflow: "hidden",
         fontFamily: "'Inter', system-ui, sans-serif",
         display: "flex",
         flexDirection: "column",
@@ -61,13 +72,35 @@ export function ScanInstructions({
     >
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=Inter:wght@400;500;600;700&display=swap');
+        @keyframes shakeError {
+          10%, 90% { transform: translateX(-1px); }
+          20%, 80% { transform: translateX(2px); }
+          30%, 50%, 70% { transform: translateX(-4px); }
+          40%, 60% { transform: translateX(4px); }
+        }
       `}</style>
+
+      {/* Fixed background layer — stays put while the content scrolls */}
+      <div
+        style={{
+          position: "fixed",
+          inset: 0,
+          backgroundImage: "url('/food-bg.jpg')",
+          backgroundSize: "cover",
+          backgroundPosition: "center top",
+          backgroundRepeat: "no-repeat",
+          zIndex: 0,
+        }}
+      />
 
       {/* Scrollable content area */}
       <div
         style={{
+          position: "relative",
+          zIndex: 1,
           flex: 1,
           overflowY: "auto",
+          WebkitOverflowScrolling: "touch",
           padding: "28px 24px 0",
           maxWidth: 480,
           width: "100%",
@@ -250,9 +283,16 @@ export function ScanInstructions({
 
         {/* Checkbox card */}
         <motion.label
+          ref={checkboxCardRef}
           initial={{ opacity: 0, x: -12 }}
-          animate={{ opacity: 1, x: 0 }}
-          transition={{ duration: 0.4, delay: 0.85 }}
+          animate={{
+            opacity: 1,
+            x: showCheckboxError ? [0, -4, 4, -4, 4, 0] : 0,
+          }}
+          transition={{
+            duration: showCheckboxError ? 0.4 : 0.4,
+            delay: showCheckboxError ? 0 : 0.85,
+          }}
           style={{
             display: "flex",
             alignItems: "flex-start",
@@ -262,8 +302,11 @@ export function ScanInstructions({
             background: "#fff",
             borderRadius: 20,
             padding: "14px 18px",
-            marginBottom: 20,
-            boxShadow: "0 2px 16px rgba(0,0,0,0.07)",
+            marginBottom: showCheckboxError ? 8 : 20,
+            boxShadow: showCheckboxError
+              ? `0 0 0 2px ${errorColor}, 0 2px 16px rgba(0,0,0,0.07)`
+              : "0 2px 16px rgba(0,0,0,0.07)",
+            transition: "box-shadow 0.2s ease-out, margin-bottom 0.2s ease-out",
           }}
         >
           <motion.div
@@ -274,7 +317,7 @@ export function ScanInstructions({
               width: 20,
               height: 20,
               borderRadius: "50%",
-              border: `2px solid ${confirmed ? brand : "#B5A898"}`,
+              border: `2px solid ${confirmed ? brand : showCheckboxError ? errorColor : "#B5A898"}`,
               background: confirmed ? brand : "transparent",
               boxShadow: confirmed ? `0 0 0 4px ${brand}26` : "none",
               flexShrink: 0,
@@ -284,7 +327,7 @@ export function ScanInstructions({
               justifyContent: "center",
               transition: "background 0.2s ease-out, border-color 0.2s ease-out, box-shadow 0.2s ease-out",
             }}
-            onClick={() => setConfirmed(v => !v)}
+            onClick={handleCheckboxToggle}
           >
             <svg
               width="12"
@@ -300,10 +343,29 @@ export function ScanInstructions({
               <path d="M2 6l3 3 5-6" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
             </svg>
           </motion.div>
-          <span style={{ fontSize: 14, color: "#3D3530", lineHeight: 1.5 }}>
+          <span style={{ fontSize: 14, color: showCheckboxError ? errorColor : "#3D3530", lineHeight: 1.5 }}>
             {t.readAndReady}
           </span>
         </motion.label>
+
+        <AnimatePresence>
+          {showCheckboxError && (
+            <motion.p
+              initial={{ opacity: 0, y: -4, height: 0 }}
+              animate={{ opacity: 1, y: 0, height: "auto" }}
+              exit={{ opacity: 0, y: -4, height: 0 }}
+              transition={{ duration: 0.2 }}
+              style={{
+                fontSize: 13,
+                fontWeight: 600,
+                color: errorColor,
+                margin: "0 0 20px 4px",
+              }}
+            >
+              {t.checkboxRequired}
+            </motion.p>
+          )}
+        </AnimatePresence>
       </div>
 
       {/* Sticky CTA */}
@@ -312,6 +374,8 @@ export function ScanInstructions({
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.45, delay: 0.95 }}
         style={{
+          position: "relative",
+          zIndex: 1,
           padding: "0 24px max(28px, env(safe-area-inset-bottom))",
           maxWidth: 480,
           width: "100%",
@@ -322,8 +386,8 @@ export function ScanInstructions({
         <motion.button
           type="button"
           onClick={handleContinue}
-          disabled={!canContinue || ticked}
-          whileTap={canContinue && !ticked ? { scale: 0.97 } : undefined}
+          disabled={!ready || ticked}
+          whileTap={ready && !ticked ? { scale: 0.97 } : undefined}
           style={{
             width: "100%",
             background: !canContinue ? `${brand}80` : brand,
@@ -335,7 +399,7 @@ export function ScanInstructions({
             fontWeight: 700,
             letterSpacing: "0.1em",
             textTransform: "uppercase",
-            cursor: canContinue && !ticked ? "pointer" : "default",
+            cursor: ready && !ticked ? "pointer" : "default",
             transition: "background 0.25s",
             display: "flex",
             alignItems: "center",

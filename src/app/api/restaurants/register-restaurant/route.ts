@@ -2,7 +2,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase-server";
-import { sanitizeCode, isCodeExpired, isCodeUsed } from "@/lib/invite-code";
+import { sanitizeCode, isCodeExpired } from "@/lib/invite-code";
 import { createClient } from "@supabase/supabase-js";
 
 const RegisterSchema = z.object({
@@ -29,16 +29,44 @@ export async function POST(req: Request) {
   const { inviteCode, email, password, firstName, lastName, restaurantName } = parsed.data;
   const code = sanitizeCode(inviteCode);
 
-  // 1. Verifica codice invito — ora leggiamo anche plan, access_duration_days, max_staff
-  const { data: invite, error: inviteError } = await supabaseServer
+  // 1. Reclamiamo il codice invito atomicamente (used_at passa da null a "adesso" in
+  // un'unica query condizionale): se due richieste arrivano in parallelo con lo stesso
+  // codice, solo una riesce a fare l'update e ottiene la riga; l'altra riceve `invite === null`.
+  const { data: invite, error: claimError } = await supabaseServer
     .from("invite_codes")
-    .select("id, expires_at, used_at, plan, access_duration_days, max_staff")
+    .update({ used_at: new Date().toISOString(), used_by_email: email.toLowerCase() })
     .eq("code", code)
-    .single();
+    .is("used_at", null)
+    .select("id, expires_at, plan, access_duration_days, max_staff")
+    .maybeSingle();
 
-  if (inviteError || !invite)           return NextResponse.json({ error: "Codice invito non valido." }, { status: 400 });
-  if (isCodeExpired(invite.expires_at)) return NextResponse.json({ error: "Codice invito scaduto." }, { status: 400 });
-  if (isCodeUsed(invite.used_at))       return NextResponse.json({ error: "Codice invito già utilizzato." }, { status: 400 });
+  if (claimError) {
+    return NextResponse.json({ error: "Errore nella verifica del codice." }, { status: 500 });
+  }
+
+  if (!invite) {
+    const { data: existing } = await supabaseServer
+      .from("invite_codes")
+      .select("used_at")
+      .eq("code", code)
+      .maybeSingle();
+
+    if (!existing) {
+      return NextResponse.json({ error: "Codice invito non valido." }, { status: 400 });
+    }
+    return NextResponse.json({ error: "Codice invito già utilizzato." }, { status: 400 });
+  }
+
+  const releaseClaim = () =>
+    supabaseServer
+      .from("invite_codes")
+      .update({ used_at: null, used_by_email: null })
+      .eq("id", invite.id);
+
+  if (isCodeExpired(invite.expires_at)) {
+    await releaseClaim();
+    return NextResponse.json({ error: "Codice invito scaduto." }, { status: 400 });
+  }
 
   // 2. Client admin
   const supabaseAdmin = createClient(
@@ -56,6 +84,7 @@ export async function POST(req: Request) {
   });
 
   if (authError || !authData.user) {
+    await releaseClaim();
     if (authError?.message?.toLowerCase().includes("already")) {
       return NextResponse.json({ error: "Email già registrata." }, { status: 409 });
     }
@@ -93,6 +122,7 @@ export async function POST(req: Request) {
 
   if (restError || !restaurant) {
     await supabaseAdmin.auth.admin.deleteUser(userId);
+    await releaseClaim();
     return NextResponse.json({ error: restError?.message ?? "Errore durante la creazione del ristorante." }, { status: 500 });
   }
 
@@ -110,14 +140,9 @@ export async function POST(req: Request) {
   if (profileError) {
     await supabaseAdmin.from("restaurants").delete().eq("id", restaurant.id);
     await supabaseAdmin.auth.admin.deleteUser(userId);
+    await releaseClaim();
     return NextResponse.json({ error: profileError.message ?? "Errore durante la creazione del profilo." }, { status: 500 });
   }
-
-  // 6. Marca il codice invito come usato
-  await supabaseAdmin
-    .from("invite_codes")
-    .update({ used_at: new Date().toISOString(), used_by_email: email.toLowerCase() })
-    .eq("id", invite.id);
 
   return NextResponse.json({ ok: true }, { status: 201 });
 }

@@ -1,19 +1,21 @@
 // src/app/(client)/status/[sessionId]/page.tsx
 "use client";
 
-import React, { useEffect, useState, useCallback, useRef } from "react";
+import React, { useEffect, useState, useCallback, useRef, useMemo } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
-import { motion, AnimatePresence, useAnimation } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import {
-  Clock, Loader2, ChefHat, CheckCircle, Utensils, Bell, ArrowRight,
+  Clock, Loader2, ChefHat, CheckCircle, Utensils, Bell, ArrowRight, UtensilsCrossed, ChevronRight,
 } from "lucide-react";
 import type { Palette } from "@/components/client/order/palette";
 
 import { getTableSession } from "@/lib/table-session";
 import { useCartStore } from "@/stores/useCartStore";
 import { useI18n } from "@/components/i18n/I18nProvider";
+import EndScreenExperience from "@/components/client/order/EndScreenExperience";
+import { setEndScreenActive } from "@/lib/end-screen-signal";
 
 const supabase = createBrowserClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -40,6 +42,8 @@ type OrderItem = {
   image_url:      string | null;
   customizations: CartCustomization[];
   delivered_at?:  string | null;
+  picked_up_at?:  string | null;
+  portata_delivered?: boolean;
 };
 
 type Order = {
@@ -76,6 +80,22 @@ const formatPrice = (cents: number) =>
   (cents / 100).toFixed(2).replace(".", ",");
 
 const shortId = (id: string) => id.slice(-4).toUpperCase();
+
+// Brand color → rgba
+const brandAlpha = (hex: string, a: number) => {
+  const h = hex.replace("#", "");
+  const r = parseInt(h.slice(0, 2), 16);
+  const g = parseInt(h.slice(2, 4), 16);
+  const b = parseInt(h.slice(4, 6), 16);
+  return `rgba(${r},${g},${b},${a})`;
+};
+
+// Mix two hex colors
+const mixHex = (h1: string, h2: string, t: number) => {
+  const p = (h: string) => { const x = h.replace("#",""); return [parseInt(x.slice(0,2),16), parseInt(x.slice(2,4),16), parseInt(x.slice(4,6),16)]; };
+  const [r1,g1,b1] = p(h1), [r2,g2,b2] = p(h2);
+  return "#"+[r1+(r2-r1)*t, g1+(g2-g1)*t, b1+(b2-b1)*t].map(v => Math.round(v).toString(16).padStart(2,"0")).join("");
+};
 
 // ─── STATUS STEP MODEL ────────────────────────────────────────────────────────
 
@@ -145,22 +165,24 @@ function themeTokens(isDark: boolean) {
         borderSoft:    "rgba(255,255,255,0.05)",
         chipBg:        "rgba(255,255,255,0.06)",
         chipBorder:    "rgba(255,255,255,0.08)",
-        cardShadow:    "0 1px 3px rgba(0,0,0,0.5)",
+        cardShadow:    "0 4px 24px -8px rgba(0,0,0,0.6)",
+        cardShadowLg:  "0 16px 48px -12px rgba(0,0,0,0.7)",
         blobOpacity:   0.25,
       }
     : {
         pageBg:        undefined as string | undefined,
         surface:       "#ffffff",
-        surfaceAlt:    "#faf8f3",
+        surfaceAlt:    "#fafaf9",
         surfaceSoft:   "rgba(0,0,0,0.02)",
         ink:           "#1c1917",
-        inkMuted:      "#78716c",
+        inkMuted:      "#57534e",
         inkSoft:       "#a8a29e",
-        border:        "rgba(0,0,0,0.07)",
-        borderSoft:    "rgba(0,0,0,0.05)",
+        border:        "rgba(0,0,0,0.06)",
+        borderSoft:    "rgba(0,0,0,0.04)",
         chipBg:        "rgba(0,0,0,0.03)",
-        chipBorder:    "rgba(0,0,0,0.08)",
-        cardShadow:    "0 1px 2px rgba(28,25,23,0.04), 0 8px 24px -10px rgba(28,25,23,0.10)",
+        chipBorder:    "rgba(0,0,0,0.06)",
+        cardShadow:    "0 1px 2px rgba(28,25,23,0.04), 0 8px 24px -8px rgba(28,25,23,0.08)",
+        cardShadowLg:  "0 4px 16px -4px rgba(28,25,23,0.06), 0 24px 48px -16px rgba(28,25,23,0.12)",
         blobOpacity:   0.55,
       };
 }
@@ -197,14 +219,11 @@ function HeroCard({
     : null;
 
   const etaFallback = mostAdvanced ? STATUS_ETA_LOC[mostAdvanced.status] : "—";
-  // Tempo rimanente stimato per la portata attiva: tempo medio di consegna
-  // meno i minuti già trascorsi da quando questa portata è "iniziata"
-  // (conferma ordine per la prima portata, consegna della precedente per le altre).
   const remainingMinutes = (() => {
     if (avgMinutes === null || !activePortataStartedAt) return null;
     const elapsed = Math.floor((Date.now() - new Date(activePortataStartedAt).getTime()) / 60000);
     const remaining = avgMinutes - elapsed;
-    return remaining > 0 ? remaining : null; // se il tempo è scaduto, niente countdown — fallback sotto
+    return remaining > 0 ? remaining : null;
   })();
   const eta = mostAdvanced && mostAdvanced.status !== "completed" && mostAdvanced.status !== "ready"
     ? (remainingMinutes !== null ? `~${remainingMinutes} min` : (avgMinutes !== null ? tS.arriving : etaFallback))
@@ -212,54 +231,74 @@ function HeroCard({
   const statusLabel = mostAdvanced ? STATUS_LABEL_LOC[mostAdvanced.status] : tS.waiting;
   const isCompleted = currentStep === 3;
 
-  // progress bar width based on step (0–3)
-  const barPct = Math.min(100, (currentStep / 3) * 100);
+  const brandDark = mixHex(brand, "#000000", 0.35);
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: -12 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="mx-4 mb-5 mt-4 overflow-hidden rounded-[22px]"
+      initial={{ opacity: 0, y: -16, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -12, scale: 0.98 }}
+      transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
+      className="mx-4 mb-5 mt-4 overflow-hidden rounded-[28px] relative"
       style={{
-        background: brand,
-        boxShadow: `0 8px 32px -6px ${brand}88`,
+        background: `linear-gradient(135deg, ${brand} 0%, ${mixHex(brand, "#000000", 0.15)} 100%)`,
+        boxShadow: `0 24px 60px -16px ${brandAlpha(brand, 0.55)}, 0 4px 16px -4px rgba(0,0,0,0.1)`,
       }}
     >
-      <div className="px-4 pt-3 pb-4">
-        {/* LIVE chip */}
-        <div className="mb-2 flex items-center justify-between">
-          <span
-            className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-semibold"
-            style={{ background: "rgba(255,255,255,0.18)", color: "#fff" }}
+      {/* Pattern decorativo */}
+      <div aria-hidden style={{
+        position: "absolute", top: -60, right: -40,
+        width: 180, height: 180, borderRadius: "50%",
+        background: "rgba(255,255,255,0.14)", filter: "blur(50px)", pointerEvents: "none",
+      }} />
+      <div aria-hidden style={{
+        position: "absolute", bottom: -40, left: -30,
+        width: 120, height: 120, borderRadius: "50%",
+        background: "rgba(0,0,0,0.12)", filter: "blur(40px)", pointerEvents: "none",
+      }} />
+
+      <div className="relative px-5 pt-5 pb-5">
+        {/* Header row: LIVE chip + time */}
+        <div className="mb-4 flex items-center justify-between">
+          <motion.span
+            initial={{ opacity: 0, x: -8 }}
+            animate={{ opacity: 1, x: 0 }}
+            transition={{ duration: 0.4, delay: 0.15 }}
+            className="inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[10px] font-bold tracking-wider uppercase"
+            style={{ background: "rgba(255,255,255,0.22)", color: "#fff", backdropFilter: "blur(8px)", border: "1px solid rgba(255,255,255,0.18)" }}
           >
-            <span
-              style={{
-                width: 6, height: 6, borderRadius: "50%",
-                background: "#6ee7b7",
-                display: "inline-block",
-                animation: "livePulse 2s ease-in-out infinite",
-              }}
-            />
-            LIVE
-          </span>
+            <span style={{
+              width: 6, height: 6, borderRadius: "50%",
+              background: "#6ee7b7",
+              display: "inline-block",
+              boxShadow: "0 0 8px #6ee7b7, 0 0 4px #6ee7b7",
+              animation: "livePulse 1.8s ease-in-out infinite",
+            }} />
+            Live
+          </motion.span>
           {mostAdvanced && (
-            <span style={{ color: "rgba(255,255,255,0.65)", fontSize: 11 }}>
+            <motion.span
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.2 }}
+              style={{ color: "rgba(255,255,255,0.75)", fontSize: 11, fontWeight: 600, fontVariantNumeric: "tabular-nums" }}
+            >
               {formatTime(mostAdvanced._displayTime || mostAdvanced.created_at)}
-            </span>
+            </motion.span>
           )}
         </div>
 
-        <div className="flex items-start justify-between">
-          <div style={{ overflow: "hidden" }}>
+        {/* Main content: ETA + icon */}
+        <div className="flex items-end justify-between gap-3">
+          <div style={{ overflow: "hidden", flex: 1 }}>
             <AnimatePresence mode="wait" initial={false}>
               <motion.p
                 key={isCompleted ? "completato" : activePortataNum != null ? `avanzamento-${activePortataNum}` : "stimato"}
-                initial={{ opacity: 0, y: 6 }}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.25 }}
-                style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, marginBottom: 2 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                style={{ color: "rgba(255,255,255,0.8)", fontSize: 11, marginBottom: 4, fontWeight: 600, letterSpacing: "0.04em", textTransform: "uppercase" }}
               >
                 {isCompleted ? tS.completedTitle : activePortataNum != null ? `${tS.progressCourse} ${activePortataNum}` : tS.estimatedTime}
               </motion.p>
@@ -268,17 +307,18 @@ function HeroCard({
             <AnimatePresence mode="wait" initial={false}>
               <motion.p
                 key={eta}
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -10 }}
-                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                initial={{ opacity: 0, y: 14, filter: "blur(6px)" }}
+                animate={{ opacity: 1, y: 0, filter: "blur(0px)" }}
+                exit={{ opacity: 0, y: -14, filter: "blur(6px)" }}
+                transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
                 style={{
                   color: "#fff",
-                  fontSize: 32,
+                  fontSize: 38,
                   fontWeight: 800,
-                  lineHeight: 1,
+                  lineHeight: 0.95,
                   fontFamily: "'Space Grotesk', sans-serif",
-                  letterSpacing: "-0.03em",
+                  letterSpacing: "-0.04em",
+                  textShadow: "0 2px 16px rgba(0,0,0,0.18)",
                 }}
               >
                 {eta}
@@ -288,58 +328,124 @@ function HeroCard({
             <AnimatePresence mode="wait" initial={false}>
               <motion.p
                 key={statusLabel}
-                initial={{ opacity: 0, y: 6 }}
+                initial={{ opacity: 0, y: 8 }}
                 animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0, y: -6 }}
-                transition={{ duration: 0.25 }}
-                style={{ color: "rgba(255,255,255,0.72)", fontSize: 12, marginTop: 3 }}
+                exit={{ opacity: 0, y: -8 }}
+                transition={{ duration: 0.28 }}
+                style={{ color: "rgba(255,255,255,0.85)", fontSize: 13, marginTop: 6, fontWeight: 500 }}
               >
                 {statusLabel}
               </motion.p>
             </AnimatePresence>
           </div>
 
-          {/* Circle icon */}
-          <div style={{
-            width: 44, height: 44,
-            borderRadius: "50%",
-            border: "2px solid rgba(255,255,255,0.30)",
-            background: "rgba(255,255,255,0.12)",
-            display: "flex", alignItems: "center", justifyContent: "center",
-            flexShrink: 0,
-            overflow: "hidden",
-          }}>
+          {/* Icon circle */}
+          <motion.div
+            initial={{ scale: 0.5, opacity: 0, rotate: -20 }}
+            animate={{ scale: 1, opacity: 1, rotate: 0 }}
+            transition={{ duration: 0.55, delay: 0.2, ease: [0.34, 1.56, 0.64, 1] }}
+            style={{
+              width: 56, height: 56,
+              borderRadius: "50%",
+              background: "rgba(255,255,255,0.22)",
+              border: "2px solid rgba(255,255,255,0.4)",
+              backdropFilter: "blur(10px)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+              flexShrink: 0,
+              boxShadow: "0 8px 24px -4px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.3)",
+            }}
+          >
             <AnimatePresence mode="wait" initial={false}>
               <motion.div
                 key={currentStep}
-                initial={{ opacity: 0, scale: 0.6, rotate: -15 }}
+                initial={{ opacity: 0, scale: 0.4, rotate: -30 }}
                 animate={{ opacity: 1, scale: 1, rotate: 0 }}
-                exit={{ opacity: 0, scale: 0.6, rotate: 15 }}
-                transition={{ duration: 0.3, ease: [0.22, 1, 0.36, 1] }}
+                exit={{ opacity: 0, scale: 0.4, rotate: 30 }}
+                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
               >
                 {isCompleted
-                  ? <CheckCircle style={{ width: 24, height: 24, color: "#fff" }} />
+                  ? <CheckCircle style={{ width: 28, height: 28, color: "#fff" }} />
                   : currentStep === 2
-                  ? <Bell style={{ width: 24, height: 24, color: "#fff" }} />
+                  ? <Bell style={{ width: 28, height: 28, color: "#fff" }} />
                   : currentStep === 1
-                  ? <ChefHat style={{ width: 24, height: 24, color: "#fff" }} />
-                  : <Clock style={{ width: 24, height: 24, color: "#fff" }} />
+                  ? <ChefHat style={{ width: 28, height: 28, color: "#fff" }} />
+                  : <Clock style={{ width: 28, height: 28, color: "#fff" }} />
                 }
               </motion.div>
             </AnimatePresence>
-          </div>
+          </motion.div>
         </div>
 
-        {/* 4-step segmented bar */}
-        <div style={{ marginTop: 12, display: "flex", gap: 4 }}>
-          {[0, 1, 2, 3].map(step => (
-            <motion.div
-              key={step}
-              initial={false}
-              animate={{ background: step <= currentStep ? "#6ee7b7" : "rgba(255,255,255,0.20)" }}
-              transition={{ duration: 0.4 }}
-              style={{ flex: 1, height: 6, borderRadius: 3 }}
-            />
+        {/* 4-step segmented progress */}
+        <div style={{ marginTop: 18, display: "flex", gap: 6 }}>
+          {[0, 1, 2, 3].map(step => {
+            const isActive = step <= currentStep;
+            const isCurrent = step === currentStep;
+            return (
+              <div key={step} style={{ flex: 1, position: "relative", height: 8 }}>
+                {/* Track */}
+                <div style={{
+                  position: "absolute", inset: 0,
+                  background: "rgba(255,255,255,0.18)",
+                  borderRadius: 4, overflow: "hidden",
+                }} />
+                {/* Fill */}
+                <motion.div
+                  initial={false}
+                  animate={{
+                    width: isActive ? "100%" : "0%",
+                    opacity: isActive ? 1 : 0,
+                  }}
+                  transition={{ duration: 0.5, delay: step * 0.08, ease: [0.22, 1, 0.36, 1] }}
+                  style={{
+                    position: "absolute", inset: 0,
+                    background: isCurrent
+                      ? "linear-gradient(90deg, #fff, rgba(255,255,255,0.85))"
+                      : "#fff",
+                    borderRadius: 4,
+                    boxShadow: isActive ? "0 0 12px rgba(255,255,255,0.5)" : "none",
+                  }}
+                />
+                {/* Pulse dot on current */}
+                {isCurrent && (
+                  <motion.div
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
+                    transition={{ delay: 0.4, type: "spring", stiffness: 300 }}
+                    style={{
+                      position: "absolute", right: -3, top: -3,
+                      width: 14, height: 14, borderRadius: "50%",
+                      background: "#fff",
+                      boxShadow: "0 0 0 3px rgba(255,255,255,0.3), 0 0 12px rgba(255,255,255,0.6)",
+                    }}
+                  >
+                    <motion.div
+                      animate={{ scale: [1, 1.6, 1], opacity: [0.6, 0, 0.6] }}
+                      transition={{ duration: 2, repeat: Infinity, ease: "easeInOut" }}
+                      style={{
+                        position: "absolute", inset: 0, borderRadius: "50%",
+                        background: "#fff",
+                      }}
+                    />
+                  </motion.div>
+                )}
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Step labels */}
+        <div style={{ marginTop: 8, display: "flex", gap: 6 }}>
+          {["1", "2", "3", "4"].map((_, i) => (
+            <div key={i} style={{ flex: 1, textAlign: "center" }}>
+              <span style={{
+                fontSize: 9, fontWeight: 700, letterSpacing: "0.05em",
+                color: i <= currentStep ? "rgba(255,255,255,0.95)" : "rgba(255,255,255,0.4)",
+                textTransform: "uppercase",
+              }}>
+                {i === 0 ? tS.waiting : i === 1 ? tS.inPreparation : i === 2 ? tS.inDelivery : tS.served}
+              </span>
+            </div>
           ))}
         </div>
       </div>
@@ -365,7 +471,6 @@ function ProgressSteps({
   const tS = tr.client.status;
   const STEP_META = getStepMeta(tS);
 
-  // Map step → timestamp from orders
   const stepTime: Partial<Record<StepIdx, string>> = {};
   for (const o of orders) {
     const s = STATUS_TO_STEP[o.status];
@@ -377,19 +482,40 @@ function ProgressSteps({
 
   return (
     <motion.div
-      initial={{ opacity: 0, y: 10 }}
+      initial={{ opacity: 0, y: 14 }}
       animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.45, delay: 0.1, ease: [0.22, 1, 0.36, 1] }}
-      className="mx-4 mb-3 overflow-hidden rounded-[20px] px-4 pt-3 pb-1"
+      exit={{ opacity: 0, y: 10 }}
+      transition={{ duration: 0.5, delay: 0.12, ease: [0.22, 1, 0.36, 1] }}
+      className="mx-4 mb-3 overflow-hidden rounded-[24px] px-5 pt-5 pb-2"
       style={{
         background: t.surface,
         border: `1px solid ${t.border}`,
         boxShadow: t.cardShadow,
       }}
     >
-      <p className="mb-3 text-[13px] font-bold" style={{ color: t.inkMuted, letterSpacing: "0.04em", textTransform: "uppercase", fontSize: 11 }}>
-        Avanzamento
-      </p>
+      <div className="mb-5 flex items-center justify-between">
+        <motion.p
+          initial={{ opacity: 0, x: -6 }}
+          animate={{ opacity: 1, x: 0 }}
+          transition={{ duration: 0.4, delay: 0.2 }}
+          style={{ color: t.inkMuted, letterSpacing: "0.1em", textTransform: "uppercase", fontSize: 10, fontWeight: 700 }}
+        >
+          Avanzamento
+        </motion.p>
+        <motion.span
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ duration: 0.4, delay: 0.25 }}
+          style={{
+            fontSize: 10, fontWeight: 700, color: brand,
+            background: brandAlpha(brand, 0.1),
+            padding: "3px 8px", borderRadius: 20,
+            border: `1px solid ${brandAlpha(brand, 0.2)}`,
+          }}
+        >
+          {currentStep + 1}/4
+        </motion.span>
+      </div>
 
       <ol>
         {STEP_META.map(({ idx, label, desc, Icon }, i) => {
@@ -398,25 +524,27 @@ function ProgressSteps({
           const isPending = idx > currentStep;
           const isLast    = i === STEP_META.length - 1;
 
-          const circleColor  = isDone || isCurrent ? brand : isDark ? "#3a3633" : "#e7e5e4";
-          const iconColor    = isDone || isCurrent ? "#fff" : t.inkSoft;
-          const badgeLabel   = isDone || (isCurrent && isLast) ? "Fatto" : isCurrent ? "In corso" : null;
-          const badgeBg      = isDone ? `${brand}1a` : `${brand}15`;
-          const badgeText    = isDone || isCurrent ? brand : t.inkSoft;
-          const ts           = stepTime[idx];
-
           return (
-            <li key={idx} className="flex gap-3" style={{ position: "relative", paddingBottom: isLast ? 8 : 20 }}>
+            <motion.li
+              key={idx}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.4, delay: 0.15 + i * 0.08, ease: [0.22, 1, 0.36, 1] }}
+              className="flex gap-3.5"
+              style={{ position: "relative", paddingBottom: isLast ? 4 : 24 }}
+            >
               {/* Connector line */}
               {!isLast && (
                 <div
                   style={{
                     position: "absolute",
-                    left: 12,
-                    top: 26,
-                    bottom: 0,
+                    left: 15,
+                    top: 32,
+                    bottom: 4,
                     width: 2,
-                    background: isDone ? `${brand}55` : isDark ? "#2a2520" : "#f0ede8",
+                    background: isDone
+                      ? `linear-gradient(180deg, ${brand}, ${brandAlpha(brand, 0.3)})`
+                      : isDark ? "#2a2520" : "#f0ede8",
                     borderRadius: 1,
                   }}
                   aria-hidden
@@ -424,64 +552,90 @@ function ProgressSteps({
               )}
 
               {/* Step circle */}
-              <div
+              <motion.div
+                animate={{ scale: isCurrent ? 1.05 : 1 }}
+                transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
                 style={{
-                  width: 26, height: 26,
+                  width: 32, height: 32,
                   borderRadius: "50%",
-                  background: circleColor,
+                  background: isDone || isCurrent
+                    ? `linear-gradient(135deg, ${brand}, ${mixHex(brand, "#000000", 0.25)})`
+                    : isDark ? "#2a2520" : "#f5f5f4",
                   display: "flex", alignItems: "center", justifyContent: "center",
                   flexShrink: 0,
                   zIndex: 1,
-                  boxShadow: (isDone || isCurrent) ? `0 4px 12px -3px ${brand}60` : "none",
-                  transition: "background 0.3s",
+                  boxShadow: (isDone || isCurrent)
+                    ? `0 6px 18px -4px ${brandAlpha(brand, 0.5)}, 0 0 0 4px ${brandAlpha(brand, 0.12)}, inset 0 1px 0 rgba(255,255,255,0.25)`
+                    : `inset 0 1px 2px rgba(0,0,0,0.04)`,
+                  transition: "background 0.3s, box-shadow 0.3s",
+                  border: isDone || isCurrent ? "none" : `1px solid ${t.border}`,
                 }}
               >
                 {isDone
-                  ? <CheckCircle style={{ width: 14, height: 14, color: iconColor }} />
-                  : <Icon style={{ width: 13, height: 13, color: iconColor }} />
+                  ? <CheckCircle style={{ width: 16, height: 16, color: "#fff" }} />
+                  : <Icon style={{ width: 15, height: 15, color: isCurrent ? "#fff" : t.inkSoft }} />
                 }
-              </div>
+
+                {/* Pulse ring on current */}
+                {isCurrent && (
+                  <motion.div
+                    initial={{ scale: 1, opacity: 0.5 }}
+                    animate={{ scale: 1.5, opacity: 0 }}
+                    transition={{ duration: 1.8, repeat: Infinity, ease: "easeOut" }}
+                    style={{
+                      position: "absolute", inset: -2, borderRadius: "50%",
+                      border: `2px solid ${brand}`,
+                    }}
+                  />
+                )}
+              </motion.div>
 
               {/* Text */}
-              <div className="flex-1" style={{ paddingTop: 2 }}>
+              <div className="flex-1" style={{ paddingTop: 3 }}>
                 <div className="flex items-center justify-between gap-2">
                   <span
                     style={{
-                      fontSize: 13,
-                      fontWeight: isCurrent ? 700 : 500,
+                      fontSize: 14,
+                      fontWeight: isCurrent ? 700 : 600,
                       color: isPending ? t.inkSoft : t.ink,
+                      fontFamily: "'Space Grotesk', sans-serif",
+                      letterSpacing: "-0.01em",
                     }}
                   >
                     {label}
                   </span>
                   <div className="flex items-center gap-2 shrink-0">
-                    {badgeLabel && (
-                      <span
+                    {(isDone || isCurrent) && (
+                      <motion.span
+                        initial={{ opacity: 0, scale: 0.85 }}
+                        animate={{ opacity: 1, scale: 1 }}
+                        transition={{ duration: 0.3, delay: 0.25 + i * 0.08 }}
                         style={{
                           fontSize: 10,
                           fontWeight: 700,
-                          padding: "2px 8px",
+                          padding: "3px 9px",
                           borderRadius: 20,
-                          background: badgeBg,
-                          color: badgeText,
-                          border: `1px solid ${brand}33`,
+                          background: isDone ? brandAlpha(brand, 0.12) : brandAlpha(brand, 0.15),
+                          color: isDone ? mixHex(brand, "#000000", 0.2) : brand,
+                          border: `1px solid ${brandAlpha(brand, isDone ? 0.25 : 0.3)}`,
+                          letterSpacing: "0.02em",
                         }}
                       >
-                        {badgeLabel}
-                      </span>
+                        {isDone ? `✓ ${tS.completed}` : tS.badgeInProgress}
+                      </motion.span>
                     )}
-                    {ts && !isPending && (
-                      <span style={{ fontSize: 10, color: t.inkSoft }}>
-                        {formatTime(ts)}
+                    {stepTime[idx] && !isPending && (
+                      <span style={{ fontSize: 11, color: t.inkSoft, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
+                        {formatTime(stepTime[idx]!)}
                       </span>
                     )}
                   </div>
                 </div>
-                <p style={{ fontSize: 11, color: t.inkSoft, marginTop: 1 }}>
+                <p style={{ fontSize: 12, color: t.inkSoft, marginTop: 2, lineHeight: 1.45 }}>
                   {desc}
                 </p>
               </div>
-            </li>
+            </motion.li>
           );
         })}
       </ol>
@@ -508,36 +662,36 @@ function OrderSummaryCard({
   const { tr } = useI18n();
   const tS = tr.client.status;
   const [expanded, setExpanded] = React.useState(false);
-  const dragControls = useAnimation();
-
-  // animate={dragControls} è un controllo imperativo: senza questo effetto
-  // resterebbe bloccata sullo stato "initial" (opacity: 0) per sempre, dato
-  // che dragControls.start() viene altrimenti chiamato solo in onDragEnd.
-  useEffect(() => {
-    dragControls.start({ opacity: 1, y: 0, transition: { duration: 0.4, delay: 0.15, ease: [0.22, 1, 0.36, 1] } });
-  }, [dragControls]);
+  const cartDetailRef = React.useRef<HTMLDivElement>(null);
+  const cartDetailHeight = useMotionValue(0);
 
   const totalCents = orders.reduce((s, o) => s + o.total_cents, 0);
   const allItems   = orders.flatMap(o => o.items);
   const totalQty   = allItems.reduce((s, i) => s + i.quantity, 0);
 
-  // Raggruppa per numero portata
   const portateNums = [...new Set(allItems.map(i => i.portata ?? 1))].sort((a, b) => a - b);
 
-  type PortataStatus = "cooking" | "waiting" | "done";
+  type PortataStatus = "cooking" | "waiting" | "queued" | "done";
 
-  const getPortataStatus = (num: number): PortataStatus => {
-    if (activePortataNum != null) {
-      if (num === activePortataNum) return "cooking";
-      if (num < activePortataNum)  return "done";
-      return "waiting";
-    }
-    // activePortataNum null: controlla se tutti i piatti di questa portata sono consegnati
+  const isPortataDone = (num: number) => {
+    if (activePortataNum != null) return num < activePortataNum;
     const items = allItems.filter(i => (i.portata ?? 1) === num);
-    return items.every(i => i.delivered_at) ? "done" : "waiting";
+    return items.every(i => i.delivered_at);
   };
 
-  const STATUS_ORDER: Record<PortataStatus, number> = { cooking: 0, waiting: 1, done: 2 };
+  // Solo la prossima portata non ancora pronta (e non in cottura) è "in attesa";
+  // tutte le altre non ancora pronte sono "in coda" finché non tocca a loro.
+  const nextWaitingNum = portateNums.find(
+    num => !isPortataDone(num) && num !== activePortataNum
+  );
+
+  const getPortataStatus = (num: number): PortataStatus => {
+    if (isPortataDone(num)) return "done";
+    if (activePortataNum != null && num === activePortataNum) return "cooking";
+    return num === nextWaitingNum ? "waiting" : "queued";
+  };
+
+  const STATUS_ORDER: Record<PortataStatus, number> = { cooking: 0, waiting: 1, queued: 2, done: 3 };
 
   const sortedPortate = [...portateNums].sort((a, b) => {
     const sa = STATUS_ORDER[getPortataStatus(a)];
@@ -547,6 +701,7 @@ function OrderSummaryCard({
 
   const COOKING_LABEL = tS.inPreparation;
   const WAITING_LABEL = tS.waiting;
+  const QUEUED_LABEL  = tS.queued;
   const DONE_LABEL    = tS.concluded;
 
   const statusMeta = (s: PortataStatus, pNum: number) => {
@@ -554,32 +709,44 @@ function OrderSummaryCard({
       label: COOKING_LABEL,
       accent: brand,
       dotAnim: true,
-      headerBg: `${brand}14`,
-      headerBorder: `${brand}28`,
+      headerBg: brandAlpha(brand, 0.08),
+      headerBorder: brandAlpha(brand, 0.18),
       headerText: brand,
       itemOpacity: 1,
+      icon: "🔥",
     };
     if (s === "waiting") return {
       label: WAITING_LABEL,
-      accent: isDark ? "#78716c" : "#a8a29e",
+      accent: "#f59e0b",
       dotAnim: false,
-      headerBg: isDark ? "rgba(255,255,255,0.04)" : "rgba(0,0,0,0.03)",
-      headerBorder: t.border,
-      headerText: t.inkMuted,
+      headerBg: "rgba(245,158,11,0.08)",
+      headerBorder: "rgba(245,158,11,0.18)",
+      headerText: "#b45309",
       itemOpacity: 1,
+      icon: "⏳",
+    };
+    if (s === "queued") return {
+      label: QUEUED_LABEL,
+      accent: "#94a3b8",
+      dotAnim: false,
+      headerBg: "rgba(148,163,184,0.08)",
+      headerBorder: "rgba(148,163,184,0.18)",
+      headerText: "#475569",
+      itemOpacity: 1,
+      icon: "•",
     };
     return {
       label: DONE_LABEL,
-      accent: isDark ? "#b45252" : "#e57373",
+      accent: "#10b981",
       dotAnim: false,
-      headerBg: isDark ? "rgba(180,82,82,0.08)" : "rgba(229,115,115,0.08)",
-      headerBorder: isDark ? "rgba(180,82,82,0.18)" : "rgba(229,115,115,0.18)",
-      headerText: isDark ? "#c97575" : "#c0504a",
-      itemOpacity: 0.65,
+      headerBg: "rgba(16,185,129,0.08)",
+      headerBorder: "rgba(16,185,129,0.18)",
+      headerText: "#047857",
+      itemOpacity: 0.6,
+      icon: "✓",
     };
   };
 
-  // Thumbnail dalla portata attiva (o tutte se non c'è portata attiva)
   const thumbSource = activePortataNum != null
     ? allItems.filter(i => (i.portata ?? 1) === activePortataNum)
     : allItems;
@@ -587,209 +754,286 @@ function OrderSummaryCard({
 
   return (
     <motion.div
-      drag="y"
-      dragConstraints={{ top: 0, bottom: 200 }}
-      dragElastic={{ top: 0.3, bottom: 0.15 }}
-      dragMomentum={false}
-      animate={dragControls}
-      onDragEnd={(_, info) => {
-        if (!expanded && info.offset.y < -60) { setExpanded(true); }
-        else if (expanded && (info.offset.y > 80 || info.velocity.y > 300)) { setExpanded(false); }
-        dragControls.start({ y: 0, transition: { type: "spring", stiffness: 400, damping: 30 } });
-      }}
-      initial={{ opacity: 0, y: 10 }}
-      transition={{ duration: 0.4, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
-      className="fixed bottom-0 left-0 right-0 z-30 rounded-t-[20px]"
+      initial={{ opacity: 0, y: 14, z: 0.01 }}
+      animate={{ opacity: 1, y: 0, z: 0.01 }}
+      exit={{ opacity: 0, y: 10 }}
+      transition={{ duration: 0.45, delay: 0.18, ease: [0.22, 1, 0.36, 1] }}
+      className="fixed bottom-0 left-0 right-0 z-30 rounded-t-[28px]"
       style={{
         background: t.surface,
         border: `1px solid ${t.border}`,
-        boxShadow: "0 -4px 24px rgba(0,0,0,0.10)",
-        touchAction: "none",
+        boxShadow: "0 -12px 40px -8px rgba(0,0,0,0.14), 0 -4px 12px -4px rgba(0,0,0,0.06)",
         overflow: "visible",
         cursor: "grab",
+        willChange: "transform",
+        backfaceVisibility: "hidden",
+        WebkitBackfaceVisibility: "hidden",
       }}
     >
-      {/* Filler: riempie il gap sotto la card durante il drag verso l'alto */}
+      {/* Filler */}
       <div style={{
         position: "absolute",
         top: "100%",
-        left: -1,
-        right: -1,
+        left: -1, right: -1,
         height: 300,
         background: t.surface,
         borderLeft: `1px solid ${t.border}`,
         borderRight: `1px solid ${t.border}`,
       }} />
+
+      {/* Top accent line */}
+      <div style={{
+        position: "absolute", top: 0, left: 0, right: 0, height: 3,
+        background: `linear-gradient(90deg, transparent, ${brandAlpha(brand, 0.4)}, transparent)`,
+      }} />
+
       {/* Drag handle */}
-      <div className="flex justify-center" style={{ padding: "14px 0 10px", pointerEvents: "none" }}>
-        <div style={{ width: 44, height: 5, borderRadius: 99, background: isDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.15)" }} />
+      <div
+        className="flex justify-center cursor-grab active:cursor-grabbing select-none touch-none"
+        style={{ padding: "14px 0 8px" }}
+        onPointerDown={(e) => {
+          e.currentTarget.setPointerCapture(e.pointerId)
+          const startY = e.clientY
+          const startH = (cartDetailRef.current?.scrollHeight ?? 240) + 16
+          const base = expanded ? startH : 0
+
+          const onMove = (ev: PointerEvent) => {
+            const delta = startY - ev.clientY
+            const next = Math.max(0, Math.min(startH, base + delta))
+            cartDetailHeight.set(next)
+          }
+          const onUp = (ev: PointerEvent) => {
+            const delta = startY - ev.clientY
+            const fullH = (cartDetailRef.current?.scrollHeight ?? 240) + 16
+            const threshold = fullH * 0.35
+            if (!expanded && delta > threshold) {
+              setExpanded(true)
+              animate(cartDetailHeight, fullH, { type: "spring", stiffness: 400, damping: 35 })
+            } else if (expanded && delta < -threshold) {
+              setExpanded(false)
+              animate(cartDetailHeight, 0, { type: "spring", stiffness: 400, damping: 35 })
+            } else {
+              animate(cartDetailHeight, expanded ? fullH : 0, { type: "spring", stiffness: 400, damping: 35 })
+            }
+            window.removeEventListener("pointermove", onMove)
+            window.removeEventListener("pointerup", onUp)
+          }
+          window.addEventListener("pointermove", onMove)
+          window.addEventListener("pointerup", onUp)
+        }}
+      >
+        <div style={{ width: 40, height: 4, borderRadius: 99, background: isDark ? "rgba(255,255,255,0.18)" : "rgba(0,0,0,0.12)" }} />
       </div>
 
-      {/* Header — tap to expand/collapse */}
+      {/* Header */}
       <button
-        onClick={() => setExpanded(v => !v)}
-        className="flex w-full items-center justify-between px-4 pb-2 pt-0"
-        style={{ touchAction: "none" }}
+        onClick={() => {
+          const next = !expanded
+          setExpanded(next)
+          const fullH = (cartDetailRef.current?.scrollHeight ?? 240) + 16
+          animate(cartDetailHeight, next ? fullH : 0, { type: "spring", stiffness: 400, damping: 35 })
+        }}
+        className="flex w-full items-center justify-between px-5 pb-3 pt-1"
       >
-        <span style={{ fontSize: 13, fontWeight: 700, color: t.ink }}>{tS.yourOrder}</span>
         <div className="flex items-center gap-2">
-          <span style={{ fontSize: 11, color: t.inkSoft }}>
+          <div style={{
+            width: 28, height: 28, borderRadius: 8,
+            background: brandAlpha(brand, 0.12),
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Utensils style={{ width: 14, height: 14, color: brand }} />
+          </div>
+          <span style={{ fontSize: 14, fontWeight: 700, color: t.ink, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.01em" }}>{tS.yourOrder}</span>
+        </div>
+        <div className="flex items-center gap-2">
+          <span style={{
+            fontSize: 11, fontWeight: 600, color: t.inkMuted,
+            background: t.chipBg, padding: "4px 10px", borderRadius: 20,
+            border: `1px solid ${t.chipBorder}`,
+            fontVariantNumeric: "tabular-nums",
+          }}>
             {totalQty} {totalQty === 1 ? tS.itemSingular : tS.itemPlural} · € {formatPrice(totalCents)}
           </span>
-          <motion.svg
+          <motion.div
             animate={{ rotate: expanded ? 180 : 0 }}
-            transition={{ duration: 0.22 }}
-            width="16" height="16" viewBox="0 0 24 24" fill="none"
-            stroke={t.inkSoft} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+            transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
+            style={{
+              width: 24, height: 24, borderRadius: 6,
+              background: t.chipBg,
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
           >
-            <polyline points="6 9 12 15 18 9" />
-          </motion.svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none"
+              stroke={t.inkMuted} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
+          </motion.div>
         </div>
       </button>
 
-      {/* Thumbnails — sempre visibili */}
-      {!expanded && (
-        <div className="flex items-center gap-2 px-4 pb-4" style={{ touchAction: "none", pointerEvents: "none" }}>
+      {/* Thumbnails */}
+      <AnimatePresence initial={false}>
+        {!expanded && (
+        <motion.div
+          key="thumbnails"
+          initial={{ height: 0, opacity: 0 }}
+          animate={{ height: "auto", opacity: 1 }}
+          exit={{ height: 0, opacity: 0 }}
+          transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+          style={{ overflow: "hidden" }}
+        >
+        <div className="flex items-center gap-2 px-5 pb-4" style={{ touchAction: "none", pointerEvents: "none" }}>
           {thumbItems.map((item, i) => (
-            <div
+            <motion.div
               key={`${item.id}-thumb-${i}`}
+              initial={{ opacity: 0, scale: 0.7, y: 6 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              transition={{ duration: 0.35, delay: i * 0.06, ease: [0.22, 1, 0.36, 1] }}
+              whileHover={{ scale: 1.06 }}
               style={{
-                width: 46, height: 46, borderRadius: 12, overflow: "hidden",
-                background: `${brand}18`, flexShrink: 0,
+                position: "relative",
+                width: 50, height: 50, borderRadius: 14, overflow: "hidden",
+                background: `linear-gradient(135deg, ${brandAlpha(brand, 0.15)}, ${brandAlpha(brand, 0.05)})`,
+                flexShrink: 0,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                border: `1px solid ${brand}22`,
+                border: `1px solid ${brandAlpha(brand, 0.2)}`,
+                boxShadow: `0 4px 12px -2px ${brandAlpha(brand, 0.2)}`,
               }}
             >
-              {item.image_url
-                ? <img src={item.image_url} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                : <span style={{ fontSize: 20 }}>{["🍔","🥗","🍜","🍰","🍕","🥩","🍷","🍮"][i % 8]}</span>
-              }
-            </div>
+              <span style={{ fontSize: 18, fontWeight: 800, color: brand, fontFamily: "'Space Grotesk', sans-serif" }}>{item.name?.trim()?.charAt(0)?.toUpperCase() || "?"}</span>
+              {item.image_url && (
+                <img
+                  src={item.image_url}
+                  alt={item.name}
+                  style={{ position: "absolute", width: "100%", height: "100%", objectFit: "cover" }}
+                  onError={(e) => { e.currentTarget.style.display = "none"; }}
+                />
+              )}
+            </motion.div>
           ))}
           {thumbSource.length > 4 && (
             <div style={{
-              width: 46, height: 46, borderRadius: 12,
+              width: 50, height: 50, borderRadius: 14,
               background: t.surfaceSoft, border: `1px solid ${t.border}`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 11, fontWeight: 700, color: t.inkMuted,
+              fontSize: 12, fontWeight: 700, color: t.inkMuted,
+              fontFamily: "'Space Grotesk', sans-serif",
             }}>
               +{thumbSource.length - 4}
             </div>
           )}
         </div>
-      )}
-
-      {/* Lista portate espansa */}
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <motion.div
-            key="portate-list"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: "auto", opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.24 }}
-            style={{ overflow: "hidden", maxHeight: "60vh", overflowY: "auto" }}
-          >
-            <div className="pb-6 pt-1">
-              {sortedPortate.map((pNum, gi) => {
-                const status = getPortataStatus(pNum);
-                const meta   = statusMeta(status, pNum);
-                const items  = allItems.filter(i => (i.portata ?? 1) === pNum);
-
-                return (
-                  <div key={pNum} style={{ marginBottom: gi < sortedPortate.length - 1 ? 10 : 0 }}>
-                    {/* Intestazione portata */}
-                    <div
-                      className="mx-4 flex items-center justify-between rounded-xl px-3 py-2"
-                      style={{
-                        background: meta.headerBg,
-                        border: `1px solid ${meta.headerBorder}`,
-                        marginBottom: 6,
-                      }}
-                    >
-                      <div className="flex items-center gap-2">
-                        {status === "cooking" && (
-                          <span style={{
-                            width: 7, height: 7, borderRadius: "50%",
-                            background: brand, display: "inline-block", flexShrink: 0,
-                            animation: "livePulse 2s ease-in-out infinite",
-                          }} />
-                        )}
-                        {status === "done" && (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={meta.headerText} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        )}
-                        {status === "waiting" && (
-                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke={meta.headerText} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                            <circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/>
-                          </svg>
-                        )}
-                        <span style={{ fontSize: 11, fontWeight: 700, color: meta.headerText, letterSpacing: "0.03em" }}>
-                          {portateNums.length > 1 ? `Portata ${pNum} · ` : ""}{meta.label}
-                        </span>
-                      </div>
-                      <span style={{ fontSize: 10, color: meta.headerText, opacity: 0.7 }}>
-                        {items.reduce((s, i) => s + i.quantity, 0)} pz
-                      </span>
-                    </div>
-
-                    {/* Items della portata */}
-                    {items.map((item, ii) => (
-                      <div
-                        key={`${item.id}-${ii}`}
-                        className="flex items-center justify-between px-4 py-2"
-                        style={{
-                          opacity: meta.itemOpacity,
-                          borderTop: ii === 0 ? "none" : `1px solid ${t.borderSoft}`,
-                        }}
-                      >
-                        <div className="flex items-center gap-2 min-w-0 flex-1">
-                          {item.image_url && (
-                            <div style={{
-                              width: 32, height: 32, borderRadius: 8, overflow: "hidden",
-                              flexShrink: 0, background: `${brand}12`,
-                            }}>
-                              <img src={item.image_url} alt={item.name} style={{ width: "100%", height: "100%", objectFit: "cover" }} />
-                            </div>
-                          )}
-                          <span style={{ fontSize: 13, fontWeight: 500, color: t.ink }} className="truncate">
-                            {item.name}
-                          </span>
-                          <span style={{ fontSize: 11, color: t.inkMuted, flexShrink: 0 }}>×{item.quantity}</span>
-                        </div>
-                        <span style={{
-                          display: "inline-flex", alignItems: "center", gap: 4,
-                          fontSize: 10, fontWeight: 700,
-                          background: `${meta.accent}18`,
-                          color: meta.accent,
-                          border: `1px solid ${meta.accent}35`,
-                          borderRadius: 20, padding: "2px 9px",
-                          flexShrink: 0, marginLeft: 8,
-                        }}>
-                          {meta.dotAnim && (
-                            <span style={{
-                              width: 5, height: 5, borderRadius: "50%",
-                              background: meta.accent, display: "inline-block",
-                              animation: "livePulse 2s ease-in-out infinite",
-                            }} />
-                          )}
-                          {meta.label}
-                        </span>
-                      </div>
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          </motion.div>
+        </motion.div>
         )}
       </AnimatePresence>
+
+      {/* Portate list */}
+      <motion.div style={{ height: cartDetailHeight, overflow: "hidden", maxHeight: "60vh", overflowY: "auto" }}>
+        <div ref={cartDetailRef} className="pb-6 pt-1">
+          {sortedPortate.map((pNum, gi) => {
+            const status = getPortataStatus(pNum);
+            const meta = statusMeta(status, pNum);
+            const items = allItems.filter(i => (i.portata ?? 1) === pNum);
+
+            return (
+              <div key={pNum} style={{ marginBottom: gi < sortedPortate.length - 1 ? 12 : 0 }}>
+                <div
+                  className="mx-5 flex items-center justify-between rounded-2xl px-3.5 py-2.5"
+                  style={{
+                    background: meta.headerBg,
+                    border: `1px solid ${meta.headerBorder}`,
+                    marginBottom: 4,
+                  }}
+                >
+                  <div className="flex items-center gap-2">
+                    <span style={{ fontSize: 13 }}>{meta.icon}</span>
+                    {status === "cooking" && (
+                      <span style={{
+                        width: 7, height: 7, borderRadius: "50%",
+                        background: brand, display: "inline-block", flexShrink: 0,
+                        boxShadow: `0 0 8px ${brand}`,
+                        animation: "livePulse 1.8s ease-in-out infinite",
+                      }} />
+                    )}
+                    <span style={{ fontSize: 11, fontWeight: 700, color: meta.headerText, letterSpacing: "0.04em", textTransform: "uppercase" }}>
+                      {portateNums.length > 1 ? `Portata ${pNum} · ` : ""}{meta.label}
+                    </span>
+                  </div>
+                  <span style={{ fontSize: 10, color: meta.headerText, opacity: 0.7, fontWeight: 600 }}>
+                    {items.reduce((s, i) => s + i.quantity, 0)} pz
+                  </span>
+                </div>
+
+                {items.map((item, ii) => (
+                  <motion.div
+                    key={`${item.id}-${ii}`}
+                    initial={{ opacity: 0, x: -6 }}
+                    animate={{ opacity: meta.itemOpacity, x: 0 }}
+                    transition={{ duration: 0.3, delay: ii * 0.04 }}
+                    className="flex items-center justify-between px-5 py-2.5"
+                    style={{
+                      borderTop: ii === 0 ? "none" : `1px solid ${t.borderSoft}`,
+                    }}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      <div style={{
+                        position: "relative",
+                        width: 36, height: 36, borderRadius: 10, overflow: "hidden",
+                        flexShrink: 0, background: `linear-gradient(135deg, ${brandAlpha(brand, 0.12)}, ${brandAlpha(brand, 0.04)})`,
+                        display: "flex", alignItems: "center", justifyContent: "center",
+                        border: `1px solid ${brandAlpha(brand, 0.15)}`,
+                      }}>
+                        <span style={{ fontSize: 13, fontWeight: 800, color: brand, fontFamily: "'Space Grotesk', sans-serif" }}>
+                          {item.name?.trim()?.charAt(0)?.toUpperCase() || "?"}
+                        </span>
+                        {item.image_url && (
+                          <img
+                            src={item.image_url}
+                            alt={item.name}
+                            style={{ position: "absolute", inset: 0, width: "100%", height: "100%", objectFit: "cover" }}
+                            onError={(e) => { e.currentTarget.style.display = "none"; }}
+                          />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <span style={{ fontSize: 13, fontWeight: 600, color: t.ink }} className="truncate block">
+                          {item.name}
+                        </span>
+                        <span style={{ fontSize: 11, color: t.inkSoft }}>×{item.quantity}</span>
+                      </div>
+                    </div>
+                    <span style={{
+                      display: "inline-flex", alignItems: "center", gap: 4,
+                      fontSize: 10, fontWeight: 700,
+                      background: meta.accent === brand ? brandAlpha(brand, 0.12) : `${meta.accent}1a`,
+                      color: meta.accent === brand ? brand : meta.accent,
+                      border: `1px solid ${meta.accent === brand ? brandAlpha(brand, 0.25) : `${meta.accent}35`}`,
+                      borderRadius: 20, padding: "3px 10px",
+                      flexShrink: 0, marginLeft: 8,
+                      letterSpacing: "0.02em",
+                    }}>
+                      {meta.dotAnim && (
+                        <span style={{
+                          width: 5, height: 5, borderRadius: "50%",
+                          background: meta.accent, display: "inline-block",
+                          boxShadow: `0 0 6px ${meta.accent}`,
+                          animation: "livePulse 1.8s ease-in-out infinite",
+                        }} />
+                      )}
+                      {meta.label}
+                    </span>
+                  </motion.div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      </motion.div>
     </motion.div>
   );
 }
 
-// ─── COMANDA CARD (expanded detail, used in tab view) ─────────────────────────
+// ─── COMANDA CARD ─────────────────────────────────────────────────────────────
 
 function Comanda({
   order,
@@ -816,8 +1060,8 @@ function Comanda({
     isPending ? "#f59e0b" :
     isCooking ? "#3b82f6" :
                 "#22c55e";
-  const accentSoft   = `${accent}1a`;
-  const accentBorder = `${accent}40`;
+  const accentSoft = `${accent}14`;
+  const accentBorder = `${accent}33`;
   const statusLabel =
     isPending ? tS.waiting :
     isCooking ? tS.cooking :
@@ -825,10 +1069,11 @@ function Comanda({
 
   return (
     <motion.article
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.34, ease: [0.22, 1, 0.36, 1] }}
-      className="overflow-hidden rounded-2xl"
+      initial={{ opacity: 0, y: 14, scale: 0.98 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -10, scale: 0.98 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      className="overflow-hidden rounded-[24px]"
       style={{
         background: t.surface,
         border: `1px solid ${t.border}`,
@@ -838,12 +1083,12 @@ function Comanda({
       <div style={{ height: 3, background: `linear-gradient(90deg, ${accent}, ${brand} 80%)` }} />
 
       <div
-        className="flex items-center justify-between gap-3 px-4 py-3"
+        className="flex items-center justify-between gap-3 px-5 py-3.5"
         style={{ borderBottom: `1px solid ${t.borderSoft}` }}
       >
         <div className="flex min-w-0 items-center gap-2.5">
           <span
-            className="grid h-9 w-9 shrink-0 place-items-center rounded-xl text-[10px] font-black tracking-wider"
+            className="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-[10px] font-black tracking-wider"
             style={{
               background: accentSoft, color: accent,
               border: `1px solid ${accentBorder}`,
@@ -853,13 +1098,13 @@ function Comanda({
             #{shortId(order.id)}
           </span>
           <div className="min-w-0">
-            <p className="font-serif text-lg font-semibold leading-tight flex items-center gap-1.5" style={{ color: t.ink }}>
+            <p className="text-base font-semibold leading-tight flex items-center gap-1.5" style={{ color: t.ink, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.02em" }}>
               {restaurantLogo ? (
                 <span className="inline-block h-5 w-5 shrink-0 overflow-hidden rounded-md bg-white shadow-sm ring-1 ring-black/5">
                   <img src={restaurantLogo} alt="" className="h-full w-full object-cover" />
                 </span>
               ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke={brand} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
+                <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke={brand} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="shrink-0"><path d="M3 2v7c0 1.1.9 2 2 2h4a2 2 0 0 0 2-2V2"/><path d="M7 2v20"/><path d="M21 15V2a5 5 0 0 0-5 5v6c0 1.1.9 2 2 2h3Zm0 0v7"/></svg>
               )}
               Tavolo {order.table_number ?? "—"}
             </p>
@@ -870,12 +1115,12 @@ function Comanda({
           className="inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-[11px] font-bold uppercase tracking-wider"
           style={{ background: accentSoft, color: accent, border: `1px solid ${accentBorder}` }}
         >
-          <span style={{ width: 6, height: 6, borderRadius: 999, background: accent, display: "inline-block", animation: "livePulse 2s ease-in-out infinite" }} />
+          <span style={{ width: 6, height: 6, borderRadius: 999, background: accent, display: "inline-block", boxShadow: `0 0 6px ${accent}`, animation: "livePulse 1.8s ease-in-out infinite" }} />
           {statusLabel}
         </span>
       </div>
 
-      <div className="px-4 py-3">
+      <div className="px-5 py-3">
         {order.items.length === 0 ? (
           <p className="py-3 text-sm italic" style={{ color: t.inkSoft }}>Nessun prodotto</p>
         ) : (
@@ -883,9 +1128,9 @@ function Comanda({
             {order.items.map((item, i) => (
               <motion.li
                 key={item.id}
-                initial={{ opacity: 0, x: -6 }}
+                initial={{ opacity: 0, x: -8 }}
                 animate={{ opacity: 1, x: 0 }}
-                transition={{ duration: 0.26, delay: 0.04 * i, ease: "easeOut" }}
+                transition={{ duration: 0.3, delay: 0.05 * i, ease: [0.22, 1, 0.36, 1] }}
                 className="flex items-start gap-3"
               >
                 <span
@@ -895,7 +1140,7 @@ function Comanda({
                   {item.quantity}×
                 </span>
                 <div className="min-w-0 flex-1">
-                  <p className="text-[15px] font-semibold leading-snug" style={{ color: t.ink }}>{item.name}</p>
+                  <p className="text-[14px] font-semibold leading-snug" style={{ color: t.ink, fontFamily: "'Space Grotesk', sans-serif" }}>{item.name}</p>
                   {item.customizations.length > 0 && (
                     <div className="mt-1.5 flex flex-wrap gap-1">
                       {item.customizations.map((c, ci) => (
@@ -925,9 +1170,9 @@ function Comanda({
         )}
       </div>
 
-      <div className="flex items-center justify-between px-4 py-2.5" style={{ borderTop: `1px solid ${t.borderSoft}` }}>
+      <div className="flex items-center justify-between px-5 py-3" style={{ borderTop: `1px solid ${t.borderSoft}` }}>
         <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: t.inkSoft }}>Totale</span>
-        <span className="font-serif text-base font-bold" style={{ color: t.ink }}>€ {formatPrice(order.total_cents)}</span>
+        <span className="text-base font-bold" style={{ color: t.ink, fontFamily: "'Space Grotesk', sans-serif" }}>€ {formatPrice(order.total_cents)}</span>
       </div>
     </motion.article>
   );
@@ -939,12 +1184,23 @@ function EmptyCol({ label, isDark }: { label: string; isDark: boolean }) {
   const t = themeTokens(isDark);
   return (
     <motion.div
-      initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
-      className="rounded-2xl px-4 py-12 text-center"
+      initial={{ opacity: 0, y: 10, scale: 0.97 }}
+      animate={{ opacity: 1, y: 0, scale: 1 }}
+      exit={{ opacity: 0, y: -8, scale: 0.97 }}
+      transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
+      className="rounded-[24px] px-4 py-14 text-center"
       style={{ border: `1px dashed ${t.border}`, background: t.surfaceSoft }}
     >
-      <Clock className="mx-auto mb-3 h-7 w-7 opacity-40" style={{ color: t.inkSoft }} />
-      <p className="text-sm font-medium" style={{ color: t.inkSoft }}>{label}</p>
+      <motion.div
+        initial={{ scale: 0.7, opacity: 0 }}
+        animate={{ scale: 1, opacity: 1 }}
+        transition={{ duration: 0.5, delay: 0.15, ease: [0.34, 1.56, 0.64, 1] }}
+        className="mx-auto mb-4 grid h-14 w-14 place-items-center rounded-2xl"
+        style={{ background: t.surfaceAlt, border: `1px solid ${t.border}` }}
+      >
+        <Clock className="h-7 w-7" style={{ color: t.inkSoft }} />
+      </motion.div>
+      <p className="text-sm font-medium" style={{ color: t.inkSoft, fontFamily: "'Space Grotesk', sans-serif" }}>{label}</p>
     </motion.div>
   );
 }
@@ -965,19 +1221,19 @@ function TabBar({
   const t = themeTokens(isDark);
   const { tr } = useI18n();
   const tS = tr.client.status;
-  const tabs: { key: TabKey; label: string; icon: React.ReactNode }[] = [
-    { key: "attesa", label: tS.waiting, icon: <Clock size={16} /> },
-    { key: "cucina", label: tS.cooking, icon: <ChefHat size={16} /> },
-    { key: "pronti", label: tS.ready,   icon: <CheckCircle size={16} /> },
+  const tabs: { key: TabKey; label: string; icon: React.ReactNode; color: string }[] = [
+    { key: "attesa", label: tS.waiting, icon: <Clock size={15} />, color: "#f59e0b" },
+    { key: "cucina", label: tS.cooking, icon: <ChefHat size={15} />, color: "#3b82f6" },
+    { key: "pronti", label: tS.ready,   icon: <CheckCircle size={15} />, color: "#22c55e" },
   ];
   const brandText = `color-mix(in srgb, ${brand} 78%, #000)`;
 
   return (
     <div
-      className="mb-5 flex items-stretch gap-1 rounded-2xl p-1.5"
+      className="mb-5 flex items-stretch gap-1 rounded-[22px] p-1.5"
       style={{ background: t.surface, border: `1px solid ${t.border}`, boxShadow: t.cardShadow }}
     >
-      {tabs.map(({ key, label, icon }) => {
+      {tabs.map(({ key, label, icon, color }) => {
         const isActive = activeTab === key;
         const badge = badges[key];
         const count = counts[key];
@@ -986,38 +1242,45 @@ function TabBar({
             key={key}
             type="button"
             onClick={() => { setActiveTab(key); clearBadge(key); }}
-            className="relative flex min-h-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-xl px-2 py-2 transition"
+            className="relative flex min-h-[52px] flex-1 flex-col items-center justify-center gap-1 rounded-2xl px-2 py-2 transition"
             aria-pressed={isActive}
           >
             {isActive && (
-              <motion.div layoutId="status-tab-fill" className="absolute inset-0 rounded-xl"
-                style={{ background: `color-mix(in srgb, ${brand} 10%, transparent)` }}
+              <motion.div layoutId="status-tab-fill" className="absolute inset-0 rounded-2xl"
+                style={{ background: `${color}14` }}
                 transition={{ type: "spring", stiffness: 420, damping: 34 }}
               />
             )}
             {isActive && (
-              <motion.div layoutId="status-tab-underline" className="absolute bottom-1 left-1/2 h-[3px] -translate-x-1/2 rounded-full"
-                style={{ background: brand, width: 26 }}
+              <motion.div layoutId="status-tab-underline" className="absolute bottom-1.5 left-1/2 h-[3px] -translate-x-1/2 rounded-full"
+                style={{ background: color, width: 28, boxShadow: `0 2px 8px ${color}88` }}
                 transition={{ type: "spring", stiffness: 420, damping: 34 }}
               />
             )}
-            <div className="relative z-10 flex items-center gap-1.5" style={{ color: isActive ? brandText : t.inkSoft }}>
+            <div className="relative z-10 flex items-center gap-1.5" style={{ color: isActive ? color : t.inkSoft }}>
               <span className="relative">
                 {icon}
                 {badge > 0 && !isActive && (
-                  <span
+                  <motion.span
+                    initial={{ scale: 0 }}
+                    animate={{ scale: 1 }}
                     className="absolute -right-2 -top-2 grid min-w-[14px] place-items-center rounded-full px-1 text-[9px] font-black text-white"
-                    style={{ background: "#ef4444", height: 14, boxShadow: `0 0 0 2px ${t.surface}`, animation: "badgePop 0.3s cubic-bezier(0.34,1.56,0.64,1) forwards" }}
+                    style={{ background: "#ef4444", height: 14, boxShadow: `0 0 0 2px ${t.surface}, 0 2px 6px rgba(239,68,68,0.4)` }}
                   >
                     {badge}
-                  </span>
+                  </motion.span>
                 )}
               </span>
-              <span className="text-[12px] font-bold tracking-tight">{label}</span>
+              <span className="text-[12px] font-bold tracking-tight" style={{ fontFamily: "'Space Grotesk', sans-serif" }}>{label}</span>
             </div>
             <span
               className="relative z-10 grid h-5 min-w-[20px] place-items-center rounded-full px-1.5 text-[11px] font-extrabold tabular-nums"
-              style={{ background: isActive ? brand : t.chipBg, color: isActive ? "#fff" : t.inkMuted, border: isActive ? "none" : `1px solid ${t.chipBorder}` }}
+              style={{
+                background: isActive ? color : t.chipBg,
+                color: isActive ? "#fff" : t.inkMuted,
+                border: isActive ? "none" : `1px solid ${t.chipBorder}`,
+                boxShadow: isActive ? `0 2px 6px ${color}55` : "none",
+              }}
             >
               {count}
             </span>
@@ -1063,240 +1326,33 @@ function makePalette(brand: string): Palette {
     flyDot: brand, flyGlow: `0 0 18px ${alpha(0.55)}`,
   } as Palette;
 }
-
-
-// ─── THANK YOU SCREEN ────────────────────────────────────────────────────────
-
-function ThankYouScreen({
-  brand,
-  isDark,
-  restaurantName,
-  tableNumber,
-  googleReviewUrl,
-  tripadvisorUrl,
-  instagram,
-  website,
-}: {
-  brand: string;
-  isDark: boolean;
-  restaurantName: string | null;
-  tableNumber: string | null;
-  googleReviewUrl: string | null;
-  tripadvisorUrl: string | null;
-  instagram: string | null;
-  website: string | null;
-}) {
-  const t = themeTokens(isDark);
-  const [r, g, b] = [
-    parseInt(brand.slice(1, 3), 16),
-    parseInt(brand.slice(3, 5), 16),
-    parseInt(brand.slice(5, 7), 16),
-  ];
-  const alpha = (a: number) => `rgba(${r},${g},${b},${a})`;
-
-  const socialLinks = [
-    googleReviewUrl && {
-      label: "Lascia una recensione",
-      sub: "Google",
-      href: googleReviewUrl,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4"/>
-          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853"/>
-          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l3.66-2.84z" fill="#FBBC05"/>
-          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335"/>
-        </svg>
-      ),
-    },
-    tripadvisorUrl && {
-      label: "Recensiscici su",
-      sub: "TripAdvisor",
-      href: tripadvisorUrl,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="#00AF87">
-          <circle cx="7" cy="12" r="3"/><circle cx="17" cy="12" r="3"/>
-          <path d="M12 4C7.6 4 3.8 6.2 2 9.5l2.5.5C5.9 7.6 8.8 6 12 6s6.1 1.6 7.5 4l2.5-.5C20.2 6.2 16.4 4 12 4z"/>
-          <circle cx="7" cy="12" r="1.5" fill="#fff"/><circle cx="17" cy="12" r="1.5" fill="#fff"/>
-        </svg>
-      ),
-    },
-    instagram && {
-      label: "Seguici su",
-      sub: "Instagram",
-      href: `https://instagram.com/${instagram.replace("@", "")}`,
-      icon: (
-        <svg width="20" height="20" viewBox="0 0 24 24" fill="none">
-          <defs>
-            <linearGradient id="ig" x1="0%" y1="100%" x2="100%" y2="0%">
-              <stop offset="0%" stopColor="#f09433"/><stop offset="25%" stopColor="#e6683c"/>
-              <stop offset="50%" stopColor="#dc2743"/><stop offset="75%" stopColor="#cc2366"/>
-              <stop offset="100%" stopColor="#bc1888"/>
-            </linearGradient>
-          </defs>
-          <rect x="2" y="2" width="20" height="20" rx="5" fill="url(#ig)"/>
-          <circle cx="12" cy="12" r="4.5" stroke="#fff" strokeWidth="1.8" fill="none"/>
-          <circle cx="17" cy="7" r="1.2" fill="#fff"/>
-        </svg>
-      ),
-    },
-  ].filter(Boolean) as { label: string; sub: string; href: string; icon: React.ReactNode }[];
-
-  return (
-    <motion.div
-      initial={{ opacity: 0 }}
-      animate={{ opacity: 1 }}
-      transition={{ duration: 0.5 }}
-      className="fixed inset-0 z-50 flex flex-col items-center justify-between overflow-y-auto"
-      style={{ background: isDark ? "#0c0a09" : `rgb(${Math.round(r + (255 - r) * 0.94)},${Math.round(g + (255 - g) * 0.94)},${Math.round(b + (255 - b) * 0.94)})` }}
-    >
-      {/* Blob decorativo */}
-      <div style={{
-        position: "fixed", top: "-30%", right: "-20%",
-        width: 400, height: 400, borderRadius: "50%",
-        background: alpha(0.12), filter: "blur(80px)", pointerEvents: "none",
-      }} />
-      <div style={{
-        position: "fixed", bottom: "-20%", left: "-10%",
-        width: 300, height: 300, borderRadius: "50%",
-        background: alpha(0.08), filter: "blur(60px)", pointerEvents: "none",
-      }} />
-
-      {/* Contenuto centrale */}
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12 text-center">
-        {/* Icona animata */}
-        <motion.div
-          initial={{ scale: 0.6, opacity: 0 }}
-          animate={{ scale: 1, opacity: 1 }}
-          transition={{ duration: 0.6, delay: 0.1, ease: [0.34, 1.56, 0.64, 1] }}
-          className="relative mb-8"
-        >
-          <div style={{
-            width: 96, height: 96, borderRadius: "50%",
-            background: `linear-gradient(135deg, ${brand}, ${alpha(0.7)})`,
-            boxShadow: `0 20px 60px -10px ${alpha(0.5)}`,
-            display: "flex", alignItems: "center", justifyContent: "center",
-          }}>
-            <svg width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-              <motion.path
-                d="M20 6L9 17l-5-5"
-                initial={{ pathLength: 0 }}
-                animate={{ pathLength: 1 }}
-                transition={{ duration: 0.5, delay: 0.4 }}
-              />
-            </svg>
-          </div>
-          {/* Ring pulse */}
-          <motion.div
-            initial={{ scale: 1, opacity: 0.4 }}
-            animate={{ scale: 1.6, opacity: 0 }}
-            transition={{ duration: 1.2, delay: 0.3, repeat: Infinity, repeatDelay: 1 }}
-            style={{
-              position: "absolute", inset: 0, borderRadius: "50%",
-              border: `2px solid ${brand}`,
-            }}
-          />
-        </motion.div>
-
-        {/* Testo */}
-        <motion.div
-          initial={{ opacity: 0, y: 16 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5, delay: 0.25 }}
-        >
-          {tableNumber && (
-            <p style={{ fontSize: 12, fontWeight: 600, color: brand, letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
-              Tavolo {tableNumber}
-            </p>
-          )}
-          <h1 style={{
-            fontSize: 34, fontWeight: 800, color: t.ink,
-            fontFamily: "'Space Grotesk', sans-serif",
-            letterSpacing: "-0.03em", lineHeight: 1.1, marginBottom: 12,
-          }}>
-            Grazie mille!
-          </h1>
-          <p style={{ fontSize: 16, color: t.inkMuted, lineHeight: 1.6, maxWidth: 300 }}>
-            {restaurantName
-              ? `È stato un piacere avervi da ${restaurantName}. Speriamo di rivedervi presto!`
-              : "È stato un piacere. Speriamo di rivedervi presto!"}
-          </p>
-        </motion.div>
-
-        {/* Divisore */}
-        {socialLinks.length > 0 && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.4, delay: 0.45 }}
-            className="mt-10 w-full max-w-xs"
-          >
-            <p style={{ fontSize: 11, fontWeight: 600, color: t.inkSoft, letterSpacing: "0.06em", textTransform: "uppercase", marginBottom: 12 }}>
-              Ti è piaciuto? Dillo agli altri
-            </p>
-            <div className="flex flex-col gap-3">
-              {socialLinks.map(({ label, sub, href, icon }) => (
-                <a
-                  key={href}
-                  href={href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 rounded-2xl px-4 py-3 transition active:scale-[0.97]"
-                  style={{
-                    background: t.surface,
-                    border: `1px solid ${t.border}`,
-                    boxShadow: t.cardShadow,
-                    textDecoration: "none",
-                  }}
-                >
-                  <div style={{
-                    width: 36, height: 36, borderRadius: 10, overflow: "hidden",
-                    display: "flex", alignItems: "center", justifyContent: "center",
-                    background: isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.03)",
-                    flexShrink: 0,
-                  }}>
-                    {icon}
-                  </div>
-                  <div className="flex-1 text-left">
-                    <p style={{ fontSize: 13, fontWeight: 600, color: t.ink }}>{label}</p>
-                    <p style={{ fontSize: 11, color: t.inkSoft }}>{sub}</p>
-                  </div>
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke={t.inkSoft} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                    <path d="M5 12h14M12 5l7 7-7 7"/>
-                  </svg>
-                </a>
-              ))}
-            </div>
-          </motion.div>
-        )}
-      </div>
-
-      {/* Footer */}
-      <motion.div
-        initial={{ opacity: 0 }}
-        animate={{ opacity: 1 }}
-        transition={{ duration: 0.4, delay: 0.6 }}
-        className="w-full pb-safe px-6 pb-8 text-center"
-      >
-        <p style={{ fontSize: 11, color: t.inkSoft }}>
-          Il conto è stato saldato · Buona giornata 🙏
-        </p>
-      </motion.div>
-    </motion.div>
-  );
-}
-
 // ─── LOADING SKELETON ─────────────────────────────────────────────────────────
 
 function LoadingSkeleton({ brand, isDark, bg }: { brand: string; isDark: boolean; bg?: string }) {
   const t = themeTokens(isDark);
   return (
     <div className="flex min-h-screen flex-col px-4 pt-36 gap-4" style={{ background: bg ?? (isDark ? t.pageBg : undefined) }}>
-      {/* hero skeleton */}
-      <div className="shimmer rounded-[22px] h-36" style={{ background: `${brand}33` }} />
-      {/* steps skeleton */}
-      <div className="shimmer rounded-[20px] h-48" style={{ background: t.surfaceAlt, border: `1px solid ${t.border}` }} />
-      {/* order skeleton */}
-      <div className="shimmer rounded-[20px] h-28" style={{ background: t.surface, border: `1px solid ${t.border}` }} />
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4 }}
+        className="shimmer rounded-[28px] h-40"
+        style={{ background: `${brand}22` }}
+      />
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.1 }}
+        className="shimmer rounded-[24px] h-52"
+        style={{ background: t.surfaceAlt, border: `1px solid ${t.border}` }}
+      />
+      <motion.div
+        initial={{ opacity: 0, y: -10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.4, delay: 0.2 }}
+        className="shimmer rounded-[24px] h-28"
+        style={{ background: t.surface, border: `1px solid ${t.border}` }}
+      />
     </div>
   );
 }
@@ -1307,43 +1363,62 @@ function EmptyOrderState({ sessionId, brand, isDark }: { sessionId: string; bran
   const t = themeTokens(isDark);
   const { tr } = useI18n();
   const tS = tr.client.status;
+  const accentBg = `color-mix(in srgb, ${brand} 8%, transparent)`;
   return (
-    <motion.div
-      initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.5, ease: [0.22, 1, 0.36, 1] }}
-      className="flex min-h-[60vh] flex-col items-center justify-center gap-6 px-6 text-center"
-    >
+    <div className="relative flex min-h-[60vh] items-center justify-center overflow-hidden px-6">
+      <span aria-hidden className="absolute -top-16 -right-10 h-56 w-56 rounded-full" style={{ background: accentBg, filter: "blur(40px)" }} />
+      <span aria-hidden className="absolute -bottom-12 -left-12 h-48 w-48 rounded-full opacity-70" style={{ background: accentBg, filter: "blur(50px)" }} />
+
       <motion.div
-        initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
-        transition={{ duration: 0.5, delay: 0.1, ease: [0.34, 1.56, 0.64, 1] }}
-        className="relative grid place-items-center"
+        initial={{ opacity: 0, scale: 0.92, y: 16 }}
+        animate={{ opacity: 1, scale: 1, y: 0 }}
+        exit={{ opacity: 0, y: -10 }}
+        transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
+        className="relative z-10 w-full max-w-[360px] rounded-[32px] px-7 pt-11 pb-9 text-center"
+        style={{ background: t.surface, border: `1px solid ${t.border}`, boxShadow: t.cardShadow }}
       >
-        <span aria-hidden className="pulse-ring absolute inset-0 rounded-3xl" style={{ background: `color-mix(in srgb, ${brand} 18%, transparent)` }} />
-        <div className="grid h-20 w-20 place-items-center rounded-3xl text-white" style={{ background: `linear-gradient(135deg, ${brand}, color-mix(in srgb, ${brand} 60%, #000))`, boxShadow: `0 16px 40px -8px color-mix(in srgb, ${brand} 55%, transparent)` }}>
-          <Utensils className="h-9 w-9" />
+        <div className="relative mx-auto mb-[22px] h-[88px] w-[88px]">
+          <span aria-hidden className="pulse-ring absolute inset-0 rounded-full" style={{ background: `color-mix(in srgb, ${brand} 18%, transparent)` }} />
+          <motion.div
+            className="relative grid h-[88px] w-[88px] place-items-center rounded-full text-white"
+            style={{ background: `linear-gradient(135deg, ${brand}, color-mix(in srgb, ${brand} 60%, #000))`, boxShadow: `0 16px 40px -8px color-mix(in srgb, ${brand} 55%, transparent), inset 0 1px 0 rgba(255,255,255,0.3)` }}
+            animate={{ y: [0, -6, 0], rotate: [-3, 2, -3] }}
+            transition={{ duration: 3.6, repeat: Infinity, ease: "easeInOut" }}
+          >
+            <Utensils className="h-9 w-9" strokeWidth={1.8} />
+          </motion.div>
         </div>
+
+        <p className="mb-1.5 text-[11px] font-extrabold uppercase" style={{ color: brand, letterSpacing: "0.16em" }}>
+          {tS.orderStatus}
+        </p>
+        <h2 className="mb-2.5 text-[26px] font-bold" style={{ color: t.ink, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.02em" }}>
+          {tS.noActiveOrder}
+        </h2>
+        <p className="mb-7 px-2 text-sm leading-relaxed" style={{ color: t.inkMuted }}>
+          {tS.noActiveOrderDesc}
+        </p>
+
+        <Link
+          href={`/order/${sessionId}`}
+          className="flex w-full items-center justify-center gap-2 rounded-2xl py-[14px] text-[15px] font-extrabold text-white transition hover:scale-[1.02] active:scale-[0.98]"
+          style={{ background: `linear-gradient(135deg, ${brand}, color-mix(in srgb, ${brand} 60%, #000))`, boxShadow: `0 6px 24px -4px color-mix(in srgb, ${brand} 55%, transparent)`, letterSpacing: "-0.01em" }}
+        >
+          <UtensilsCrossed className="h-4 w-4" />
+          {tS.backToMenu}
+          <ChevronRight className="h-4 w-4 -ml-0.5" strokeWidth={2.5} />
+        </Link>
       </motion.div>
-      <div className="space-y-2">
-        <h2 className="font-serif text-2xl font-semibold" style={{ color: t.ink }}>{tS.noActiveOrder}</h2>
-        <p className="mx-auto max-w-xs text-sm" style={{ color: t.inkMuted }}>{tS.noActiveOrderDesc}</p>
-      </div>
-      <Link
-        href={`/order/${sessionId}`}
-        className="group inline-flex min-h-[48px] items-center gap-2 rounded-full px-6 py-3 text-sm font-bold text-white transition hover:scale-[1.02] active:scale-[0.98]"
-        style={{ background: `linear-gradient(135deg, ${brand}, color-mix(in srgb, ${brand} 60%, #000))`, boxShadow: `0 12px 28px -6px color-mix(in srgb, ${brand} 55%, transparent)` }}
-      >
-        {tS.backToMenu}
-        <ArrowRight className="h-4 w-4 transition group-hover:translate-x-0.5" />
-      </Link>
-    </motion.div>
+    </div>
   );
 }
 
 // ─── MAIN PAGE ────────────────────────────────────────────────────────────────
 
 export default function StatusPage() {
-  const { tr } = useI18n();
+  const { tr, lang } = useI18n();
   const tS = tr.client.status;
+
   const params    = useParams();
   const sessionId = params?.sessionId as string;
 
@@ -1404,7 +1479,6 @@ export default function StatusPage() {
   const [orderCompleted,  setOrderCompleted]  = useState(false);
   const [isLastPortata,   setIsLastPortata]   = useState(false);
 
-  // Popup recensione
   const [allServed,       setAllServed]       = useState(false);
   const [activePortataNum, setActivePortataNum] = useState<number | null>(null);
   const [activePortataStartedAt, setActivePortataStartedAt] = useState<string | null>(null);
@@ -1417,19 +1491,26 @@ export default function StatusPage() {
   const [reviewSending,   setReviewSending]   = useState(false);
   const [reviewSent,      setReviewSent]      = useState(false);
   const reviewShownRef       = useRef(false);
+  // Nonostante il nome, questi Set tracciano id di order_item (righe), non di
+  // menu_item: lo stesso piatto ordinato in due portate diverse è recensibile
+  // separatamente per ciascuna occorrenza.
   const reviewedDishIdsRef   = useRef<Set<string>>(new Set());
   const [reviewedDishIds,    setReviewedDishIds]    = useState<string[]>([]);
+  // Piatti (righe order_item) su cui l'utente ha premuto "Salta": non vanno
+  // ri-proposti automaticamente, ma restano recensibili a mano (a differenza di
+  // reviewedDishIdsRef, che riflette solo recensioni realmente inviate/presenti su DB).
+  const skippedDishIdsRef    = useRef<Set<string>>(new Set());
   const deliveredCountRef    = useRef(-1);
+  const pickedUpCountRef     = useRef(-1);
+  const allActiveItemsRef    = useRef<OrderItem[]>([]);
 
   const [showPaidScreen,   setShowPaidScreen]   = useState(false);
-  // 'idle' | 'processing' | 'success'
   const [paidStep,         setPaidStep]         = useState<'idle'|'processing'|'success'>('idle');
-  const [paidProgress,     setPaidProgress]     = useState(0); // 0-100
+  const [paidProgress,     setPaidProgress]     = useState(0);
 
   useEffect(() => {
     if (!showPaidScreen) return;
     setPaidStep('processing');
-    // Dopo 2s → success + barra
     const t1 = setTimeout(() => {
       setPaidStep('success');
       setPaidProgress(0);
@@ -1447,8 +1528,14 @@ export default function StatusPage() {
     return () => clearTimeout(t1);
   }, [showPaidScreen]);
 
-  // End screen (post-ordine)
   const [showEndScreen,    setShowEndScreen]    = useState(false);
+  useEffect(() => {
+    setEndScreenActive(showEndScreen || orders.length === 0);
+    return () => setEndScreenActive(false);
+  }, [showEndScreen, orders.length]);
+  useEffect(() => {
+    if (allServed && !showEndScreen) setShowEndScreen(true);
+  }, [allServed, showEndScreen]);
   const [paymentRequested, setPaymentRequested] = useState(false);
   const [paymentRequestSending, setPaymentRequestSending] = useState(false);
   const [paymentCallId, setPaymentCallId] = useState<string | null>(null);
@@ -1465,19 +1552,25 @@ export default function StatusPage() {
   const [lastDeliveredPortata, setLastDeliveredPortata] = useState<number | null>(null);
   const dragStartY      = useRef<number | null>(null);
   const [reviewDragY,   setReviewDragY]      = useState(0);
+  const reviewSheetDragStartY = useRef<number | null>(null);
+  const [reviewSheetDragY, setReviewSheetDragY] = useState(0);
+  const [reviewSheetDragging, setReviewSheetDragging] = useState(false);
+  const [reviewSheetClosing, setReviewSheetClosing] = useState(false);
+  const closeReviewSheet = useCallback(() => {
+    setReviewSheetClosing(true);
+    setTimeout(() => { setAllServed(false); setReviewSheetClosing(false); setReviewSheetDragY(0); }, 320);
+  }, []);
 
-  // Fetch upsell items (dolci/dessert in priorità, altrimenti ultimi 12 items) + categorie
   useEffect(() => {
     if (!restaurantId) return;
     (async () => {
-      // Cerca categorie con "dolci" o "dessert" nel nome
       const { data: cats } = await supabase
-        .from("categories")
+        .from("menu_categories")
         .select("id, name")
         .eq("restaurant_id", restaurantId)
         .ilike("name", "%dolc%");
       const { data: cats2 } = await supabase
-        .from("categories")
+        .from("menu_categories")
         .select("id, name")
         .eq("restaurant_id", restaurantId)
         .ilike("name", "%dessert%");
@@ -1493,7 +1586,6 @@ export default function StatusPage() {
           .limit(20);
         items = data ?? [];
       }
-      // Fallback: ultimi 12 piatti disponibili
       if (items.length === 0) {
         const { data } = await supabase
           .from("menu_items")
@@ -1506,11 +1598,10 @@ export default function StatusPage() {
       }
       setUpsellItems(items);
 
-      // Carica nomi categorie per i filtri
       const catIds = [...new Set(items.map(i => i.category_id).filter(Boolean))] as string[];
       if (catIds.length > 0) {
         const { data: catData } = await supabase
-          .from("categories")
+          .from("menu_categories")
           .select("id, name")
           .in("id", catIds);
         setUpsellCategories(catData ?? []);
@@ -1518,7 +1609,44 @@ export default function StatusPage() {
     })();
   }, [restaurantId]);
 
-  // Listener: la stellina nell'header riapre la card
+  const [upsellTranslations, setUpsellTranslations] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (lang === "it") {
+      setUpsellTranslations({});
+      return;
+    }
+    const texts = new Set<string>();
+    for (const i of upsellItems) {
+      if (i.name) texts.add(i.name);
+      if (i.description) texts.add(i.description);
+    }
+    if (texts.size === 0) return;
+    let cancelled = false;
+    fetch("/api/translate", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ texts: Array.from(texts), sourceLang: "it", targetLang: lang }),
+    })
+      .then((r) => r.json())
+      .then((json) => {
+        if (!cancelled && json?.translations) setUpsellTranslations(json.translations);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [upsellItems, lang]);
+
+  const translatedUpsellItems = useMemo(
+    () =>
+      upsellItems.map((i) => ({
+        ...i,
+        name: upsellTranslations[i.name] ?? i.name,
+        description: i.description ? upsellTranslations[i.description] ?? i.description : i.description,
+      })),
+    [upsellItems, upsellTranslations]
+  );
+
   useEffect(() => {
     const handler = () => {
       setShowReview(true);
@@ -1529,9 +1657,7 @@ export default function StatusPage() {
     return () => window.removeEventListener("open-review", handler);
   }, []);
 
-  // Sezione "dettaglio" espandibile
   const [showDetail, setShowDetail] = useState(false);
-
 
   useEffect(() => {
     if (!sessionId) return;
@@ -1593,10 +1719,9 @@ export default function StatusPage() {
     } catch { return "#f5f3ec"; }
   })();
 
+  const isImageBg = backgroundType === "image" && !!backgroundImageUrl;
   const bg =
-    backgroundType === "image" && backgroundImageUrl
-      ? `url(${backgroundImageUrl}) center/cover no-repeat fixed`
-      : backgroundType === "color" && backgroundImageUrl
+    backgroundType === "color" && backgroundImageUrl
       ? backgroundImageUrl
       : isDark ? "#0c0a09" : brandBg;
 
@@ -1626,15 +1751,12 @@ export default function StatusPage() {
         resolvedRestaurantId = qrSession.restaurant_id;
         if (qrSession.table_id) {
           resolvedTableId = qrSession.table_id;
-        } else if (resolvedRestaurantId) {
-          const { data: tbl } = await supabase.from("tables").select("id").eq("restaurant_id", resolvedRestaurantId).maybeSingle();
-          if (tbl) resolvedTableId = tbl.id;
         }
         if (resolvedTableId) {
           const { data: tableData } = await supabase.from("tables").select("label").eq("id", resolvedTableId).maybeSingle();
           if (tableData?.label) resolvedTableNumber = tableData.label;
         }
-        if (!resolvedTableNumber && qrSession.table_number != null) {
+        if (!resolvedTableNumber && qrSession.table_number != null && qrSession.table_number !== 0) {
           resolvedTableNumber = String(qrSession.table_number);
         }
       }
@@ -1643,28 +1765,14 @@ export default function StatusPage() {
         const { data: tqr } = await supabase.from("table_qr_sessions").select("id, restaurant_id, table_number").eq("id", sessionId).maybeSingle();
         if (tqr) {
           resolvedRestaurantId = tqr.restaurant_id;
-          const { data: tbl } = await supabase.from("tables").select("id, label").eq("restaurant_id", tqr.restaurant_id).maybeSingle();
-          if (tbl) {
-            resolvedTableId = tbl.id;
-            resolvedTableNumber = tbl.label || (tqr.table_number != null ? String(tqr.table_number) : null);
-          }
-          if (!resolvedTableId) {
-            resolvedTableId = tqr.id;
-            resolvedTableNumber = tqr.table_number != null ? String(tqr.table_number) : null;
-          }
+          resolvedTableId = tqr.id;
+          resolvedTableNumber = (tqr.table_number != null && tqr.table_number !== 0) ? String(tqr.table_number) : null;
         }
       }
 
       if (resolvedTableNumber) setTableNumber(resolvedTableNumber);
       if (resolvedTableId) setResolvedTableId(resolvedTableId);
 
-      // Nota: lo screen "pagamento in corso/effettuato" viene mostrato SOLO in reazione
-      // all'evento realtime su waiter_calls (vedi subscription qui sotto), non ricontrollato
-      // ad ogni fetch/reload. Il sessionId è persistente per tavolo, quindi un controllo
-      // "pagato negli ultimi N minuti" qui rimostrerebbe lo screen ad ogni reload della
-      // pagina anche senza ordini attivi (es. nuovo cliente allo stesso tavolo).
-
-      // Sincronizza stato pagamento richiesto tra dispositivi
       if (resolvedTableId) {
         const { data: pendingCall } = await supabase
           .from("waiter_calls")
@@ -1717,13 +1825,9 @@ export default function StatusPage() {
         const orderItems = (itemsData || []).filter(i => i.order_id === order.id);
         const computedTotalCents = orderItems.reduce((sum, i) => sum + Math.round((i.base_price ?? 0) * 100) * (i.quantity ?? 1), 0);
 
-        // Calcola displayStatus basandosi sulla portata attiva:
-        // la portata con numero più basso non ancora completamente ritirata.
         let displayStatus = order.status as Order["status"];
         if (displayStatus === "cooking" || displayStatus === "ready") {
-          // Raggruppa items per portata
           const portateNums = [...new Set(orderItems.map(i => i.portata ?? 1))].sort((a, b) => a - b);
-          // La portata attiva è la prima in cui non tutti i piatti sono stati ritirati
           const activePortata = portateNums.find(p =>
             orderItems.filter(i => (i.portata ?? 1) === p).some(i => !i.picked_up_at)
           );
@@ -1732,9 +1836,9 @@ export default function StatusPage() {
             : orderItems;
           const anyDelivered = activeItems.some(i => i.portata_delivered);
           const anyCompleted = activeItems.some(i => i.portata_completed);
-          if (anyDelivered)      displayStatus = "served"; // step 3 — Consegnato
-          else if (anyCompleted) displayStatus = "ready";  // step 2 — In consegna
-          else                   displayStatus = "cooking"; // step 1 — In preparazione
+          if (anyDelivered)      displayStatus = "served";
+          else if (anyCompleted) displayStatus = "ready";
+          else                   displayStatus = "cooking";
           nextPortataNum = activePortata ?? null;
 
           if (activePortata != null && activePortata > 1) {
@@ -1762,6 +1866,9 @@ export default function StatusPage() {
             portata:      i.portata ?? 1,
             image_url:    imageMap[i.menu_item_id] ?? null,
             customizations: Array.isArray(i.customizations) ? i.customizations : [],
+            picked_up_at: i.picked_up_at ?? null,
+            delivered_at: i.delivered_at ?? null,
+            portata_delivered: !!(i as any).portata_delivered,
           })),
         };
       });
@@ -1787,10 +1894,9 @@ export default function StatusPage() {
       }
 
       prevCountsRef.current = { attesa: newPending, cucina: newCooking, pronti: newReady };
-      // Mostra solo l'ordine più recente — i nuovi sovrascrivono il precedente
       const latestOrder = formatted.length ? formatted[formatted.length - 1] : null;
       setOrders(latestOrder ? [latestOrder] : []);
-      // Carica dal localStorage quali piatti sono già stati recensiti per questo ordine
+      allActiveItemsRef.current = formatted.flatMap(o => o.items ?? []);
       if (latestOrder) {
         try {
           const lsKey = `reviewed_dishes_${latestOrder.id}`;
@@ -1799,20 +1905,22 @@ export default function StatusPage() {
             const ids: string[] = JSON.parse(stored);
             ids.forEach(id => reviewedDishIdsRef.current.add(id));
           }
+          const skippedStored = localStorage.getItem(`skipped_dishes_${latestOrder.id}`);
+          if (skippedStored) {
+            const ids: string[] = JSON.parse(skippedStored);
+            ids.forEach(id => skippedDishIdsRef.current.add(id));
+          }
         } catch {}
-        // Controlla anche dal DB (altri dispositivi)
         const { data: existingReviews } = await supabase
           .from("reviews")
-          .select("menu_item_id")
+          .select("order_item_id")
           .eq("order_id", latestOrder.id)
-          .not("menu_item_id", "is", null);
+          .not("order_item_id", "is", null);
         if (existingReviews) {
-          existingReviews.forEach((r: { menu_item_id: string }) => {
-            reviewedDishIdsRef.current.add(r.menu_item_id);
+          existingReviews.forEach((r: { order_item_id: string }) => {
+            reviewedDishIdsRef.current.add(r.order_item_id);
           });
-          // Sincronizza state per re-render reattivo dei chip
           setReviewedDishIds([...reviewedDishIdsRef.current]);
-          // Sincronizza in localStorage
           try {
             localStorage.setItem(
               `reviewed_dishes_${latestOrder.id}`,
@@ -1825,43 +1933,74 @@ export default function StatusPage() {
         setPaymentMethod((ordersData[ordersData.length - 1] as any).payment_method);
       }
 
-      // allDone usa lo status reale del DB (non il displayStatus override)
-      const allDone = ordersData.length > 0 && ordersData.every(o => o.status === "served" || o.status === "completed");
-      if (allDone) {
+      const allPaid = ordersData.length > 0 && ordersData.every(o => !!(o as any).paid_at);
+
+      const allItems = (itemsData ?? []) as any[];
+      const activeOrderIds = new Set(ordersData.filter(o => o.status === "cooking" || o.status === "ready").map(o => o.id));
+      const activeItems = activeOrderIds.size > 0 ? allItems.filter(i => activeOrderIds.has(i.order_id)) : allItems;
+      const deliveredItems = activeItems.filter((i) => i.portata_delivered);
+      const deliveredCount = deliveredItems.length;
+      if (deliveredCountRef.current === -1) {
+        deliveredCountRef.current = deliveredCount;
+      } else if (deliveredCount > deliveredCountRef.current) {
+        const portateNums = [...new Set(deliveredItems.map((i) => i.portata ?? 1))].sort((a: number, b: number) => a - b);
+        setLastDeliveredPortata(portateNums[0] ?? null);
+        deliveredCountRef.current = deliveredCount;
+      }
+
+      const allPortate = [...new Set(allItems.map((i) => i.portata ?? 1))];
+      const lastPortataDelivered = allItems.length > 0 && allPortate.every(
+        p => allItems.filter(i => (i.portata ?? 1) === p).every(i => i.portata_delivered)
+      );
+      if (lastPortataDelivered) setIsLastPortata(true);
+
+      // Un item è "recensibile" solo quando il cameriere preme esplicitamente "Ritira"
+      // sulla portata (picked_up_at valorizzato in WaiterSection/markPortataPickedUp).
+      // La sola consegna (delivered_at/portata_delivered) NON basta: se il cameriere
+      // non preme mai "Ritira", la card di recensione semplicemente non compare
+      // (scelta intenzionale, vedi conversazione).
+      const isItemDone = (i: any) => !!i.picked_up_at;
+
+      // "every", non "some": con più ordini attivi in contemporanea (es. l'utente
+      // aggiunge una nuova portata dalla schermata finale dopo che il primo ordine
+      // è già "served") basta UN ordine ancora da ritirare per non considerare
+      // tutto pronto, altrimenti la nuova portata verrebbe ignorata.
+      const allPickedUp = allItems.length > 0 && (
+        allItems.every(isItemDone) ||
+        ordersData.every(o => o.status === "served" || o.status === "completed")
+      );
+
+      // Tracciato per riga di order_item (non per menu_item_id): lo stesso piatto
+      // ordinato in portate diverse sono due "volte" distinte, ognuna con una sua
+      // recensione (ogni portata può essere stata mangiata da una persona diversa).
+      const pickedUpDishIds = allItems.filter(isItemDone).map((i: any) => i.id).filter(Boolean);
+      const hasUnreviewed = pickedUpDishIds.some(id => !reviewedDishIdsRef.current.has(id) && !skippedDishIdsRef.current.has(id));
+      if (pickedUpCountRef.current === -1) {
+        // Prima chiamata: inizializza. Se ci sono già piatti consegnati non recensiti,
+        // mostra comunque la card (utile dopo un refresh della pagina).
+        pickedUpCountRef.current = pickedUpDishIds.length;
+        if (hasUnreviewed && !showReview && pickedUpDishIds.length > 0) {
+          setShowReview(true);
+          setReviewMinimized(false);
+        }
+      } else if (pickedUpDishIds.length > pickedUpCountRef.current) {
+        if (hasUnreviewed && !showReview) {
+          setShowReview(true);
+          setReviewMinimized(false);
+        }
+        pickedUpCountRef.current = pickedUpDishIds.length;
+      }
+
+      if (allPickedUp && allPaid) {
         setAllServed(true);
-        const allDishIds = [...new Set((latestOrder?.items ?? []).map((i: any) => i.menu_item_id).filter(Boolean))];
-        const hasUnreviewed = allDishIds.some(id => !reviewedDishIdsRef.current.has(id));
-        if (!reviewShownRef.current && hasUnreviewed) {
-          reviewShownRef.current = true;
-          setTimeout(() => { setShowReview(true); setReviewMinimized(false); }, 600);
-        }
-      } else {
-        // Popup recensione ogni volta che una nuova portata viene consegnata
-        const allItems = (itemsData ?? []) as any[];
-        // Considera solo gli items di ordini ancora attivi (cooking/ready), non quelli già serviti
-        const activeOrderIds = new Set(ordersData.filter(o => o.status === "cooking" || o.status === "ready").map(o => o.id));
-        const activeItems = activeOrderIds.size > 0 ? allItems.filter(i => activeOrderIds.has(i.order_id)) : allItems;
-        const deliveredItems = activeItems.filter((i) => i.portata_delivered);
-        const deliveredCount = deliveredItems.length;
-        if (deliveredCountRef.current === -1) {
-          // Prima chiamata: inizializza senza mostrare il popup
-          deliveredCountRef.current = deliveredCount;
-        } else if (deliveredCount > deliveredCountRef.current) {
-          const portateNums = [...new Set(deliveredItems.map((i) => i.portata ?? 1))].sort((a: number, b: number) => a - b);
-          setLastDeliveredPortata(portateNums[0] ?? null);
-          const allPortate = [...new Set(activeItems.map((i) => i.portata ?? 1))];
-          const allDelivered = allPortate.every(p => activeItems.filter(i => (i.portata ?? 1) === p).some(i => i.portata_delivered));
-          if (allDelivered) setIsLastPortata(true);
-          deliveredCountRef.current = deliveredCount;
-          const allDishIds2 = [...new Set(allItems.map((i: any) => i.menu_item_id).filter(Boolean))];
-          const hasUnreviewed2 = allDishIds2.some(id => !reviewedDishIdsRef.current.has(id));
-          if (hasUnreviewed2) {
-            reviewShownRef.current = true;
-            setTimeout(() => { setShowReview(true); setReviewMinimized(false); }, 800);
-          }
-        } else {
-          deliveredCountRef.current = deliveredCount;
-        }
+      } else if (allPickedUp && !allPaid && !hasUnreviewed && !showReview) {
+        setShowEndScreen(true);
+      } else if (!allPickedUp) {
+        // Nuova portata inviata dopo la schermata finale (es. dal "Hai ancora
+        // spazio?"): torniamo alla vista di stato live finché non è di nuovo
+        // tutto ritirato, invece di restare bloccati sulla card di fine ordine.
+        setShowEndScreen(false);
+        setAllServed(false);
       }
     } catch (err: any) {
       console.error("[StatusPage] fetchOrders:", err?.message);
@@ -1874,9 +2013,6 @@ export default function StatusPage() {
     if (!sessionId) return;
     fetchOrders();
     const tickInterval = setInterval(() => setTick(t => t + 1), 60_000);
-    // Polling: Realtime + RLS con subquery (order_items.anon read pending) non riesce
-    // ad autorizzare gli eventi per anon, quindi lo stato portata non arriva mai.
-    // Poll ogni 5s finché la pagina è visibile.
     const pollInterval = setInterval(() => {
       if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
       fetchOrders();
@@ -1890,9 +2026,6 @@ export default function StatusPage() {
     };
   }, [sessionId, fetchOrders]);
 
-  // Subscription realtime separata: aspetta di conoscere resolvedTableId prima di
-  // iscriversi a waiter_calls, così il filtro per tavolo è sempre applicato e non
-  // riceviamo mai eventi di pagamento di ALTRI tavoli/ristoranti.
   useEffect(() => {
     if (!sessionId || !resolvedTableId) return;
     const channel = supabase.channel(`status_realtime_${sessionId}`)
@@ -1901,7 +2034,6 @@ export default function StatusPage() {
       .on("postgres_changes", { event: "*", schema: "public", table: "waiter_calls", filter: `table_id=eq.${resolvedTableId}` },
         (payload) => {
           if (payload.eventType === "DELETE") {
-            // Su DELETE payload.old ha solo la PK — confronta con il ref
             const deletedId = (payload.old as { id?: string })?.id;
             if (deletedId && deletedId === paymentCallIdRef.current) {
               setPaymentRequested(false);
@@ -1946,18 +2078,30 @@ export default function StatusPage() {
     }
   };
 
+  const markDishSkipped = (dishId: string, orderId: string | null) => {
+    skippedDishIdsRef.current.add(dishId);
+    if (orderId) {
+      try { localStorage.setItem(`skipped_dishes_${orderId}`, JSON.stringify([...skippedDishIdsRef.current])); } catch {}
+    }
+  };
+
   const submitReview = async () => {
     if (!reviewStars || !restaurantId || !reviewDishId) return;
     setReviewSending(true);
     try {
       const orderId = orders[0]?.id ?? null;
+      // reviewDishId è l'id della riga order_item selezionata (non il menu_item_id):
+      // lo stesso piatto ordinato in due portate diverse produce due righe distinte,
+      // ognuna recensibile a sé.
+      const rawItemsForSubmit = allActiveItemsRef.current as Array<{ id: string; menu_item_id: string }>;
+      const selectedItem = rawItemsForSubmit.find(i => i.id === reviewDishId);
+      const menuItemId = selectedItem?.menu_item_id ?? null;
 
-      // Pre-check fresco dal DB: se un altro dispositivo ha già recensito questo piatto, blocca subito
       if (orderId) {
         const { data: existing } = await supabase
           .from("reviews").select("id")
           .eq("order_id", orderId)
-          .eq("menu_item_id", reviewDishId)
+          .eq("order_item_id", reviewDishId)
           .maybeSingle();
         if (existing) {
           markDishReviewed(reviewDishId, orderId);
@@ -1973,11 +2117,11 @@ export default function StatusPage() {
         session_id:    sessionId,
         table_number:  tableNumber,
         order_id:      orderId,
-        menu_item_id:  reviewDishId,
+        menu_item_id:  menuItemId,
+        order_item_id: reviewDishId,
         dish_name:     reviewDishName ?? null,
       });
 
-      // 23505 = unique violation (race tra due dispositivi nello stesso istante)
       if (error && error.code !== "23505" && error) {
         console.error("[ReviewPopup] insert error:", error);
         return;
@@ -1985,13 +2129,23 @@ export default function StatusPage() {
 
       markDishReviewed(reviewDishId, orderId);
 
-      const rawItems = (orders[0]?.items ?? []) as Array<{ menu_item_id: string }>;
-      const uniqueDishIds = [...new Set(rawItems.map(i => i.menu_item_id).filter(Boolean))];
-      const remaining = uniqueDishIds.filter(id => !reviewedDishIdsRef.current.has(id));
+      const rawItems = allActiveItemsRef.current as Array<{ id: string; menu_item_id: string; picked_up_at?: string | null; delivered_at?: string | null; portata_delivered?: boolean }>;
+      const isDone = (i: typeof rawItems[number]) => !!i.picked_up_at;
+      const doneItemIds = rawItems.filter(isDone).map(i => i.id).filter(Boolean);
+      const remaining = doneItemIds.filter(id => !reviewedDishIdsRef.current.has(id) && !skippedDishIdsRef.current.has(id));
 
       if (remaining.length === 0) {
         setReviewSent(true);
-        setTimeout(() => { setShowReview(false); setShowEndScreen(true); }, 1800);
+        setTimeout(() => {
+          setShowReview(false);
+          setReviewSent(false);
+          setReviewStars(0);
+          setReviewText("");
+          setReviewDishId(null);
+          setReviewDishName(null);
+          const stillPending = rawItems.some(i => !isDone(i));
+          if (!stillPending) setShowEndScreen(true);
+        }, 5000);
       } else {
         setReviewSent(true);
         setTimeout(() => {
@@ -2000,12 +2154,42 @@ export default function StatusPage() {
           setReviewText("");
           setReviewDishId(null);
           setReviewDishName(null);
-        }, 1800);
+        }, 5000);
       }
     } catch (e) {
       console.error("[ReviewPopup] submit:", e);
     } finally {
       setReviewSending(false);
+    }
+  };
+
+  const skipReview = () => {
+    const orderId = orders[0]?.id ?? null;
+    const rawItems = allActiveItemsRef.current as Array<{ id: string; menu_item_id: string; picked_up_at?: string | null; delivered_at?: string | null; portata_delivered?: boolean }>;
+    const isDone = (i: typeof rawItems[number]) => !!i.picked_up_at;
+
+    if (reviewDishId) {
+      markDishSkipped(reviewDishId, orderId);
+    } else {
+      const doneItemIds = rawItems.filter(isDone).map(i => i.id).filter(Boolean);
+      doneItemIds
+        .filter(id => !reviewedDishIdsRef.current.has(id) && !skippedDishIdsRef.current.has(id))
+        .forEach(id => markDishSkipped(id, orderId));
+    }
+    window.dispatchEvent(new CustomEvent("review-skipped"));
+
+    const allDoneItemIds = rawItems.filter(isDone).map(i => i.id).filter(Boolean);
+    const remaining = allDoneItemIds.filter(id => !reviewedDishIdsRef.current.has(id) && !skippedDishIdsRef.current.has(id));
+
+    setShowReview(false);
+    setReviewStars(0);
+    setReviewText("");
+    setReviewDishId(null);
+    setReviewDishName(null);
+
+    if (remaining.length === 0) {
+      const stillPending = rawItems.some(i => !isDone(i));
+      if (!stillPending) setShowEndScreen(true);
     }
   };
 
@@ -2031,38 +2215,70 @@ export default function StatusPage() {
     );
   }
 
-  // ── Pagamento confermato dal cameriere ───────────────────────────────────
   if (showPaidScreen) {
     const brand = effectiveBrand || "#3a2f26";
     return (
-      <div style={{
-        position: "fixed", inset: 0, zIndex: 200,
-        background: isDark ? "#1c1917" : "#fff",
-        display: "flex", flexDirection: "column",
-        alignItems: "center", justifyContent: "center",
-        padding: "0 32px",
-        gap: 24,
-      }}>
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        exit={{ opacity: 0 }}
+        transition={{ duration: 0.4 }}
+        style={{
+          position: "fixed", inset: 0, zIndex: 200,
+          background: isDark ? "#1c1917" : "#fff",
+          display: "flex", flexDirection: "column",
+          alignItems: "center", justifyContent: "center",
+          padding: "0 32px",
+          gap: 24,
+        }}
+      >
+        <div aria-hidden style={{
+          position: "fixed", top: "-20%", right: "-15%",
+          width: 380, height: 380, borderRadius: "50%",
+          background: `${brand}14`, filter: "blur(80px)", pointerEvents: "none",
+        }} />
+        <div aria-hidden style={{
+          position: "fixed", bottom: "-15%", left: "-10%",
+          width: 280, height: 280, borderRadius: "50%",
+          background: `${brand}10`, filter: "blur(60px)", pointerEvents: "none",
+        }} />
+
         <AnimatePresence mode="wait">
           {paidStep === "processing" && (
             <motion.div
               key="processing"
-              initial={{ opacity: 0, y: 16 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -16 }}
-              transition={{ duration: 0.4 }}
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20 }}
+              initial={{ opacity: 0, y: 16, scale: 0.96 }}
+              animate={{ opacity: 1, y: 0, scale: 1 }}
+              exit={{ opacity: 0, y: -16, scale: 0.96 }}
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, position: "relative", zIndex: 1 }}
             >
-              {/* Spinner */}
-              <div style={{
-                width: 72, height: 72, borderRadius: "50%",
-                border: `4px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)"}`,
-                borderTop: `4px solid ${brand}`,
-                animation: "spinPay 0.9s linear infinite",
-              }} />
+              <motion.div
+                initial={{ scale: 0.8, opacity: 0 }}
+                animate={{ scale: 1, opacity: 1 }}
+                transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
+                style={{ position: "relative" }}
+              >
+                <motion.div
+                  initial={{ scale: 1, opacity: 0.3 }}
+                  animate={{ scale: 1.5, opacity: 0 }}
+                  transition={{ duration: 1.4, repeat: Infinity, ease: "easeOut" }}
+                  style={{
+                    position: "absolute", inset: -6, borderRadius: "50%",
+                    border: `2px solid ${brand}`,
+                  }}
+                />
+                <div style={{
+                  width: 76, height: 76, borderRadius: "50%",
+                  border: `4px solid ${isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)"}`,
+                  borderTop: `4px solid ${brand}`,
+                  animation: "spinPay 0.9s linear infinite",
+                  boxShadow: `0 8px 32px -4px ${brand}44`,
+                }} />
+              </motion.div>
               <style>{`@keyframes spinPay { to { transform: rotate(360deg); } }`}</style>
-              <p style={{ fontSize: 20, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917", margin: 0 }}>
-                Pagamento in corso...
+              <p style={{ fontSize: 20, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917", margin: 0, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.02em" }}>
+                {tS.paymentInProgress}
               </p>
             </motion.div>
           )}
@@ -2070,35 +2286,46 @@ export default function StatusPage() {
           {paidStep === "success" && (
             <motion.div
               key="success"
-              initial={{ opacity: 0, scale: 0.9 }}
+              initial={{ opacity: 0, scale: 0.92 }}
               animate={{ opacity: 1, scale: 1 }}
-              transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
-              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, width: "100%" }}
+              exit={{ opacity: 0, scale: 0.92 }}
+              transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+              style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 20, width: "100%", position: "relative", zIndex: 1 }}
             >
-              {/* Checkmark */}
               <motion.div
                 initial={{ scale: 0 }}
                 animate={{ scale: 1 }}
                 transition={{ type: "spring", stiffness: 300, damping: 20, delay: 0.1 }}
-                style={{
-                  width: 72, height: 72, borderRadius: "50%",
-                  background: brand,
-                  display: "flex", alignItems: "center", justifyContent: "center",
-                }}
+                style={{ position: "relative" }}
               >
-                <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
-                  <path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
-                </svg>
+                <motion.div
+                  initial={{ scale: 1, opacity: 0.4 }}
+                  animate={{ scale: 1.6, opacity: 0 }}
+                  transition={{ duration: 1.2, delay: 0.3, repeat: Infinity, repeatDelay: 1 }}
+                  style={{
+                    position: "absolute", inset: 0, borderRadius: "50%",
+                    border: `2px solid ${brand}`,
+                  }}
+                />
+                <div style={{
+                  width: 76, height: 76, borderRadius: "50%",
+                  background: `linear-gradient(135deg, ${brand}, ${brand}cc)`,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  boxShadow: `0 16px 40px -8px ${brand}66`,
+                }}>
+                  <svg width="34" height="34" viewBox="0 0 24 24" fill="none">
+                    <path d="M5 13l4 4L19 7" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+                  </svg>
+                </div>
               </motion.div>
 
-              <p style={{ fontSize: 20, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917", margin: 0, textAlign: "center" }}>
-                Pagamento effettuato con successo
+              <p style={{ fontSize: 20, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917", margin: 0, textAlign: "center", fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.02em" }}>
+                {tS.paymentSuccessTitle}
               </p>
               <p style={{ fontSize: 14, color: isDark ? "#a8a29e" : "#78716c", margin: 0, textAlign: "center" }}>
-                Grazie per aver scelto {restaurantName || "il nostro ristorante"} 🙏
+                {tS.paymentSuccessThanks(restaurantName || (lang === "en" ? "our restaurant" : "il nostro ristorante"))}
               </p>
 
-              {/* Barra di avanzamento */}
               <div style={{
                 width: "100%", height: 6, borderRadius: 3,
                 background: isDark ? "rgba(255,255,255,0.1)" : "rgba(0,0,0,0.08)",
@@ -2106,22 +2333,22 @@ export default function StatusPage() {
               }}>
                 <div style={{
                   height: "100%", borderRadius: 3,
-                  background: brand,
+                  background: `linear-gradient(90deg, ${brand}, ${brand}cc)`,
                   width: `${paidProgress}%`,
                   transition: "width 0.05s linear",
+                  boxShadow: `0 0 12px ${brand}66`,
                 }} />
               </div>
               <p style={{ fontSize: 12, color: isDark ? "#a8a29e" : "#78716c", margin: 0 }}>
-                Ritorno al menù...
+                {tS.returningToMenu}
               </p>
             </motion.div>
           )}
         </AnimatePresence>
-      </div>
+      </motion.div>
     );
   }
 
-  // ── Tutti gli ordini serviti: mostra solo la schermata di recensione ──────
   if (orderCompleted) {
     const paymentLabel = paymentMethod === "cash"
       ? "Contanti"
@@ -2140,25 +2367,69 @@ export default function StatusPage() {
         className="relative flex min-h-screen flex-col items-center justify-end"
         style={{ background: bg, ["--brand" as any]: brandColor }}
       >
+        {isImageBg && (
+          <div
+            aria-hidden
+            style={{
+              position: "fixed", inset: 0, zIndex: 0,
+              backgroundImage: `url(${backgroundImageUrl})`,
+              backgroundSize: "cover", backgroundPosition: "center",
+              transform: "translateZ(0)", WebkitTransform: "translateZ(0)",
+              willChange: "transform", backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden",
+            }}
+          />
+        )}
         <div className="absolute inset-0" style={{ background: "linear-gradient(to bottom, transparent 30%, rgba(0,0,0,0.55))" }} />
 
         <motion.div
-          className="relative z-10 mx-4 mb-8 w-full max-w-sm overflow-hidden rounded-[24px] bg-white"
-          initial={{ opacity: 0, y: 40 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-          style={{ boxShadow: "0 12px 40px -8px rgba(0,0,0,0.22)" }}
+          className="relative z-10 mx-4 mb-8 w-full max-w-sm overflow-hidden rounded-[28px] bg-white"
+          initial={{ opacity: 0, y: 40, scale: 0.96 }}
+          animate={{ opacity: 1, y: 0, scale: 1 }}
+          exit={{ opacity: 0, y: 20, scale: 0.96 }}
+          transition={{ duration: 0.6, ease: [0.22, 1, 0.36, 1] }}
+          style={{ boxShadow: "0 20px 60px -12px rgba(0,0,0,0.28)" }}
         >
-          {/* Header */}
-          <div className="px-6 pt-7 pb-5 text-center" style={{ background: brandColor }}>
-            <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-white/20 text-3xl mx-auto">✅</div>
-            <h1 className="text-xl font-bold text-white">Ordine completato!</h1>
-            <p className="mt-1 text-sm text-white/75">Grazie per aver cenato con noi</p>
+          <div className="relative px-6 pt-8 pb-6 text-center overflow-hidden" style={{ background: `linear-gradient(135deg, ${brandColor}, ${brandColor}cc)` }}>
+            <div aria-hidden style={{
+              position: "absolute", top: -30, right: -20,
+              width: 120, height: 120, borderRadius: "50%",
+              background: "rgba(255,255,255,0.15)", filter: "blur(40px)", pointerEvents: "none",
+            }} />
+            <motion.div
+              initial={{ scale: 0.6, opacity: 0 }}
+              animate={{ scale: 1, opacity: 1 }}
+              transition={{ duration: 0.55, delay: 0.15, ease: [0.34, 1.56, 0.64, 1] }}
+              className="relative mx-auto mb-3 grid h-16 w-16 place-items-center rounded-2xl"
+              style={{ background: "rgba(255,255,255,0.25)", backdropFilter: "blur(8px)" }}
+            >
+              <span className="text-3xl">✅</span>
+            </motion.div>
+            <motion.h1
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.25 }}
+              className="text-xl font-bold text-white"
+              style={{ fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.02em" }}
+            >
+              Ordine completato!
+            </motion.h1>
+            <motion.p
+              initial={{ opacity: 0, y: 8 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.32 }}
+              className="mt-1 text-sm text-white/80"
+            >
+              Grazie per aver cenato con noi
+            </motion.p>
           </div>
 
           <div className="px-6 py-5 space-y-4">
-            {/* Pagamento */}
-            <div className="rounded-2xl border border-stone-100 bg-stone-50 p-4">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ duration: 0.4, delay: 0.4 }}
+              className="rounded-2xl border border-stone-100 bg-stone-50 p-4"
+            >
               <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-stone-400">Metodo di pagamento</p>
               <div className="flex items-center gap-3">
                 <span className="text-2xl">{paymentIcon}</span>
@@ -2167,11 +2438,15 @@ export default function StatusPage() {
                   <p className="text-[12px] text-stone-500">{paymentNote}</p>
                 </div>
               </div>
-            </div>
+            </motion.div>
 
-            {/* Social / links */}
             {(instagram || facebook || website || googleReviewUrl || tripadvisorUrl || phone) && (
-              <div className="rounded-2xl border border-stone-100 bg-stone-50 p-4">
+              <motion.div
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ duration: 0.4, delay: 0.5 }}
+                className="rounded-2xl border border-stone-100 bg-stone-50 p-4"
+              >
                 <p className="mb-3 text-[11px] font-semibold uppercase tracking-wider text-stone-400">Seguici &amp; lascia un voto</p>
                 <div className="flex flex-wrap gap-2">
                   {instagram && (
@@ -2236,7 +2511,7 @@ export default function StatusPage() {
                     </a>
                   )}
                 </div>
-              </div>
+              </motion.div>
             )}
 
             <p className="text-center text-[12px] text-stone-400 pb-1">
@@ -2248,511 +2523,59 @@ export default function StatusPage() {
     );
   }
 
-  // ── END SCREEN ────────────────────────────────────────────────────────────
-  if (showEndScreen) {
+  if (showEndScreen || allServed) {
     const order = orders[0];
     const isPaid = !!(order as any)?.paid_at;
     const payMethod = (order as any)?.payment_method as string | null;
     const payLabel = payMethod === "cash" ? tS.payCash : payMethod === "card" ? tS.payCard : null;
-    const totalEur = order ? ((order.total_cents ?? 0) / 100).toFixed(2) : null;
-    const originalTotalCents =
-      (order as any)?.original_total_cents ??
-      ((order as any)?.discount_cents > 0
-        ? (order.total_cents ?? 0) + (order as any).discount_cents
-        : null);
-    const originalTotalEur = originalTotalCents
-      ? (originalTotalCents / 100).toFixed(2)
-      : null;
 
     return (
-      <div style={{ minHeight: "100vh", background: bg, fontFamily: "'Space Grotesk', sans-serif", overflowY: "auto" }}>
-        {/* Header */}
-        <div style={{ display: "flex", flexDirection: "column", alignItems: "center", padding: "170px 24px max(40px, env(safe-area-inset-bottom))", textAlign: "center" }}>
-          <motion.h1 initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.25 }}
-            style={{ fontSize: 28, fontWeight: 800, color: isDark ? "#f5f5f4" : "#1c1917", letterSpacing: "-0.02em", marginBottom: 8 }}>
-            Grazie mille!
-          </motion.h1>
-          <motion.p initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.35 }}
-            style={{ fontSize: 16, color: isDark ? "#a8a29e" : "#78716c", marginBottom: 28, lineHeight: 1.5 }}>
-            Ci auguriamo che tu abbia trascorso{"\n"}una piacevole serata.
-          </motion.p>
-
-          {/* Riepilogo ordine */}
-          <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.45 }}
-            style={{ background: isDark ? "#1c1917" : "#fff", borderRadius: 20, padding: "20px 24px", width: "100%", maxWidth: 340, boxShadow: "0 4px 24px rgba(0,0,0,0.08)", textAlign: "left", border: `2px solid ${effectiveBrand}` }}>
-            {tableNumber && (
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 10 }}>
-                <span style={{ fontSize: 14, color: isDark ? "#a8a29e" : "#78716c" }}>Tavolo</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917" }}>#{tableNumber}</span>
-              </div>
-            )}
-            {totalEur && (
-              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                <span style={{ fontSize: 14, color: isDark ? "#a8a29e" : "#78716c" }}>Totale</span>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917" }}>€{totalEur}</span>
-                  {originalTotalEur && (
-                    <span style={{ fontSize: 13, color: "#e53935", textDecoration: "line-through", opacity: 0.85 }}>
-                      €{originalTotalEur}
-                    </span>
-                  )}
-                </div>
-              </div>
-            )}
-            {payLabel && (
-              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-                <span style={{ fontSize: 14, color: isDark ? "#a8a29e" : "#78716c" }}>Pagamento</span>
-                <span style={{ fontSize: 14, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917" }}>{payLabel}</span>
-              </div>
-            )}
-            {/* Richiesta pagamento */}
-            <div style={{ borderTop: `1px solid ${isDark ? "rgba(255,255,255,0.06)" : "rgba(0,0,0,0.07)"}`, paddingTop: 14 }}>
-              {isPaid ? (
-                <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 0" }}>
-                  <span style={{ fontSize: 18 }}>✅</span>
-                  <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? "#a8a29e" : "#78716c" }}>Pagamento già ricevuto</span>
-                </div>
-              ) : paymentRequested ? (
-                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 0" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 18 }}>✅</span>
-                    <span style={{ fontSize: 13, fontWeight: 600, color: isDark ? "#a8a29e" : "#78716c" }}>Cameriere in arrivo!</span>
-                  </div>
-                  <button
-                    onClick={async () => {
-                      if (paymentCallId) {
-                        await supabase.from("waiter_calls").delete().eq("id", paymentCallId);
-                      }
-                      setPaymentRequested(false);
-                      setPaymentCallId(null);
-                    }}
-                    style={{
-                      fontSize: 12, fontWeight: 700, color: "#ef4444",
-                      background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)",
-                      borderRadius: 20, padding: "4px 12px", cursor: "pointer",
-                    }}
-                  >
-                    Annulla
-                  </button>
-                </div>
-              ) : (
-                <>
-                  <button
-                    disabled={paymentRequestSending}
-                    onClick={async () => {
-                      if (paymentRequestSending || paymentRequested) return;
-                      setPaymentRequestSending(true);
-                      try {
-                        const tableIdForRequest = orders[0]?.table_id ?? null;
-                        const ridForRequest = restaurantId;
-                        const orderIdForRequest = orders[0]?.id ?? null;
-                        if (ridForRequest) {
-                          const { data: wc } = await supabase.from("waiter_calls").insert({
-                            restaurant_id: ridForRequest,
-                            table_id: tableIdForRequest,
-                            order_id: orderIdForRequest,
-                            type: "payment",
-                            status: "pending",
-                          }).select("id").single();
-                          if (wc?.id) setPaymentCallId(wc.id);
-                        }
-                        setPaymentRequested(true);
-                      } finally {
-                        setPaymentRequestSending(false);
-                      }
-                    }}
-                    style={{
-                      width: "100%",
-                      padding: "12px 0",
-                      borderRadius: 12,
-                      border: "none",
-                      background: paymentRequestSending ? `${effectiveBrand}80` : effectiveBrand,
-                      color: "#fff",
-                      fontSize: 14,
-                      fontWeight: 700,
-                      cursor: paymentRequestSending ? "default" : "pointer",
-                      fontFamily: "'Space Grotesk', sans-serif",
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "center",
-                      gap: 8,
-                    }}
-                  >
-                    {paymentRequestSending ? (
-                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fff" strokeWidth="2.5" style={{ animation: "spin 0.7s linear infinite" }}>
-                        <path d="M12 2a10 10 0 0 1 10 10" strokeLinecap="round" />
-                      </svg>
-                    ) : (
-                      "💳 Chiama il cameriere per pagare"
-                    )}
-                  </button>
-                </>
-              )}
-            </div>
-          </motion.div>
-        </div>
-
-        {/* Upsell section */}
-        {upsellItems.length > 0 && (
-          <motion.div initial={{ opacity: 0, y: 30 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.6 }}
-            style={{ paddingBottom: 40 }}>
-            <p style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", textTransform: "uppercase", color: isDark ? "#78716c" : "#a8a29e", textAlign: "center", marginBottom: 14 }}>
-              Hai ancora spazio? 🍰
-            </p>
-
-            {/* Category filter chips */}
-            {upsellCategories.length > 1 && (
-              <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingLeft: 16, paddingRight: 16, paddingBottom: 12, scrollbarWidth: "none" }}>
-                <button
-                  onClick={() => setSelectedUpsellCat(null)}
-                  style={{
-                    flexShrink: 0, borderRadius: 50, padding: "6px 14px", fontSize: 13, fontWeight: 600,
-                    border: `2px solid ${selectedUpsellCat === null ? effectiveBrand : (isDark ? "#3a3530" : "#e7e5e4")}`,
-                    background: selectedUpsellCat === null ? `${effectiveBrand}15` : "transparent",
-                    color: selectedUpsellCat === null ? effectiveBrand : (isDark ? "#a8a29e" : "#78716c"),
-                    cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s",
-                  }}
-                >
-                  Tutti
-                </button>
-                {upsellCategories.map(cat => (
-                  <button
-                    key={cat.id}
-                    onClick={() => setSelectedUpsellCat(cat.id === selectedUpsellCat ? null : cat.id)}
-                    style={{
-                      flexShrink: 0, borderRadius: 50, padding: "6px 14px", fontSize: 13, fontWeight: 600,
-                      border: `2px solid ${selectedUpsellCat === cat.id ? effectiveBrand : (isDark ? "#3a3530" : "#e7e5e4")}`,
-                      background: selectedUpsellCat === cat.id ? `${effectiveBrand}15` : "transparent",
-                      color: selectedUpsellCat === cat.id ? effectiveBrand : (isDark ? "#a8a29e" : "#78716c"),
-                      cursor: "pointer", whiteSpace: "nowrap", transition: "all 0.15s",
-                    }}
-                  >
-                    {cat.name}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Swipe-scrollable dish cards */}
-            <div style={{ display: "flex", gap: 12, overflowX: "auto", paddingLeft: 16, paddingRight: 16, paddingBottom: 8, scrollbarWidth: "none", WebkitOverflowScrolling: "touch" as any }}>
-              {upsellItems
-                .filter(item => selectedUpsellCat === null || item.category_id === selectedUpsellCat)
-                .map(item => (
-                  <button
-                    key={item.id}
-                    onClick={() => setSelectedUpsellDish(item)}
-                    style={{
-                      flexShrink: 0, width: 160, borderRadius: 16, overflow: "hidden", textAlign: "left",
-                      background: isDark ? "#1c1917" : "#fff", boxShadow: "0 2px 12px rgba(0,0,0,0.08)",
-                      border: "none", cursor: "pointer", padding: 0, display: "block",
-                    }}
-                  >
-                    {item.image_url ? (
-                      <img src={item.image_url} alt={item.name}
-                        style={{ width: "100%", height: 100, objectFit: "cover", display: "block" }} />
-                    ) : (
-                      <div style={{ width: "100%", height: 100, background: `${effectiveBrand}18`, display: "flex", alignItems: "center", justifyContent: "center", fontSize: 30 }}>
-                        🍽️
-                      </div>
-                    )}
-                    <div style={{ padding: "10px 12px 12px" }}>
-                      <p style={{ fontSize: 13, fontWeight: 700, color: isDark ? "#f5f5f4" : "#1c1917", marginBottom: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                        {item.name}
-                      </p>
-                      {item.description && (
-                        <p style={{ fontSize: 11, color: isDark ? "#78716c" : "#a8a29e", lineHeight: 1.4, display: "-webkit-box", WebkitLineClamp: 2, WebkitBoxOrient: "vertical" as any, overflow: "hidden", marginBottom: 4 }}>
-                          {item.description}
-                        </p>
-                      )}
-                      <p style={{ fontSize: 13, fontWeight: 700, color: effectiveBrand }}>
-                        €{(item.price_cents / 100).toFixed(2)}
-                      </p>
-                    </div>
-                  </button>
-                ))}
-            </div>
-          </motion.div>
-        )}
-
-        {/* Dish detail modal — drag-to-dismiss */}
-        <AnimatePresence>
-          {selectedUpsellDish && (
-            <>
-              {/* Backdrop */}
-              <motion.div
-                key="dish-backdrop"
-                initial={{ opacity: 0 }}
-                animate={{ opacity: 1 }}
-                exit={{ opacity: 0 }}
-                transition={{ duration: 0.22 }}
-                onClick={() => setSelectedUpsellDish(null)}
-                style={{
-                  position: "fixed", inset: 0, zIndex: 200,
-                  background: "rgba(0,0,0,0.55)", backdropFilter: "blur(4px)",
-                }}
-              />
-
-              {/* Sheet */}
-              <motion.div
-                key="dish-sheet"
-                drag="y"
-                dragConstraints={{ top: 0 }}
-                dragElastic={{ top: 0.05, bottom: 0.3 }}
-                onDragEnd={(_, info) => {
-                  if (info.offset.y > 80 || info.velocity.y > 400) {
-                    setSelectedUpsellDish(null);
-                  }
-                }}
-                initial={{ y: "100%" }}
-                animate={{ y: 0 }}
-                exit={{ y: "100%" }}
-                transition={{ type: "spring", stiffness: 340, damping: 34, mass: 0.9 }}
-                onClick={e => e.stopPropagation()}
-                style={{
-                  position: "fixed", bottom: 0, left: 0, right: 0,
-                  zIndex: 201, touchAction: "none",
-                  maxWidth: 480, margin: "0 auto",
-                }}
-              >
-                <div style={{
-                  background: isDark ? "#1c1917" : "#fff",
-                  borderRadius: "24px 24px 0 0",
-                  boxShadow: "0 -8px 48px rgba(0,0,0,0.22)",
-                  overflow: "hidden",
-                }}>
-                  {/* Handle */}
-                  <div style={{ paddingTop: 10, paddingBottom: 6, display: "flex", justifyContent: "center", cursor: "grab" }}>
-                    <div style={{ width: 40, height: 4, borderRadius: 99, background: isDark ? "#3a3530" : "#d4d0cc" }} />
-                  </div>
-
-                  {/* Immagine */}
-                  {selectedUpsellDish.image_url && (
-                    <motion.div
-                      initial={{ opacity: 0, scale: 1.04 }}
-                      animate={{ opacity: 1, scale: 1 }}
-                      transition={{ duration: 0.35, delay: 0.08 }}
-                    >
-                      <img
-                        src={selectedUpsellDish.image_url}
-                        alt={selectedUpsellDish.name}
-                        style={{ width: "100%", height: 200, objectFit: "cover", display: "block" }}
-                        draggable={false}
-                      />
-                    </motion.div>
-                  )}
-
-                  {/* Contenuto */}
-                  <motion.div
-                    initial={{ opacity: 0, y: 10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    transition={{ duration: 0.3, delay: 0.1 }}
-                    style={{
-                      padding: "20px 20px max(28px, env(safe-area-inset-bottom)) 20px",
-                      fontFamily: "'Space Grotesk', sans-serif",
-                    }}
-                  >
-                    <h2 style={{
-                      fontSize: 22, fontWeight: 800,
-                      color: isDark ? "#f5f5f4" : "#1c1917",
-                      marginBottom: 6, letterSpacing: "-0.02em",
-                    }}>
-                      {selectedUpsellDish.name}
-                    </h2>
-
-                    {selectedUpsellDish.description && (
-                      <p style={{
-                        fontSize: 14, color: isDark ? "#a8a29e" : "#78716c",
-                        lineHeight: 1.6, marginBottom: 16,
-                      }}>
-                        {selectedUpsellDish.description}
-                      </p>
-                    )}
-
-                    <span style={{
-                      display: "block",
-                      fontSize: 28, fontWeight: 800,
-                      color: effectiveBrand, letterSpacing: "-0.02em",
-                      marginBottom: 20,
-                    }}>
-                      €{(selectedUpsellDish.price_cents / 100).toFixed(2).replace(".", ",")}
-                    </span>
-
-                    <motion.button
-                      whileTap={{ scale: 0.97 }}
-                      onClick={async () => {
-                        const allItems = orders.flatMap(o => o.items);
-                        const maxPortata = allItems.reduce((m: number, i: any) => Math.max(m, i.portata ?? 1), 0);
-                        const params = new URLSearchParams({
-                          upsell_id:      selectedUpsellDish.id,
-                          upsell_name:    selectedUpsellDish.name,
-                          upsell_price:   String(selectedUpsellDish.price_cents),
-                          upsell_portata: String(maxPortata + 1),
-                        });
-                        setSelectedUpsellDish(null);
-                        router.push(`/cart/${sessionId}?${params.toString()}`);
-                      }}
-                      style={{
-                        width: "100%", padding: "16px", borderRadius: 16, border: "none",
-                        background: effectiveBrand, color: "#fff",
-                        fontSize: 16, fontWeight: 800, cursor: "pointer",
-                        fontFamily: "'Space Grotesk', sans-serif",
-                        boxShadow: `0 8px 28px ${effectiveBrand}55`,
-                        display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
-                      }}
-                    >
-                      Aggiungi all&apos;ordine →
-                    </motion.button>
-                  </motion.div>
-                </div>
-              </motion.div>
-            </>
-          )}
-        </AnimatePresence>
-      </div>
+      <EndScreenExperience
+        orders={orders as any}
+        restaurantId={restaurantId}
+        sessionId={sessionId}
+        tableNumber={tableNumber}
+        isDark={isDark}
+        brand={effectiveBrand}
+        supabase={supabase}
+        isPaid={isPaid}
+        payLabel={payLabel}
+        paymentRequested={paymentRequested}
+        setPaymentRequested={setPaymentRequested}
+        paymentRequestSending={paymentRequestSending}
+        setPaymentRequestSending={setPaymentRequestSending}
+        paymentCallId={paymentCallId}
+        setPaymentCallId={setPaymentCallId}
+        upsellItems={translatedUpsellItems as any}
+        upsellCategories={upsellCategories as any}
+        selectedUpsellCat={selectedUpsellCat}
+        setSelectedUpsellCat={setSelectedUpsellCat}
+        selectedUpsellDish={selectedUpsellDish as any}
+        setSelectedUpsellDish={setSelectedUpsellDish as any}
+        tS={tS}
+        allLabel={tr.client.order.all}
+      />
     );
   }
 
-  if (allServed) {
-    return (
-      <div
-        className="relative flex min-h-screen flex-col items-center justify-end"
-        style={{ background: bg, ["--brand" as any]: brandColor }}
-      >
-        <style>{`
-          @keyframes fadeUp { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
-        `}</style>
-
-        {/* Card recensione centrata */}
-        <div
-          style={{
-            position: "relative", zIndex: 1,
-            width: "100%", maxWidth: 480,
-            background: "#fff",
-            borderRadius: "32px 32px 0 0",
-            boxShadow: "0 -8px 40px rgba(0,0,0,0.18)",
-            padding: "0 24px max(36px, env(safe-area-inset-bottom))",
-            animation: "fadeUp 0.5s cubic-bezier(0.22,1,0.36,1)",
-          }}
-        >
-          {/* Pill handle (non draggable in questa vista) */}
-          <div style={{ paddingTop: 12, paddingBottom: 4 }}>
-            <div style={{ margin: "0 auto", width: 36, height: 4, borderRadius: 99, background: "#d4d0cc" }} />
-          </div>
-
-          {(() => {
-            // Se tutti i piatti sono già recensiti, salta direttamente al "Grazie"
-            const allDishIds = [...new Set((orders[0]?.items ?? []).map((i: any) => i.menu_item_id).filter(Boolean))];
-            const allAlreadyReviewed = allDishIds.length > 0 && allDishIds.every(id => reviewedDishIds.includes(id));
-            if (allAlreadyReviewed && !reviewSent) {
-              // Tutti già recensiti: vai direttamente all'end screen
-              setTimeout(() => setShowEndScreen(true), 400);
-              return null;
-            }
-          })()}
-          {!reviewSent && (() => {
-            const allDishIds = [...new Set((orders[0]?.items ?? []).map((i: any) => i.menu_item_id).filter(Boolean))];
-            const allAlreadyReviewed = allDishIds.length > 0 && allDishIds.every(id => reviewedDishIds.includes(id));
-            if (allAlreadyReviewed) return null;
-            return (
-            <>
-              <p className="mb-1 text-center text-[14px]" style={{ color: "#78716c" }}>
-                {tableNumber ? `${tS.table} ${tableNumber}` : tS.yourOrder} · {tS.allServed} 🎉
-              </p>
-              <h2 className="mb-5 text-center font-bold" style={{ color: "#1c1917", fontSize: 24, fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.02em", lineHeight: 1.2 }}>
-                Com'è stata l'esperienza?
-              </h2>
-
-              <div className="mb-5 flex justify-center gap-1">
-                {[1,2,3,4,5].map(star => (
-                  <motion.button key={star} type="button" onClick={() => setReviewStars(star)} whileTap={{ scale: 0.78 }}
-                    style={{ fontSize: 52, lineHeight: 1, background: "none", border: "none", padding: 0, cursor: "pointer", display: "block",
-                      filter: star <= reviewStars ? "drop-shadow(0 3px 8px rgba(234,179,8,0.5))" : "grayscale(1) opacity(0.28)", transition: "filter 0.15s" }}>
-                    ⭐
-                  </motion.button>
-                ))}
-              </div>
-
-              {/* Selezione piatto specifico */}
-              {(() => {
-                const rawItems = (orders[0]?.items ?? []) as Array<{ menu_item_id: string; name: string }>;
-                const unique = Array.from(new Map(rawItems.map(i => [i.menu_item_id, i])).values());
-                if (!unique.length) return null;
-                return (
-                  <div style={{ marginBottom: 16 }}>
-                    <p style={{ fontSize: 12, fontWeight: 700, color: "#a8a29e", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
-                      Seleziona il piatto da recensire
-                    </p>
-                    <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
-                      {unique.map(dish => {
-                        const done = reviewedDishIds.includes(dish.menu_item_id);
-                        const selected = reviewDishId === dish.menu_item_id;
-                        return (
-                          <button key={dish.menu_item_id} type="button"
-                            disabled={done}
-                            onClick={() => {
-                              if (done) return;
-                              if (selected) { setReviewDishId(null); setReviewDishName(null); }
-                              else { setReviewDishId(dish.menu_item_id); setReviewDishName(dish.name); }
-                            }}
-                            style={{
-                              flexShrink: 0, borderRadius: 50, padding: "7px 14px",
-                              fontSize: 13, fontWeight: 600, whiteSpace: "nowrap",
-                              cursor: done ? "default" : "pointer",
-                              border: done ? "2px solid #d1fae5" : selected ? `2px solid ${effectiveBrand}` : "2px solid #e7e5e4",
-                              background: done ? "#d1fae5" : selected ? `${effectiveBrand}15` : "#fafaf8",
-                              color: done ? "#059669" : selected ? effectiveBrand : "#78716c",
-                              transition: "all 0.15s",
-                              opacity: done ? 0.8 : 1,
-                            }}>
-                            {done ? `✓ ${dish.name}` : dish.name}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              })()}
-
-              <textarea
-                value={reviewText} onChange={e => setReviewText(e.target.value)}
-                placeholder="Raccontaci la tua esperienza (opzionale)…" rows={3}
-                className="w-full resize-none outline-none"
-                style={{ borderRadius: 14, border: `1.5px solid ${effectiveBrand}55`, padding: "12px 16px", fontSize: 16, color: "#1c1917", background: "#fafaf8", fontFamily: "inherit", lineHeight: 1.55 }}
-              />
-
-              <motion.button type="button" onClick={submitReview} disabled={!reviewStars || !reviewDishId || reviewSending} whileTap={{ scale: 0.97 }}
-                className="mt-4 flex w-full items-center justify-center gap-2 text-white disabled:opacity-40"
-                style={{ background: effectiveBrand, borderRadius: 50, padding: "17px 24px", fontSize: 16, fontWeight: 700, border: "none", cursor: "pointer", letterSpacing: "-0.01em", boxShadow: `0 6px 20px ${effectiveBrand}44` }}>
-                {reviewSending ? "Invio…" : (<>Invia <svg width="22" height="22" viewBox="0 0 24 24" fill="none"><circle cx="12" cy="12" r="10" stroke="white" strokeWidth="1.8" strokeOpacity="0.5"/><path d="M7.5 12l3 3 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg></>)}
-              </motion.button>
-
-              <div style={{ textAlign: "center", marginTop: 14 }}>
-                <button type="button" onClick={() => setAllServed(false)}
-                  style={{ background: "none", border: "none", cursor: "pointer", fontSize: 14, fontStyle: "italic", color: "#78716c", textDecoration: "underline", fontFamily: "inherit" }}>
-                  Salta
-                </button>
-              </div>
-            </>
-            );
-          })()}
-          {reviewSent && (
-            /* Stato inviato */
-            <div className="text-center pb-4">
-              <h2 className="mb-1 text-[22px] font-bold" style={{ color: "#1c1917", fontFamily: "'Space Grotesk', sans-serif" }}>Grazie mille!</h2>
-              <p className="mb-6 text-sm" style={{ color: "#78716c" }}>Buona giornata!</p>
-            </div>
-          )}
-        </div>
-      </div>
-    );
-
-  }
 
   return (
     <div
       className="relative flex min-h-screen flex-col pt-16"
       style={{ background: bg, color: textPrimC, ["--brand" as any]: brandColor }}
     >
+      {isImageBg && (
+        <div
+          aria-hidden
+          style={{
+            position: "fixed", inset: 0, zIndex: 0,
+            backgroundImage: `url(${backgroundImageUrl})`,
+            backgroundSize: "cover", backgroundPosition: "center",
+            transform: "translateZ(0)", WebkitTransform: "translateZ(0)",
+            willChange: "transform", backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden",
+          }}
+        />
+      )}
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@400;500;600&display=swap');
         @keyframes spin { to { transform: rotate(360deg); } }
@@ -2765,12 +2588,28 @@ export default function StatusPage() {
 
       {/* Background blobs */}
       <div className="pointer-events-none absolute inset-0 overflow-hidden pt-40" aria-hidden>
-        <div className="absolute -left-20 -top-10 h-72 w-72 rounded-full blur-2xl" style={{ background: `radial-gradient(circle, ${effectiveBrand}, transparent 70%)`, opacity: isDark ? 0.12 : 0.16 }} />
-        <div className="absolute -right-24 top-1/3 h-80 w-80 rounded-full blur-2xl" style={{ background: `radial-gradient(circle, ${effectiveBrand}, transparent 70%)`, opacity: isDark ? 0.08 : 0.12 }} />
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.8, ease: [0.22, 1, 0.36, 1] }}
+          className="absolute -left-20 -top-10 h-72 w-72 rounded-full blur-3xl"
+          style={{ background: `radial-gradient(circle, ${effectiveBrand}, transparent 70%)`, opacity: isDark ? 0.14 : 0.18 }}
+        />
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.8, delay: 0.15, ease: [0.22, 1, 0.36, 1] }}
+          className="absolute -right-24 top-1/3 h-80 w-80 rounded-full blur-3xl"
+          style={{ background: `radial-gradient(circle, ${effectiveBrand}, transparent 70%)`, opacity: isDark ? 0.1 : 0.14 }}
+        />
+        <motion.div
+          initial={{ opacity: 0, scale: 0.8 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ duration: 0.8, delay: 0.3, ease: [0.22, 1, 0.36, 1] }}
+          className="absolute bottom-0 left-1/4 h-64 w-64 rounded-full blur-3xl"
+          style={{ background: `radial-gradient(circle, ${effectiveBrand}, transparent 70%)`, opacity: isDark ? 0.08 : 0.1 }}
+        />
       </div>
-
-      {/* Navbar ora fornita dal layout condiviso src/app/(client)/layout.tsx:
-          resta montata durante la navigazione tra /status e /order, niente reload. */}
 
       <div className="relative z-10 flex flex-1 flex-col">
         {orders.length === 0 ? (
@@ -2783,53 +2622,48 @@ export default function StatusPage() {
             style={{ fontFamily: "'Inter', 'Space Grotesk', sans-serif" }}
           >
 
-            {/* ── REVIEW POPUP ─────────────────────────────────────────── */}
+            {/* REVIEW POPUP */}
       <AnimatePresence>
         {showReview && (
           <>
-            {/* Blocca lo scroll del body quando la card è aperta */}
             <style>{`body { overflow: hidden !important; touch-action: none; }`}</style>
 
-            {/* Overlay — chiude la card al tap, blocca interazioni sotto */}
             <motion.div
               key="review-overlay"
               initial={{ opacity: 0 }}
               animate={{ opacity: reviewMinimized ? 0 : 1 }}
               exit={{ opacity: 0 }}
-              transition={{ duration: 0.22 }}
+              transition={{ duration: 0.25, ease: [0.22, 1, 0.36, 1] }}
               className="fixed inset-0"
               style={{
                 zIndex: 120,
-                background: "rgba(0,0,0,0.45)",
-                backdropFilter: "blur(3px)",
-                pointerEvents: "auto",
+                background: "rgba(0,0,0,0.5)",
+                backdropFilter: "blur(4px)",
+                pointerEvents: reviewMinimized ? "none" : "auto",
               }}
-              onClick={() => { setShowReview(false); setReviewMinimized(false); }}
+              onClick={() => { skipReview(); setReviewMinimized(false); }}
             />
 
-            {/* Wrapper di entrata/uscita (framer gestisce solo slide-in/out iniziale) */}
             <motion.div
               key="review-card"
               initial={{ y: "100%" }}
               animate={{ y: 0 }}
               exit={{ y: "100%" }}
-              transition={{ duration: 0.38, ease: [0.22, 1, 0.36, 1] }}
+              transition={{ duration: 0.42, ease: [0.22, 1, 0.36, 1] }}
               className="fixed bottom-0 left-0 right-0 flex justify-center"
-              style={{ zIndex: 121 }}
+              style={{ zIndex: 121, pointerEvents: "none" }}
               onClick={e => e.stopPropagation()}
             >
-              {/* Inner div: gestisce minimize/expand + drag in real-time via CSS */}
               <div
                 className="relative w-full"
                 style={{
                   maxWidth: 480,
                   pointerEvents: "auto",
                   transform: `translateY(calc(${reviewMinimized ? "100% - 68px" : "0px"} + ${reviewDragY}px))`,
-                  transition: reviewDragY !== 0 ? "none" : "transform 0.38s cubic-bezier(0.22,1,0.36,1)",
+                  transition: reviewDragY !== 0 ? "none" : "transform 0.34s cubic-bezier(0.4,0,0.2,1)",
                   willChange: "transform",
                 }}
               >
-                {/* Card: sempre full-height, il translateY la nasconde parzialmente */}
                 <div
                   onClick={e => e.stopPropagation()}
                   style={{
@@ -2841,9 +2675,8 @@ export default function StatusPage() {
                     overflowY: "auto",
                   }}
                 >
-                  {/* ── DRAG HANDLE ── */}
                   <div
-                    style={{ paddingTop: 12, cursor: "grab", userSelect: "none", touchAction: "none" }}
+                    style={{ paddingTop: 14, paddingBottom: 4, cursor: "grab", userSelect: "none", touchAction: "none" }}
                     onPointerDown={e => {
                       dragStartY.current = e.clientY;
                       setReviewDragY(0);
@@ -2851,7 +2684,7 @@ export default function StatusPage() {
                     onPointerMove={e => {
                       if (dragStartY.current === null) return;
                       const delta = e.clientY - dragStartY.current;
-                      if (Math.abs(delta) > 6 && !(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) {
+                      if (Math.abs(delta) > 8 && !(e.currentTarget as HTMLElement).hasPointerCapture(e.pointerId)) {
                         (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId);
                       }
                       if (reviewMinimized) {
@@ -2863,7 +2696,12 @@ export default function StatusPage() {
                           setReviewDragY(Math.min(0, delta));
                         }
                       } else {
-                        if (delta > 64) {
+                        if (delta > 140) {
+                          dragStartY.current = null;
+                          setReviewDragY(0);
+                          skipReview();
+                          setReviewMinimized(false);
+                        } else if (delta > 64) {
                           setReviewMinimized(true);
                           dragStartY.current = null;
                           setReviewDragY(0);
@@ -2878,10 +2716,8 @@ export default function StatusPage() {
                     }}
                     onPointerCancel={() => { dragStartY.current = null; setReviewDragY(0); }}
                   >
-                    {/* Pill handle */}
-                    <div style={{ margin: "0 auto", width: 36, height: 4, borderRadius: 99, background: "#d4d0cc" }} />
+                    <div style={{ margin: "0 auto", width: 44, height: 5, borderRadius: 99, background: "#d4d0cc" }} />
 
-                    {/* Riga minimale — visibile quando la card è abbassata */}
                     <div
                       style={{
                         display: "flex",
@@ -2893,7 +2729,7 @@ export default function StatusPage() {
                       onClick={() => { if (reviewMinimized) setReviewMinimized(false); }}
                     >
                       <span style={{ fontSize: 15, fontWeight: 700, color: "#1c1917", fontFamily: "'Space Grotesk', sans-serif" }}>
-                        Recensisci
+                        {tS.reviewTitle}
                       </span>
                       <div style={{ display: "flex", gap: 2 }}>
                         {[1,2,3,4,5].map(s => (
@@ -2903,21 +2739,11 @@ export default function StatusPage() {
                     </div>
                   </div>
 
-                  {/* ── CONTENUTO PIENO — sempre nel DOM, nascosto dal translateY ── */}
                   <div style={{ padding: "0 24px 12px" }}>
 
 
                     {!reviewSent ? (
                       <>
-                        {/* Sottotitolo portata/tavolo */}
-                        <p className="mb-1 text-center text-[14px]" style={{ color: "#78716c" }}>
-                          {lastDeliveredPortata != null
-                            ? `Portata ${lastDeliveredPortata} in arrivo al tavolo ${tableNumber ?? "—"}`
-                            : `Ordine in arrivo al tavolo ${tableNumber ?? "—"}`
-                          }
-                        </p>
-
-                        {/* Titolo */}
                         <h2
                           className="mb-5 text-center font-bold"
                           style={{
@@ -2928,10 +2754,9 @@ export default function StatusPage() {
                             lineHeight: 1.2,
                           }}
                         >
-                          Com'è stata l'esperienza?
+                          {tS.reviewQuestion}
                         </h2>
 
-                        {/* Stelle grandi */}
                         <div className="mb-5 flex justify-center gap-1">
                           {[1, 2, 3, 4, 5].map(star => (
                             <motion.button
@@ -2958,27 +2783,36 @@ export default function StatusPage() {
                           ))}
                         </div>
 
-                        {/* Selezione piatto specifico */}
                         {(() => {
-                          const rawItems = (orders[0]?.items ?? []) as Array<{ menu_item_id: string; name: string }>;
-                          const unique = Array.from(new Map(rawItems.map(i => [i.menu_item_id, i])).values());
-                          if (!unique.length) return null;
+                          const rawItems = allActiveItemsRef.current as Array<{ id: string; menu_item_id: string; name: string; portata?: number; picked_up_at?: string | null; delivered_at?: string | null; portata_delivered?: boolean }>;
+                          const pickedUpOnly = rawItems.filter(i => !!i.picked_up_at);
+                          if (!pickedUpOnly.length) return null;
+                          // Ogni riga (order_item) è una recensione a sé: stesso piatto in
+                          // portate diverse = due chip distinte, disambiguate col numero portata
+                          // quando il nome si ripete.
+                          const nameCounts = pickedUpOnly.reduce<Record<string, number>>((acc, i) => {
+                            acc[i.name] = (acc[i.name] ?? 0) + 1;
+                            return acc;
+                          }, {});
                           return (
                             <div style={{ marginBottom: 16 }}>
                               <p style={{ fontSize: 12, fontWeight: 700, color: "#a8a29e", letterSpacing: "0.08em", textTransform: "uppercase", marginBottom: 8 }}>
-                                Seleziona il piatto da recensire
+                                {tS.reviewSelectDish}
                               </p>
                               <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4, scrollbarWidth: "none" }}>
-                                {unique.map(dish => {
-                                  const done = reviewedDishIds.includes(dish.menu_item_id);
-                                  const selected = reviewDishId === dish.menu_item_id;
+                                {pickedUpOnly.map(dish => {
+                                  const done = reviewedDishIds.includes(dish.id);
+                                  const selected = reviewDishId === dish.id;
+                                  const label = nameCounts[dish.name] > 1
+                                    ? `${dish.name} · ${tS.reviewCourseLabel(dish.portata ?? 1)}`
+                                    : dish.name;
                                   return (
-                                    <button key={dish.menu_item_id} type="button"
+                                    <button key={dish.id} type="button"
                                       disabled={done}
                                       onClick={() => {
                                         if (done) return;
                                         if (selected) { setReviewDishId(null); setReviewDishName(null); }
-                                        else { setReviewDishId(dish.menu_item_id); setReviewDishName(dish.name); }
+                                        else { setReviewDishId(dish.id); setReviewDishName(dish.name); }
                                       }}
                                       style={{
                                         flexShrink: 0, borderRadius: 50, padding: "7px 14px",
@@ -2990,7 +2824,7 @@ export default function StatusPage() {
                                         transition: "all 0.15s",
                                         opacity: done ? 0.8 : 1,
                                       }}>
-                                      {done ? `✓ ${dish.name}` : dish.name}
+                                      {done ? `✓ ${label}` : label}
                                     </button>
                                   );
                                 })}
@@ -2999,11 +2833,10 @@ export default function StatusPage() {
                           );
                         })()}
 
-                        {/* Textarea */}
                         <textarea
                           value={reviewText}
                           onChange={e => setReviewText(e.target.value)}
-                          placeholder="Raccontaci la tua esperienza (opzionale)…"
+                          placeholder={tS.reviewPlaceholder}
                           rows={3}
                           className="w-full resize-none outline-none"
                           style={{
@@ -3018,7 +2851,6 @@ export default function StatusPage() {
                           }}
                         />
 
-                        {/* Bottone Invia */}
                         <motion.button
                           type="button"
                           onClick={submitReview}
@@ -3037,9 +2869,9 @@ export default function StatusPage() {
                             boxShadow: `0 6px 20px ${effectiveBrand}44`,
                           }}
                         >
-                          {reviewSending ? "Invio…" : (
+                          {reviewSending ? tS.reviewSending : (
                             <>
-                              Invia
+                              {tS.reviewSubmit}
                               <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
                                 <circle cx="12" cy="12" r="10" stroke="white" strokeWidth="1.8" strokeOpacity="0.5"/>
                                 <path d="M7.5 12l3 3 6-6" stroke="white" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
@@ -3048,14 +2880,10 @@ export default function StatusPage() {
                           )}
                         </motion.button>
 
-                        {/* Salta */}
                         <div style={{ textAlign: "center", marginTop: 14, paddingBottom: 8 }}>
                           <button
                             type="button"
-                            onClick={() => {
-                              setShowReview(false);
-                              window.dispatchEvent(new CustomEvent("review-skipped"));
-                            }}
+                            onClick={skipReview}
                             style={{
                               background: "none",
                               border: "none",
@@ -3067,77 +2895,54 @@ export default function StatusPage() {
                               fontFamily: "inherit",
                             }}
                           >
-                            Salta
+                            {tS.reviewSkip}
                           </button>
                         </div>
                       </>
                     ) : (
-                      /* ── STATO INVIATO ── */
                       <div className="text-center">
                         <motion.div
                           initial={{ scale: 0.5, opacity: 0 }}
                           animate={{ scale: 1, opacity: 1 }}
-                          transition={{ duration: 0.45, ease: [0.34, 1.56, 0.64, 1] }}
-                          className="mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full"
-                          style={{ background: effectiveBrand, boxShadow: `0 8px 24px -4px ${effectiveBrand}66` }}
+                          transition={{ duration: 0.5, ease: [0.34, 1.56, 0.64, 1] }}
+                          className="relative mx-auto mb-4 grid h-16 w-16 place-items-center rounded-full"
+                          style={{ background: `linear-gradient(135deg, ${effectiveBrand}, ${effectiveBrand}cc)`, boxShadow: `0 12px 32px -6px ${effectiveBrand}66` }}
                         >
+                          <motion.div
+                            initial={{ scale: 1, opacity: 0.4 }}
+                            animate={{ scale: 1.6, opacity: 0 }}
+                            transition={{ duration: 1.2, delay: 0.3, repeat: Infinity, repeatDelay: 1 }}
+                            style={{
+                              position: "absolute", inset: 0, borderRadius: "50%",
+                              border: `2px solid ${effectiveBrand}`,
+                            }}
+                          />
                           <svg width="32" height="32" viewBox="0 0 24 24" fill="none">
                             <path d="M5 12l4.5 4.5L19 7" stroke="white" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
                           </svg>
                         </motion.div>
 
-                        <h2 className="mb-1 text-[22px] font-bold" style={{ color: "#1c1917", fontFamily: "'Space Grotesk', sans-serif" }}>
-                          Grazie mille! 🙏
+                        <h2 className="mb-1 text-[22px] font-bold" style={{ color: "#1c1917", fontFamily: "'Space Grotesk', sans-serif", letterSpacing: "-0.02em" }}>
+                          {tS.reviewSentTitle}
                         </h2>
-                        <p className="mb-6 text-sm" style={{ color: "#78716c" }}>
-                          Vuoi condividere la tua opinione anche online?
-                        </p>
+                        {reviewText ? (
+                          <p className="mb-5 text-sm italic" style={{ color: "#78716c" }}>
+                            "{reviewText}"
+                          </p>
+                        ) : (
+                          <p className="mb-5 text-sm" style={{ color: "#78716c" }}>
+                            {tS.reviewSentFallback}
+                          </p>
+                        )}
 
-                        <div className="flex flex-col gap-3">
-                          {googleReviewUrl && (
-                            <a
-                              href={googleReviewUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center justify-center gap-2.5 text-[14px] font-semibold transition active:scale-[0.97]"
-                              style={{ border: "1.5px solid #e5e5e5", color: "#1c1917", background: "#fafafa", borderRadius: 50, padding: "14px 24px" }}
-                            >
-                              <svg width="18" height="18" viewBox="0 0 48 48">
-                                <path fill="#4285F4" d="M43.6 20.5H42V20H24v8h11.3C33.6 32.7 29.2 36 24 36c-6.6 0-12-5.4-12-12s5.4-12 12-12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.2 6.5 29.4 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20 20-8.9 20-20c0-1.2-.1-2.3-.4-3.5z"/>
-                                <path fill="#34A853" d="M6.3 14.7l6.6 4.8C14.6 15.8 18.9 12 24 12c3 0 5.8 1.1 7.9 3l5.7-5.7C34.2 6.5 29.4 4 24 4 16.3 4 9.7 8.4 6.3 14.7z"/>
-                                <path fill="#FBBC05" d="M24 44c5.2 0 9.9-1.9 13.5-5l-6.2-5.2C29.4 35.6 26.9 36 24 36c-5.2 0-9.6-3.2-11.3-7.8l-6.6 5C9.6 39.5 16.3 44 24 44z"/>
-                                <path fill="#EA4335" d="M43.6 20.5H42V20H24v8h11.3c-.8 2.3-2.3 4.3-4.3 5.8l6.2 5.2C41.4 36.4 44 30.8 44 24c0-1.2-.1-2.3-.4-3.5z"/>
-                              </svg>
-                              Pubblica su Google
-                            </a>
-                          )}
-                          {tripadvisorUrl && (
-                            <a
-                              href={tripadvisorUrl}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex items-center justify-center gap-2.5 text-[14px] font-semibold transition active:scale-[0.97]"
-                              style={{ border: "1.5px solid #e5e5e5", color: "#1c1917", background: "#fafafa", borderRadius: 50, padding: "14px 24px" }}
-                            >
-                              <svg width="20" height="14" viewBox="0 0 209 144" fill="none">
-                                <ellipse cx="34.5" cy="109.5" rx="34.5" ry="34.5" fill="#34E0A1"/>
-                                <ellipse cx="174.5" cy="109.5" rx="34.5" ry="34.5" fill="#34E0A1"/>
-                                <ellipse cx="34.5" cy="109.5" rx="18" ry="18" fill="#fff"/>
-                                <ellipse cx="174.5" cy="109.5" rx="18" ry="18" fill="#fff"/>
-                                <path d="M104.5 0C80.2 0 58 9.4 41.4 24.8L0 20l38 18.4C27.6 49.8 21 64.4 21 80.5c0 46 37.4 63.5 83.5 63.5S188 126.5 188 80.5C188 36.2 150.6 0 104.5 0z" fill="#34E0A1"/>
-                                <ellipse cx="104.5" cy="80.5" rx="42" ry="42" fill="#fff"/>
-                                <ellipse cx="104.5" cy="80.5" rx="22" ry="22" fill="#34E0A1"/>
-                              </svg>
-                              Pubblica su TripAdvisor
-                            </a>
-                          )}
-                          <button
-                            type="button"
-                            onClick={() => setShowReview(false)}
-                            style={{ color: "#a8a29e", background: "none", border: "none", cursor: "pointer", padding: "8px", fontSize: 13 }}
-                          >
-                            Chiudi
-                          </button>
+                        <div style={{ height: 3, borderRadius: 2, background: "#e5e5e5", overflow: "hidden" }}>
+                          <motion.div
+                            key={reviewDishId ?? "sent"}
+                            initial={{ width: "100%" }}
+                            animate={{ width: "0%" }}
+                            transition={{ duration: 5, ease: "linear" }}
+                            style={{ height: "100%", background: effectiveBrand, borderRadius: 2 }}
+                          />
                         </div>
                       </div>
                     )}
@@ -3162,7 +2967,6 @@ export default function StatusPage() {
               tick={tick}
             />
 
-            {/* ── PROGRESS STEPS ─────────────────────────────────────── */}
             <ProgressSteps
               currentStep={currentStep}
               orders={orders}
@@ -3170,7 +2974,6 @@ export default function StatusPage() {
               isDark={isDark}
             />
 
-            {/* ── ORDER SUMMARY ───────────────────────────────────────── */}
             <OrderSummaryCard
               orders={orders}
               brand={effectiveBrand}
@@ -3179,11 +2982,11 @@ export default function StatusPage() {
               activePortataNum={activePortataNum}
             />
 
-            {/* ── DETTAGLIO (espandibile) ─────────────────────────────── */}
             <motion.div
-              initial={{ opacity: 0, y: 8 }}
+              initial={{ opacity: 0, y: 10 }}
               animate={{ opacity: 1, y: 0 }}
-              transition={{ duration: 0.4, delay: 0.2, ease: [0.22, 1, 0.36, 1] }}
+              exit={{ opacity: 0, y: -8 }}
+              transition={{ duration: 0.45, delay: 0.22, ease: [0.22, 1, 0.36, 1] }}
               className="mx-4"
             >
 
@@ -3194,10 +2997,9 @@ export default function StatusPage() {
                     initial={{ opacity: 0, height: 0 }}
                     animate={{ opacity: 1, height: "auto" }}
                     exit={{ opacity: 0, height: 0 }}
-                    transition={{ duration: 0.35, ease: [0.22, 1, 0.36, 1] }}
+                    transition={{ duration: 0.4, ease: [0.22, 1, 0.36, 1] }}
                     style={{ overflow: "hidden" }}
                   >
-                    {/* Tab bar */}
                     <TabBar
                       activeTab={activeTab}
                       setActiveTab={setActiveTab}
@@ -3208,14 +3010,13 @@ export default function StatusPage() {
                       brand={effectiveBrand}
                     />
 
-                    {/* Tab content */}
                     <AnimatePresence mode="wait">
                       <motion.div
                         key={activeTab}
-                        initial={{ opacity: 0, y: 6 }}
+                        initial={{ opacity: 0, y: 8 }}
                         animate={{ opacity: 1, y: 0 }}
-                        exit={{ opacity: 0, y: -4 }}
-                        transition={{ duration: 0.28, ease: [0.22, 1, 0.36, 1] }}
+                        exit={{ opacity: 0, y: -6 }}
+                        transition={{ duration: 0.32, ease: [0.22, 1, 0.36, 1] }}
                         className="space-y-4"
                       >
                         {tabOrders[activeTab].length === 0

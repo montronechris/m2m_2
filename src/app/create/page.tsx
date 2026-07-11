@@ -1,14 +1,11 @@
 'use client'
 
 import { useEffect, useState } from 'react'
-import { useRouter } from 'next/navigation'
 import { RestaurantCreationPage } from '@/components/auth/restaurant-creation-page'
 import { getRestaurantByUser } from '@/lib/admin-service'
 import { supabase } from '@/lib/supabase'
-import { LangBanner } from '@/components/landing/LangBanner'
 
 export default function CreatePage() {
-  const router = useRouter()
   const [checking, setChecking] = useState(true)
 
   useEffect(() => {
@@ -34,14 +31,9 @@ export default function CreatePage() {
     return () => {
       cancelled = true
     }
-  }, [router])
+  }, [])
 
   if (checking) return null
 
-  return (
-    <>
-      <LangBanner />
-      <RestaurantCreationPage onBack={() => router.push('/')} />
-    </>
-  )
+  return <RestaurantCreationPage />
 }

@@ -29,7 +29,8 @@ import { StepProgress, type StepState } from '@/components/auth/step-progress'
 import { supabase } from '@/lib/supabase'
 import { getRestaurantByUser } from '@/lib/admin-service'
 import { useI18n } from '@/components/i18n/I18nProvider'
-import { loadPendingRestaurant, clearPendingRestaurant } from '@/lib/pending-restaurant'
+import { loadPendingRestaurant, clearPendingRestaurant, loadPendingMenuFile, clearPendingMenuFile } from '@/lib/pending-restaurant'
+import { importMenuFromFile } from '@/lib/menu-import'
 
 /* ------------------------------------------------------------------ */
 /*  Color tokens (restaurant palette from reference image)            */
@@ -978,13 +979,29 @@ export function AuthPage() {
             establishmentTypeCustom: pending.establishmentTypeCustom,
           }),
         })
+        const body = await res.json().catch(() => ({}))
         clearPendingRestaurant()
         if (res.ok) {
+          // Importa il menu caricato durante la registrazione, ora che l'utente
+          // è autenticato e il ristorante esiste (stessa logica di /create e MenuSection).
+          const newRestaurantId = body?.restaurantId ?? body?.id ?? body?.restaurant?.id ?? null
+          const menuFile = await loadPendingMenuFile()
+          if (newRestaurantId && menuFile) {
+            try {
+              await importMenuFromFile(newRestaurantId, menuFile)
+            } catch {
+              // import fallito — l'utente potrà ricaricare il menu dalla dashboard
+            }
+          }
+          await clearPendingMenuFile()
           window.location.href = '/admin/dashboard'
           return
         }
+        // creazione ristorante fallita: non trasciniamo il file orfano.
+        await clearPendingMenuFile()
       } catch {
         clearPendingRestaurant()
+        await clearPendingMenuFile()
       }
       setRedirecting(false)
       return
@@ -1013,10 +1030,10 @@ export function AuthPage() {
   }
 
   return (
-    <main className="relative min-h-screen w-full overflow-hidden bg-[#F5F1E8]">
+    <main className={`relative min-h-screen w-full overflow-hidden bg-[#F5F1E8] ${needsAccountForRestaurant ? 'pt-[46px]' : ''}`}>
       {needsAccountForRestaurant && (
         <div
-          className="relative z-50 px-4 py-3 text-center text-sm font-semibold text-white shadow-md"
+          className="fixed inset-x-0 top-0 z-50 px-4 py-3 text-center text-sm font-semibold text-white shadow-md"
           style={{ background: '#F44336' }}
         >
           Devi creare un account per completare la creazione del tuo locale. I dati inseriti andranno persi se non completi la registrazione.

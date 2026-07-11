@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
+import { extractText, getDocumentProxy } from 'unpdf'
+import { requireActiveStaff } from '@/lib/auth/requireActiveStaff'
 
 export const runtime = 'nodejs'
 
 const ALLOWED_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
 const MAX_BYTES = 15 * 1024 * 1024
+// Sotto questa soglia di testo estratto consideriamo il PDF "scansionato" (senza testo reale) e passiamo alla vision.
+const MIN_PDF_TEXT_LENGTH = 40
 
 const PROMPT = `Sei un estrattore di dati per menu di ristoranti. Ti verrà fornito un file (PDF o foto) contenente un menu.
 Estrai OGNI piatto/bevanda elencato e restituisci SOLO un JSON array valido, senza testo aggiuntivo, markdown o commenti, nel seguente formato esatto:
@@ -22,29 +26,68 @@ Estrai OGNI piatto/bevanda elencato e restituisci SOLO un JSON array valido, sen
 Se un prezzo non è leggibile o mancante per un piatto, ometti quel piatto dall'array invece di inventare un prezzo.
 Non includere spiegazioni, solo il JSON array.`
 
-function extractJsonArray(text: string): unknown {
+/**
+ * Estrae il primo JSON array valido dal testo di risposta di un LLM.
+ * Tollera code fence markdown e testo "di contorno" attorno all'array.
+ */
+function extractJsonArray(text: string): unknown[] {
   const cleaned = text.trim().replace(/^```(json)?/i, '').replace(/```$/, '').trim()
-  return JSON.parse(cleaned)
+  // Prova il parse diretto; se fallisce, isola il primo blocco [ ... ].
+  try {
+    const parsed = JSON.parse(cleaned)
+    if (Array.isArray(parsed)) return parsed
+  } catch {
+    /* continua con la ricerca del blocco array */
+  }
+  const start = cleaned.indexOf('[')
+  const end = cleaned.lastIndexOf(']')
+  if (start !== -1 && end > start) {
+    const parsed = JSON.parse(cleaned.slice(start, end + 1))
+    if (Array.isArray(parsed)) return parsed
+  }
+  throw new Error('NOT_AN_ARRAY')
 }
 
-async function extractWithGemini(bytes: Buffer, mimeType: string): Promise<unknown[]> {
-  const apiKey = process.env.GEMINI_API_KEY
-  if (!apiKey) throw Object.assign(new Error('GEMINI_NOT_CONFIGURED'), { code: 'GEMINI_NOT_CONFIGURED' })
-
-  const genAI = new GoogleGenerativeAI(apiKey)
-  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
-
-  const result = await model.generateContent([
-    PROMPT,
-    { inlineData: { data: bytes.toString('base64'), mimeType } },
-  ])
-
-  const items = extractJsonArray(result.response.text())
-  if (!Array.isArray(items)) throw new Error('NOT_AN_ARRAY')
-  return items
+/** Estrazione testo da PDF, in locale: gratuita e senza limiti (nessuna API esterna). */
+async function extractPdfText(bytes: Buffer): Promise<string> {
+  const pdf = await getDocumentProxy(new Uint8Array(bytes))
+  const { text } = await extractText(pdf, { mergePages: true })
+  return (Array.isArray(text) ? text.join('\n') : text).trim()
 }
 
-async function extractWithGroq(bytes: Buffer, mimeType: string): Promise<unknown[]> {
+/** Groq – modello di TESTO (limiti free molto alti, velocissimo). Usato quando abbiamo già il testo del menu. */
+async function extractWithGroqText(menuText: string): Promise<unknown[]> {
+  const apiKey = process.env.GROQ_API_KEY
+  if (!apiKey) throw Object.assign(new Error('GROQ_NOT_CONFIGURED'), { code: 'GROQ_NOT_CONFIGURED' })
+
+  const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model: 'llama-3.3-70b-versatile',
+      messages: [
+        { role: 'system', content: PROMPT },
+        { role: 'user', content: `Ecco il testo del menu:\n\n${menuText}` },
+      ],
+      temperature: 0.1,
+      max_tokens: 8192,
+    }),
+  })
+
+  const data = await res.json().catch(() => null)
+  if (!res.ok) {
+    throw Object.assign(new Error(data?.error?.message ?? 'GROQ_TEXT_REQUEST_FAILED'), { status: res.status })
+  }
+  const content = data?.choices?.[0]?.message?.content
+  if (!content) throw new Error('EMPTY_RESPONSE')
+  return extractJsonArray(content)
+}
+
+/** Groq – modello VISION (per immagini/foto del menu). */
+async function extractWithGroqVision(bytes: Buffer, mimeType: string): Promise<unknown[]> {
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) throw Object.assign(new Error('GROQ_NOT_CONFIGURED'), { code: 'GROQ_NOT_CONFIGURED' })
 
@@ -78,13 +121,41 @@ async function extractWithGroq(bytes: Buffer, mimeType: string): Promise<unknown
   }
   const content = data?.choices?.[0]?.message?.content
   if (!content) throw new Error('EMPTY_RESPONSE')
+  return extractJsonArray(content)
+}
 
-  const items = extractJsonArray(content)
-  if (!Array.isArray(items)) throw new Error('NOT_AN_ARRAY')
-  return items
+/** Gemini vision – accetta sia immagini che PDF nativamente. */
+async function extractWithGemini(bytes: Buffer, mimeType: string): Promise<unknown[]> {
+  const apiKey = process.env.GEMINI_API_KEY
+  if (!apiKey) throw Object.assign(new Error('GEMINI_NOT_CONFIGURED'), { code: 'GEMINI_NOT_CONFIGURED' })
+
+  const genAI = new GoogleGenerativeAI(apiKey)
+  const model = genAI.getGenerativeModel({ model: 'gemini-2.0-flash' })
+
+  const result = await model.generateContent([
+    PROMPT,
+    { inlineData: { data: bytes.toString('base64'), mimeType } },
+  ])
+
+  return extractJsonArray(result.response.text())
+}
+
+function isQuotaError(err: any): boolean {
+  return err?.status === 429 || /429|quota|rate limit/i.test(String(err?.message))
 }
 
 export async function POST(req: NextRequest) {
+  const auth = await requireActiveStaff()
+  if ('error' in auth) {
+    if (auth.error === 'inactive') {
+      return NextResponse.json(
+        { error: 'Abbonamento scaduto o account sospeso' },
+        { status: 402 }
+      )
+    }
+    return NextResponse.json({ error: 'Non autenticato' }, { status: 401 })
+  }
+
   const formData = await req.formData()
   const file = formData.get('file')
   if (!(file instanceof File)) {
@@ -98,30 +169,63 @@ export async function POST(req: NextRequest) {
   }
 
   const bytes = Buffer.from(await file.arrayBuffer())
-  const isImage = file.type.startsWith('image/')
+  const isPdf = file.type === 'application/pdf'
 
-  try {
-    const items = await extractWithGemini(bytes, file.type)
-    return NextResponse.json({ items })
-  } catch (geminiErr: any) {
-    // Gemini free-tier quota exhausted (or unavailable in this region) — fall back to Groq vision, but only for images (Groq has no PDF support).
-    if (isImage && process.env.GROQ_API_KEY) {
+  // Errori accumulati lungo la catena, per un messaggio finale utile.
+  const errors: string[] = []
+
+  // ---- PDF: prima estrazione testo locale (gratis/illimitata) + Groq testo, poi fallback Gemini vision ----
+  if (isPdf) {
+    let menuText = ''
+    try {
+      menuText = await extractPdfText(bytes)
+    } catch (e: any) {
+      errors.push(`PDF parsing: ${e?.message ?? 'errore'}`)
+    }
+
+    if (menuText.length >= MIN_PDF_TEXT_LENGTH) {
+      // 1) Groq testo — nessun consumo di quota Gemini, limiti free alti.
       try {
-        const items = await extractWithGroq(bytes, file.type)
-        return NextResponse.json({ items })
-      } catch (groqErr: any) {
-        return NextResponse.json(
-          { error: groqErr.message ?? 'Errore durante l\'estrazione del menu (Groq).' },
-          { status: 502 }
-        )
+        const items = await extractWithGroqText(menuText)
+        return NextResponse.json({ items, source: 'groq-text' })
+      } catch (e: any) {
+        errors.push(`Groq testo: ${e?.message ?? 'errore'}`)
       }
     }
 
-    const status = geminiErr?.status === 429 || /429|quota/i.test(String(geminiErr?.message)) ? 429 : 502
-    const msg =
-      status === 429
-        ? 'Quota Gemini esaurita per oggi/minuto. Riprova più tardi o attiva la fatturazione su Google AI Studio.'
-        : geminiErr.message ?? 'Errore durante l\'estrazione del menu.'
-    return NextResponse.json({ error: msg }, { status })
+    // 2) Fallback: Gemini vision sul PDF (gestisce anche i PDF scansionati/immagine).
+    try {
+      const items = await extractWithGemini(bytes, file.type)
+      return NextResponse.json({ items, source: 'gemini' })
+    } catch (e: any) {
+      errors.push(`Gemini: ${e?.message ?? 'errore'}`)
+      const quota = isQuotaError(e)
+      const msg = quota
+        ? 'Quota Gemini esaurita e testo del PDF non estraibile. Riprova tra qualche minuto, oppure esporta il menu come immagine (JPG/PNG) e ricaricalo.'
+        : 'Impossibile leggere questo PDF. Se è una scansione, prova a caricarlo come immagine (JPG/PNG).'
+      return NextResponse.json({ error: msg, details: errors }, { status: quota ? 429 : 502 })
+    }
+  }
+
+  // ---- Immagini: Gemini vision, poi fallback Groq vision ----
+  try {
+    const items = await extractWithGemini(bytes, file.type)
+    return NextResponse.json({ items, source: 'gemini' })
+  } catch (geminiErr: any) {
+    errors.push(`Gemini: ${geminiErr?.message ?? 'errore'}`)
+    if (process.env.GROQ_API_KEY) {
+      try {
+        const items = await extractWithGroqVision(bytes, file.type)
+        return NextResponse.json({ items, source: 'groq-vision' })
+      } catch (groqErr: any) {
+        errors.push(`Groq vision: ${groqErr?.message ?? 'errore'}`)
+      }
+    }
+
+    const quota = isQuotaError(geminiErr)
+    const msg = quota
+      ? 'Quota AI temporaneamente esaurita. Riprova tra qualche minuto.'
+      : "Errore durante l'estrazione del menu dall'immagine."
+    return NextResponse.json({ error: msg, details: errors }, { status: quota ? 429 : 502 })
   }
 }

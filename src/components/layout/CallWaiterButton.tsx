@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'framer-motion'
 import { Bell, X } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
+import { useI18n } from '@/components/i18n/I18nProvider'
 
 type CallStatus = 'idle' | 'pending' | 'acknowledged'
 
@@ -17,6 +18,8 @@ interface CallWaiterButtonProps {
 }
 
 export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, externalTrigger, inlineStyle, onStatusChange }: CallWaiterButtonProps) {
+  const { tr } = useI18n()
+  const c = tr.callWaiter
   const [showModal, setShowModal] = useState(false)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [cancelling, setCancelling] = useState(false)
@@ -39,6 +42,7 @@ export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, e
 
     let cancelled = false
     let channel: ReturnType<typeof supabase.channel> | null = null
+    let pollInterval: ReturnType<typeof setInterval> | null = null
 
     const init = async () => {
       // 1. Risolvi table_id dalla sessione
@@ -53,21 +57,49 @@ export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, e
       if (!tableId) return
 
       // 2. Controlla se esiste già una chiamata pending (sincronizza altri dispositivi)
-      const { data: existing } = await supabase
-        .from('waiter_calls')
-        .select('id, status')
-        .eq('table_id', tableId)
-        .in('status', ['pending', 'acknowledged'])
-        .is('type', null)
-        .order('created_at', { ascending: false })
-        .limit(1)
-        .maybeSingle()
+      const syncFromServer = async () => {
+        // Se già tracciamo una chiamata, verifica SOLO quella (per id) — evita
+        // falsi negativi dovuti al filtro generico che chiuderebbero la chiamata
+        // appena creata prima che si propaghi.
+        if (callIdRef.current) {
+          const { data: current } = await supabase
+            .from('waiter_calls')
+            .select('id, status')
+            .eq('id', callIdRef.current)
+            .maybeSingle()
 
-      if (cancelled) return
-      if (existing) {
-        applyCallId(existing.id)
-        setStatus(existing.status === 'acknowledged' ? 'acknowledged' : 'pending')
+          if (cancelled) return
+          if (!current || current.status === 'closed') {
+            applyCallId(null)
+            setStatus('idle')
+          } else if (current.status === 'acknowledged') {
+            setStatus('acknowledged')
+          }
+          return
+        }
+
+        const { data: existing } = await supabase
+          .from('waiter_calls')
+          .select('id, status')
+          .eq('table_id', tableId)
+          .in('status', ['pending', 'acknowledged'])
+          .eq('type', 'call')
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .maybeSingle()
+
+        if (cancelled) return
+        if (existing) {
+          applyCallId(existing.id)
+          setStatus(existing.status === 'acknowledged' ? 'acknowledged' : 'pending')
+        }
       }
+
+      await syncFromServer()
+
+      // Polling di fallback: garantisce la sincronizzazione anche se il realtime
+      // non consegna l'evento (es. connessione instabile su mobile)
+      pollInterval = setInterval(syncFromServer, 4000)
 
       // 3. Subscription client-side — nessun filtro server per evitare problemi con REPLICA IDENTITY
       channel = supabase
@@ -79,7 +111,7 @@ export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, e
             // Appartiene a questo tavolo?
             const isOurs = row.session_id === sessionId || row.table_id === tableId
             if (!isOurs) return
-            if (row.type != null) return   // ignora chiamate di pagamento
+            if (row.type !== 'call') return   // ignora chiamate di pagamento
             applyCallId(row.id)
             setStatus('pending')
           }
@@ -88,7 +120,7 @@ export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, e
           { event: 'UPDATE', schema: 'public', table: 'waiter_calls' },
           (payload) => {
             const row = payload.new as { id: string; status: string; type?: string | null }
-            if (row.type != null) return
+            if (row.type !== 'call') return
             if (row.id !== callIdRef.current) return
             if (row.status === 'acknowledged') setStatus('acknowledged')
             if (row.status === 'closed') { setStatus('idle'); applyCallId(null) }
@@ -112,6 +144,7 @@ export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, e
     return () => {
       cancelled = true
       if (channel) supabase.removeChannel(channel)
+      if (pollInterval) clearInterval(pollInterval)
     }
   }, [sessionId])
 
@@ -149,7 +182,8 @@ export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, e
     if (!callId) return
     setCancelling(true)
     try {
-      await supabase.from('waiter_calls').update({ status: 'closed' }).eq('id', callId)
+      const { error } = await supabase.from('waiter_calls').update({ status: 'closed' }).eq('id', callId)
+      if (error) throw error
       setStatus('idle')
       applyCallId(null)
     } catch (err) {
@@ -188,7 +222,7 @@ export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, e
           whileTap={{ scale: isBusy ? 1 : 0.94 }}
           onClick={() => isBusy ? setShowCancelModal(true) : setShowModal(true)}
           disabled={false}
-          aria-label={isBusy ? 'Cameriere in arrivo' : 'Chiama cameriere'}
+          aria-label={isBusy ? c.ariaBusy : c.ariaIdle}
           className="fixed bottom-24 right-5 z-[111] rounded-full shadow-lg transition-all disabled:cursor-not-allowed"
           style={{
             background: isBusy ? '#2e7d32' : '#3a2f26',
@@ -203,7 +237,7 @@ export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, e
           {isBusy ? (
             <span className="flex items-center gap-2 text-xs font-semibold whitespace-nowrap">
               <Bell className="h-5 w-5 shrink-0 bell-ring" />
-              Cameriere in arrivo
+              {c.arriving}
             </span>
           ) : (
             <Bell className="h-5 w-5" />
@@ -237,13 +271,13 @@ export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, e
                 <X className="h-4 w-4" />
               </button>
 
-              <div className="mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-[#3a2f26]/10">
-                <Bell className="h-6 w-6 text-[#3a2f26]" />
+              <div className="mb-4 grid h-12 w-12 place-items-center rounded-2xl bg-brand-amber/10">
+                <Bell className="h-6 w-6 text-brand-amber" />
               </div>
 
-              <h3 className="mb-1 text-lg font-bold text-ink">Chiamare il cameriere?</h3>
+              <h3 className="mb-1 text-lg font-bold text-ink">{c.confirmTitle}</h3>
               <p className="mb-5 text-sm text-ink/60">
-                Riceveremo subito la tua richiesta{tableNumber ? ` dal tavolo ${tableNumber}` : ''}.
+                {c.confirmBody.replace('{table}', tableNumber ? c.confirmBodyTable.replace('{table}', tableNumber) : '')}
               </p>
 
               <div className="flex gap-3">
@@ -251,14 +285,14 @@ export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, e
                   onClick={() => setShowModal(false)}
                   className="flex-1 rounded-full border-2 border-gray-300 bg-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-200 hover:border-gray-400"
                 >
-                  Annulla
+                  {c.cancel}
                 </button>
                 <button
                   onClick={confirmCall}
                   disabled={sending}
                   className="flex-1 rounded-full bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
                 >
-                  {sending ? 'Invio...' : 'Conferma'}
+                  {sending ? c.sending : c.confirm}
                 </button>
               </div>
             </motion.div>
@@ -296,9 +330,9 @@ export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, e
                 <Bell className="h-6 w-6 text-red-500" />
               </div>
 
-              <h3 className="mb-1 text-lg font-bold text-ink">Annullare la richiesta?</h3>
+              <h3 className="mb-1 text-lg font-bold text-ink">{c.cancelTitle}</h3>
               <p className="mb-5 text-sm text-ink/60">
-                Il cameriere non riceverà più la notifica di chiamata.
+                {c.cancelBody}
               </p>
 
               <div className="flex gap-3">
@@ -306,14 +340,14 @@ export function CallWaiterButton({ sessionId, tableNumber, hideFloatingButton, e
                   onClick={() => setShowCancelModal(false)}
                   className="flex-1 rounded-full border-2 border-gray-300 bg-gray-100 px-4 py-2.5 text-sm font-semibold text-gray-700 hover:bg-gray-200"
                 >
-                  No, tieni
+                  {c.keep}
                 </button>
                 <button
                   onClick={cancelCall}
                   disabled={cancelling}
                   className="flex-1 rounded-full bg-red-600 px-4 py-2.5 text-sm font-semibold text-white hover:bg-red-700 disabled:opacity-50"
                 >
-                  {cancelling ? 'Annullo...' : 'Sì, annulla'}
+                  {cancelling ? c.cancelling : c.cancelConfirm}
                 </button>
               </div>
             </motion.div>

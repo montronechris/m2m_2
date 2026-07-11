@@ -118,7 +118,11 @@ export function WaiterSection({ ctx }: Props) {
       .channel(`waiter-section-${ctx.restaurantId}`)
       .on('postgres_changes', { event: '*', schema: 'public', table: 'orders', filter: `restaurant_id=eq.${ctx.restaurantId}` }, () => load())
       .on('postgres_changes', { event: '*', schema: 'public', table: 'order_items' }, () => load())
-      .on('postgres_changes', { event: '*', schema: 'public', table: 'waiter_calls', filter: `restaurant_id=eq.${ctx.restaurantId}` }, () => load())
+      // Nessun filtro server sulla tabella waiter_calls: con REPLICA IDENTITY di default
+      // Postgres può non includere restaurant_id nel payload di UPDATE/DELETE, facendo
+      // sparire l'evento filtrato lato realtime (stesso problema già risolto in
+      // CallWaiterButton). Il filtro per ristorante resta comunque applicato da `load()`.
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'waiter_calls' }, () => load())
       .subscribe()
     const poll = setInterval(load, 5000)
     return () => { clearInterval(poll); supabase.removeChannel(channel) }
@@ -182,13 +186,19 @@ export function WaiterSection({ ctx }: Props) {
         }
         // Il pagamento chiude il conto del tavolo: il carrello ancora "pending"
         // (piatti aggiunti dal cliente e non ancora inviati in cucina) va svuotato.
+        // NB: annulliamo (status: 'cancelled') invece di fare DELETE sulla riga
+        // "orders" — un cliente potrebbe trovarsi in quello stesso istante sulla
+        // pagina /confirm a confermare proprio quell'ordine "pending"; una DELETE
+        // fisica gli farebbe ricevere un 404 "Ordine non trovato" a metà checkout.
+        // Con lo status 'cancelled' la sua richiesta di conferma fallisce invece
+        // con un errore coerente ("Ordine già confermato o non confermabile").
         if (tableId) {
           const { data: pendingOrders } = await supabase
             .from('orders').select('id').eq('table_id', tableId).eq('status', 'pending')
           const pendingIds = (pendingOrders ?? []).map((o) => o.id)
           if (pendingIds.length) {
             await supabase.from('order_items').delete().in('order_id', pendingIds)
-            await supabase.from('orders').delete().in('id', pendingIds)
+            await supabase.from('orders').update({ status: 'cancelled', updated_at: new Date().toISOString() }).in('id', pendingIds)
           }
         }
       }
@@ -321,12 +331,12 @@ export function WaiterSection({ ctx }: Props) {
                             ))}
                           </div>
                           {state === 'pronta' ? (
-                            <button onClick={() => deliverPortata(o, portata)} disabled={busyDeliver}
+                            <button key={`${portata}-deliver`} onClick={() => deliverPortata(o, portata)} disabled={busyDeliver}
                               className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-brand-emerald to-brand-sky px-4 py-1.5 text-xs font-bold text-white shadow-glow-emerald transition hover:scale-105 disabled:opacity-60">
                               <CheckCircle2 className="h-3.5 w-3.5" /> {t.deliverCourse}
                             </button>
                           ) : (
-                            <button onClick={() => pickUpPortata(o, portata)} disabled={busyPickup}
+                            <button key={`${portata}-pickup`} onClick={() => pickUpPortata(o, portata)} disabled={busyPickup}
                               className="mt-2 flex w-full items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-4 py-1.5 text-xs font-bold text-white shadow-glow-amber transition hover:scale-105 disabled:opacity-60">
                               <PackageCheck className="h-3.5 w-3.5" /> {t.pickupCourse}
                             </button>

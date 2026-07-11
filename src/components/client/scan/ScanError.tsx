@@ -236,6 +236,15 @@ export function ScanError({ error, tableCode }: ScanErrorProps) {
   const [callState, setCallState] = useState<'idle' | 'loading' | 'sent'>('idle');
   const cameraInputRef = useRef<HTMLInputElement>(null);
 
+  // Nasconde la navbar globale (layout) finché questa schermata di errore
+  // è a video, e la ripristina quando viene smontata.
+  useEffect(() => {
+    window.dispatchEvent(new CustomEvent('scan-error-visibility', { detail: true }));
+    return () => {
+      window.dispatchEvent(new CustomEvent('scan-error-visibility', { detail: false }));
+    };
+  }, []);
+
   const showToast = (msg: string) => setToast({ open: true, msg });
 
   const callWaiter = async () => {

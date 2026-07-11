@@ -3,6 +3,8 @@
 
 import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
+import IntegrationsManager from "./IntegrationsManager";
+import RestaurantsOverview from "./RestaurantsOverview";
 
 // ── Tipi ───────────────────────────────────────────────────────────────────
 interface InviteCode {
@@ -1029,6 +1031,7 @@ type FilterType = "all" | "active" | "used" | "expired";
 export default function OwnerDashboardPage() {
   const router = useRouter();
 
+  const [view, setView] = useState<"codes" | "integrations" | "restaurants">("codes");
   const [ownerEmail,  setOwnerEmail]  = useState("");
   const [codes,       setCodes]       = useState<InviteCode[]>([]);
   const [loading,     setLoading]     = useState(true);
@@ -1185,6 +1188,39 @@ export default function OwnerDashboardPage() {
             style={ghostBtnStyle}
           >Esci</button>
         </div>
+
+        {/* Navigazione sezioni owner-dashboard */}
+        <div style={{ display: "flex", gap: 8, marginBottom: 28, flexWrap: "wrap" }}>
+          {([
+            ["codes", "Codici invito"],
+            ["integrations", "Card integrazioni"],
+            ["restaurants", "Ristoranti"],
+          ] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              style={{
+                padding: "9px 18px",
+                borderRadius: 10,
+                fontSize: 14,
+                fontWeight: 600,
+                cursor: "pointer",
+                border: view === key ? "1px solid #10b981" : "1px solid rgba(255,255,255,0.1)",
+                background: view === key ? "rgba(16,185,129,0.15)" : "rgba(255,255,255,0.03)",
+                color: view === key ? "#10b981" : "#94a3b8",
+                transition: "all 0.2s",
+              }}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {view === "integrations" && <IntegrationsManager />}
+        {view === "restaurants" && <RestaurantsOverview />}
+
+        {view === "codes" && (
+          <>
 
         {/* Stats */}
         <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 12, marginBottom: 32 }}>
@@ -1543,6 +1579,8 @@ export default function OwnerDashboardPage() {
             </div>
           )}
         </div>
+          </>
+        )}
       </div>
 
       {/* Modale genera codice */}

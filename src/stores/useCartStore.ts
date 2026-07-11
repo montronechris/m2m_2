@@ -94,6 +94,42 @@ export const useCartStore = create<CartState>()((set, get) => ({
   // ── ADD ───────────────────────────────────────────────────────────────────
   addItem: async ({ menuItemId, name, basePriceCents, customizations, portata = 1, is_drink = false, portataLocked = false }) => {
     const { orderId, tableId, restaurantId } = get();
+
+    // ── Fast path: il piatto esiste già identico in carrello ──────────────
+    // Qui basta un +1 di quantity su una riga che già conosciamo: niente
+    // bisogno di aspettare la rete prima di aggiornare la UI, esattamente
+    // come fa updateQuantity per il "-". Aggiorniamo lo state SUBITO,
+    // poi sincronizziamo col DB in background.
+    const existingBeforeIdx = get().items.findIndex(
+      (i) => i.menuItemId === menuItemId &&
+             JSON.stringify(i.customizations) === JSON.stringify(customizations) &&
+             i.portata === portata &&
+             !i.portataLocked && !portataLocked
+    );
+
+    if (existingBeforeIdx >= 0 && orderId) {
+      const existing = get().items[existingBeforeIdx];
+      const newQty = existing.quantity + 1;
+      set((state) => ({
+        items: state.items.map((i) =>
+          i.orderItemId === existing.orderItemId ? { ...i, quantity: newQty } : i
+        ),
+        ...touch(),
+      }));
+      try {
+        await updateOrderItemQuantity(existing.orderItemId!, orderId, newQty, get().sessionId ?? undefined);
+      } catch (err) {
+        console.error("[CartStore] addItem (increment existing) failed:", err);
+        // rollback: rileggi lo stato reale dal DB
+        try {
+          const restored = await getOrderItems(orderId);
+          set({ items: restored.map(i => ({ ...i, portata: (i as CartItemPortata).portata ?? 1 })) });
+        } catch {}
+      }
+      return;
+    }
+
+    // ── Slow path: piatto nuovo, serve creare la riga nel DB ──────────────
     const extraCents     = customizations.reduce((sum, c) => sum + (c.priceModifierCents ?? 0), 0);
     const totalItemCents = basePriceCents + extraCents;
 
@@ -126,8 +162,37 @@ export const useCartStore = create<CartState>()((set, get) => ({
       console.error("[CartStore] getActivePortataFloor failed:", err);
     }
 
+    // Ricontrolla (con effectivePortata aggiornata dal floor) se nel frattempo
+    // esiste già una riga corrispondente — evita comunque duplicati nel caso
+    // raro in cui la portata effettiva cambi rispetto a quella richiesta.
+    const existingAfterFloorIdx = get().items.findIndex(
+      (i) => i.menuItemId === menuItemId &&
+             JSON.stringify(i.customizations) === JSON.stringify(customizations) &&
+             i.portata === effectivePortata &&
+             !i.portataLocked && !effectivePortataLocked
+    );
+    if (existingAfterFloorIdx >= 0) {
+      const existing = get().items[existingAfterFloorIdx];
+      const newQty = existing.quantity + 1;
+      set((state) => ({
+        items: state.items.map((i) =>
+          i.orderItemId === existing.orderItemId ? { ...i, quantity: newQty } : i
+        ),
+        ...touch(),
+      }));
+      try {
+        await updateOrderItemQuantity(existing.orderItemId!, activeOrderId, newQty, get().sessionId ?? undefined);
+      } catch (err) {
+        console.error("[CartStore] addItem (increment existing) failed:", err);
+        try {
+          const restored = await getOrderItems(activeOrderId);
+          set({ items: restored.map(i => ({ ...i, portata: (i as CartItemPortata).portata ?? 1 })) });
+        } catch {}
+      }
+      return;
+    }
+
     try {
-        console.log("[addItem] orderId:", activeOrderId, "sessionId:", get().sessionId); // ← aggiungi
       const newOrderItemId = await addItemToOrder(activeOrderId, {
         menuItemId, name, priceCents: totalItemCents, quantity: 1, customizations, portata: effectivePortata, is_drink, portataLocked: effectivePortataLocked,
       }, get().sessionId ?? undefined);
@@ -142,18 +207,6 @@ export const useCartStore = create<CartState>()((set, get) => ({
         // Il realtime WebSocket può arrivare prima della HTTP response e aggiungere
         // l'item prima di noi — in quel caso lo saltiamo per evitare duplicati.
         if (state.items.some((i) => i.orderItemId === newOrderItemId)) return state;
-
-        const existingIdx = state.items.findIndex(
-          (i) => i.menuItemId === menuItemId &&
-                 JSON.stringify(i.customizations) === JSON.stringify(customizations) &&
-                 i.portata === effectivePortata &&
-                 !i.portataLocked && !effectivePortataLocked
-        );
-        if (existingIdx >= 0) {
-          const updated = [...state.items];
-          updated[existingIdx] = { ...updated[existingIdx], quantity: updated[existingIdx].quantity + 1 };
-          return { items: updated, ...touch() };
-        }
         return { items: [...state.items, newItem], ...touch() };
       });
     } catch (err) {

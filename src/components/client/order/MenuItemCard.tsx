@@ -17,6 +17,7 @@ import {
 } from 'lucide-react'
 import React from 'react'
 import type { Palette } from './palette'
+import { restaurantAvatars } from '@/lib/restaurant-avatars'
 
 export interface MenuItem {
   id: string
@@ -41,6 +42,9 @@ interface MenuItemCardProps {
   addLabel?: string
   restaurantName?: string
   restaurantLogoUrl?: string | null
+  restaurantLogoIcon?: string | null
+  restaurantLocation?: string | null
+  tableCode?: string | null
   infoLabels?: {
     characteristics?: string
     ingredients?: string
@@ -49,6 +53,7 @@ interface MenuItemCardProps {
     noInfo?: string
     addToCart?: string
     infoAria?: string
+    price?: string
   }
 }
 
@@ -60,6 +65,9 @@ export function MenuItemCard({
   addLabel = 'Add',
   restaurantName,
   restaurantLogoUrl,
+  restaurantLogoIcon,
+  restaurantLocation,
+  tableCode,
   infoLabels,
 }: MenuItemCardProps) {
   const [showInfo, setShowInfo] = useState(false)
@@ -71,6 +79,18 @@ export function MenuItemCard({
     setMounted(true)
   }, [])
 
+  // Cleanup di sicurezza: se il componente si smonta (es. cambio filtro
+  // categoria) mentre il pannello info è ancora aperto, rimuove comunque
+  // l'attributo da <body> — altrimenti resta bloccato per sempre e la
+  // pagina non scrolla più con la rotellina del mouse.
+  useEffect(() => {
+    return () => {
+      if (showInfo) {
+        document.body.removeAttribute('data-panel-open')
+      }
+    }
+  }, [showInfo])
+
   const IL = {
     characteristics: infoLabels?.characteristics ?? 'Caratteristiche',
     ingredients: infoLabels?.ingredients ?? 'Ingredienti',
@@ -79,6 +99,7 @@ export function MenuItemCard({
     noInfo: infoLabels?.noInfo ?? 'Nessuna informazione aggiuntiva disponibile.',
     addToCart: infoLabels?.addToCart ?? 'Aggiungi al carrello',
     infoAria: infoLabels?.infoAria ?? 'Informazioni piatto',
+    price: infoLabels?.price ?? 'Prezzo:',
   }
 
   const openInfo = () => {
@@ -105,69 +126,82 @@ export function MenuItemCard({
   return (
     <>
       {/* ── CARD ── */}
-      <div className="lift-hover group relative flex items-center gap-3 rounded-2xl border border-ink/5 bg-white/85 p-3 shadow-sm backdrop-blur transition hover:border-ink/10 hover:shadow-md sm:p-3.5">
-        {item.image_url && !imgError ? (
-          <div className="relative h-14 w-14 shrink-0 overflow-hidden rounded-xl shadow-sm ring-1 ring-black/5">
+      <div className="lift-hover group relative flex flex-col overflow-hidden rounded-2xl border border-ink/5 bg-white/85 shadow-sm backdrop-blur transition hover:border-ink/10 hover:shadow-md">
+        <button
+          type="button"
+          onClick={openInfo}
+          aria-label={IL.infoAria}
+          className="relative block h-44 w-full shrink-0 overflow-hidden bg-gray-50 sm:h-48"
+        >
+          {item.image_url && !imgError ? (
             <img
               src={item.image_url}
               alt={item.name}
               onError={() => setImgError(true)}
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105"
             />
-          </div>
-        ) : (
-          <div
-            className="grid h-14 w-14 shrink-0 place-items-center rounded-xl text-base font-bold tabular ring-1 ring-black/5"
-            style={{ background: T.chipBg, color: T.brand }}
-          >
-            {(item.price_cents / 100).toFixed(0)}€
-          </div>
-        )}
+          ) : (
+            <div
+              className="grid h-full w-full place-items-center text-2xl font-black tabular"
+              style={{ background: T.chipBg, color: T.brand }}
+            >
+              {(item.price_cents / 100).toFixed(0)}€
+            </div>
+          )}
 
-        <div className="min-w-0 flex-1">
-          <h3 className="text-[15px] font-bold text-ink">{item.name}</h3>
           {(item.is_vegetarian || item.is_vegan || item.is_gluten_free) && (
-            <div className="mt-1 flex items-center gap-1">
+            <div className="absolute left-2 top-2 flex items-center gap-1.5">
               {item.is_vegetarian && (
-                <span className="shrink-0 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200">VEG</span>
+                <span className="shrink-0 rounded-full bg-emerald-100 px-2.5 py-1 text-[12px] font-bold uppercase tracking-wide text-emerald-700 ring-1 ring-emerald-200">VEG</span>
               )}
               {item.is_vegan && (
-                <span className="shrink-0 rounded-full bg-green-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-green-700 ring-1 ring-green-200">VEGAN</span>
+                <span className="shrink-0 rounded-full bg-green-100 px-2.5 py-1 text-[12px] font-bold uppercase tracking-wide text-green-700 ring-1 ring-green-200">VEGAN</span>
               )}
               {item.is_gluten_free && (
-                <span className="shrink-0 rounded-full bg-amber-100 px-1.5 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200">GF</span>
+                <span className="shrink-0 rounded-full bg-amber-100 px-2.5 py-1 text-[12px] font-bold uppercase tracking-wide text-amber-700 ring-1 ring-amber-200">GF</span>
               )}
             </div>
           )}
+        </button>
+
+        <div className="flex flex-1 flex-col gap-2.5 p-4">
+          <h3 className="text-[15px] font-bold leading-snug text-ink">{item.name}</h3>
+
+          <button
+            type="button"
+            onClick={openInfo}
+            className="inline-flex w-fit items-center gap-1.5 rounded-lg border px-2.5 py-1 text-[11px] font-semibold transition hover:opacity-80"
+            style={{ borderColor: T.border, color: T.brand }}
+          >
+            <Info className="h-3 w-3" />
+            {IL.allergens}
+          </button>
+
+          <div className="mt-auto flex items-end justify-between gap-3 pt-1">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wide text-gray-400">{IL.price}</p>
+              <p className="text-lg font-black tabular-nums" style={{ color: '#1F2937' }}>
+                {(item.price_cents / 100).toFixed(2)}€
+              </p>
+            </div>
+
+            <button
+              onClick={(e) => {
+                const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
+                onAdd(item, rect)
+              }}
+              disabled={isLoadingOptions}
+              aria-label={IL.addToCart}
+              className="sheen grid h-11 w-11 shrink-0 place-items-center rounded-full text-white shadow-sm transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60"
+              style={{
+                background: isLoadingOptions ? `${T.brand}66` : T.btnBg,
+                boxShadow: isLoadingOptions ? 'none' : T.btnShadow,
+              }}
+            >
+              {isLoadingOptions ? <Loader2 className="h-5 w-5 animate-spin" /> : <Plus className="h-5 w-5" />}
+            </button>
+          </div>
         </div>
-
-        <span className="shrink-0 whitespace-nowrap text-lg font-black tabular-nums" style={{ color: '#1F2937' }}>
-          {(item.price_cents / 100).toFixed(2)}€
-        </span>
-
-        <button
-          onClick={(e) => {
-            const rect = (e.currentTarget as HTMLElement).getBoundingClientRect()
-            onAdd(item, rect)
-          }}
-          disabled={isLoadingOptions}
-          className="sheen grid h-9 w-9 shrink-0 place-items-center rounded-full text-white shadow-sm transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60"
-          style={{
-            background: isLoadingOptions ? `${T.brand}66` : T.btnBg,
-            boxShadow: isLoadingOptions ? 'none' : T.btnShadow,
-          }}
-        >
-          {isLoadingOptions ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
-        </button>
-
-        <button
-          onClick={openInfo}
-          aria-label={IL.infoAria}
-          className="absolute bottom-1.5 right-1.5 grid h-6 w-6 shrink-0 place-items-center rounded-full opacity-70 transition hover:scale-105 group-hover:opacity-100"
-          style={{ background: '#F3F4F6' }}
-        >
-          <Info className="h-3 w-3" style={{ color: '#4B5563' }} />
-        </button>
       </div>
 
       {/* ── SIDE PANEL INFO (renderizzato in portal su document.body per evitare che il transform di Framer Motion sul motion.div genitore rompa il position:fixed) ── */}
@@ -186,23 +220,49 @@ export function MenuItemCard({
               transform: animating ? 'translateX(0)' : 'translateX(-100%)',
             }}
           >
-            <div className="flex shrink-0 items-center justify-between gap-3 p-3">
-              <div className="flex min-w-0 items-center gap-2">
-                {restaurantLogoUrl && (
-                  <div className="h-7 w-7 shrink-0 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/5">
-                    <img src={restaurantLogoUrl} alt={restaurantName ?? ''} className="h-full w-full object-cover" />
-                  </div>
-                )}
-                {restaurantName && (
-                  <span className="truncate text-sm font-bold text-ink">{restaurantName}</span>
-                )}
+            <div className="flex shrink-0 flex-col gap-1 p-3">
+              <div className="flex min-w-0 items-center justify-between gap-3">
+                <div className="flex min-w-0 items-center gap-2">
+                  {(() => {
+                    const avatar = restaurantAvatars.find((a) => a.id === restaurantLogoIcon)
+                    if (avatar) {
+                      return (
+                        <div className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/5">
+                          <avatar.Icon className="h-4 w-4" style={{ color: T.brand }} />
+                        </div>
+                      )
+                    }
+                    if (restaurantLogoUrl) {
+                      return (
+                        <div className="h-7 w-7 shrink-0 overflow-hidden rounded-lg bg-white shadow-sm ring-1 ring-black/5">
+                          <img src={restaurantLogoUrl} alt={restaurantName ?? ''} className="h-full w-full object-cover" />
+                        </div>
+                      )
+                    }
+                    return null
+                  })()}
+                  {restaurantName && (
+                    <span className="truncate text-sm font-bold text-ink">{restaurantName}</span>
+                  )}
+                  {restaurantLocation && (
+                    <>
+                      <span className="h-1 w-1 shrink-0 rounded-full bg-gray-300" />
+                      <span className="truncate text-xs text-gray-500">{restaurantLocation}</span>
+                    </>
+                  )}
+                </div>
+                <button
+                  onClick={closeInfo}
+                  className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gray-100 text-gray-500 transition hover:bg-gray-200 hover:text-gray-700"
+                >
+                  <X className="h-4 w-4" />
+                </button>
               </div>
-              <button
-                onClick={closeInfo}
-                className="grid h-8 w-8 shrink-0 place-items-center rounded-full bg-gray-100 text-gray-500 transition hover:bg-gray-200 hover:text-gray-700"
-              >
-                <X className="h-4 w-4" />
-              </button>
+              {tableCode && (
+                <span className="text-[11px] font-semibold uppercase tracking-wide text-gray-400">
+                  {tableCode.slice(0, 4)}
+                </span>
+              )}
             </div>
 
             <div className="flex-1 overflow-y-auto">

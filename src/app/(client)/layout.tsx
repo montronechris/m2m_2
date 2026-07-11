@@ -10,6 +10,7 @@ import { useSessionMeta } from "@/hooks/useSessionMeta";
 import { useInactivityTimeout } from "@/hooks/useInactivityTimeout";
 import { clearTableSession } from "@/lib/table-session";
 import { useCartStore } from "@/stores/useCartStore";
+import { getEndScreenActive, subscribeEndScreenActive } from "@/lib/end-screen-signal";
 
 const HIDDEN_NAVBAR_SEGMENTS = ["cart", "scan"];
 
@@ -41,7 +42,20 @@ export default function ClientLayout({
   const segments = pathname?.split("/").filter(Boolean) ?? [];
   const firstSegment = segments[0] ?? "";
 
-  const hideNavbar = HIDDEN_NAVBAR_SEGMENTS.includes(firstSegment);
+  // La schermata di fine ordine (showEndScreen in /status) o le card "vuote"
+  // (es. carrello vuoto in /confirm, nessun ordine in /status) nascondono la
+  // navbar pur restando sulla stessa route: la pagina lo segnala via
+  // setEndScreenActive() perché il layout non ha visibilità sullo stato
+  // interno del componente. getEndScreenActive() recupera il valore se il
+  // dispatch dei figli (che girano prima del layout, ordine bottom-up di
+  // React) è avvenuto prima che questo listener fosse registrato.
+  const [endScreenActive, setEndScreenActive] = useState(getEndScreenActive);
+  useEffect(() => {
+    setEndScreenActive(getEndScreenActive());
+    return subscribeEndScreenActive(setEndScreenActive);
+  }, []);
+
+  const hideNavbar = HIDDEN_NAVBAR_SEGMENTS.includes(firstSegment) || endScreenActive;
   const isOrderPage =
     firstSegment === "order" ||
     firstSegment === "status" ||

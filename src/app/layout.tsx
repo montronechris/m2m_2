@@ -52,13 +52,14 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="it" suppressHydrationWarning>
-      <head />
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
-      >
+      <head>
         {/* Script sincrono: imposta il bg PRIMA che React renderizzi,
             eliminando il flash di colore sbagliato su /cart, /order, /status. */}
         <Script src="/bg-init.js" strategy="beforeInteractive" />
+      </head>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased bg-background text-foreground`}
+      >
         <I18nProvider>
           <AnimatedBackground />
           {children}

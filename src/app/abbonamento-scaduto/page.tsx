@@ -127,7 +127,7 @@ function FadeIn({
   );
 }
 
-// ─── Floating particles (ambient background, red-toned) ───
+// ─── Floating particles (ambient background, orange-toned) ───
 function FloatingParticles() {
   const particles = [
     { size: 10, left: 8, top: 18, opacity: 0.12, dur: 6, delay: 0, blur: 0 },
@@ -148,7 +148,7 @@ function FloatingParticles() {
           style={{
             width: `${p.size}px`,
             height: `${p.size}px`,
-            background: `rgba(239,68,68,${p.opacity})`,
+            background: `rgba(249,115,22,${p.opacity})`,
             left: `${p.left}%`,
             top: `${p.top}%`,
             filter: p.blur ? `blur(${p.blur}px)` : undefined,
@@ -174,7 +174,7 @@ function AnimatedClock() {
         cy="40"
         r="36"
         fill="none"
-        stroke="rgba(239,68,68,0.25)"
+        stroke="rgba(249,115,22,0.25)"
         strokeWidth="2.5"
         style={{
           strokeDasharray: 226,
@@ -187,7 +187,7 @@ function AnimatedClock() {
         cx="40"
         cy="40"
         r="32"
-        fill="rgba(239,68,68,0.06)"
+        fill="rgba(249,115,22,0.06)"
         style={{ opacity: 0, animation: "fade-in 0.5s ease-out 0.8s forwards" }}
       />
       {/* Hour hand */}
@@ -196,7 +196,7 @@ function AnimatedClock() {
         y1="40"
         x2="40"
         y2="22"
-        stroke="#ef4444"
+        stroke="#f97316"
         strokeWidth="3"
         strokeLinecap="round"
         style={{
@@ -210,7 +210,7 @@ function AnimatedClock() {
         y1="40"
         x2="55"
         y2="40"
-        stroke="#ef4444"
+        stroke="#f97316"
         strokeWidth="2"
         strokeLinecap="round"
         style={{
@@ -223,7 +223,7 @@ function AnimatedClock() {
         cx="40"
         cy="40"
         r="3"
-        fill="#ef4444"
+        fill="#f97316"
         style={{ opacity: 0, animation: "fade-in 0.3s ease-out 1s forwards" }}
       />
       {/* X overlay */}
@@ -233,7 +233,7 @@ function AnimatedClock() {
           y1="54"
           x2="66"
           y2="66"
-          stroke="#ef4444"
+          stroke="#f97316"
           strokeWidth="2.5"
           strokeLinecap="round"
         />
@@ -242,7 +242,7 @@ function AnimatedClock() {
           y1="54"
           x2="54"
           y2="66"
-          stroke="#ef4444"
+          stroke="#f97316"
           strokeWidth="2.5"
           strokeLinecap="round"
         />
@@ -250,8 +250,8 @@ function AnimatedClock() {
           cx="60"
           cy="60"
           r="10"
-          fill="rgba(239,68,68,0.1)"
-          stroke="#ef4444"
+          fill="rgba(249,115,22,0.1)"
+          stroke="#f97316"
           strokeWidth="1.5"
         />
       </g>
@@ -292,8 +292,8 @@ function LanguageSwitcher({
               className="absolute inset-0 rounded-full"
               style={{
                 background:
-                  "linear-gradient(135deg, #f87171 0%, #ef4444 50%, #dc2626 100%)",
-                boxShadow: "0 2px 8px rgba(239,68,68,0.35)",
+                  "linear-gradient(135deg, #fb923c 0%, #f97316 50%, #ea580c 100%)",
+                boxShadow: "0 2px 8px rgba(249,115,22,0.35)",
                 animation: "lang-slide 0.35s cubic-bezier(.16,1,.3,1)",
                 zIndex: -1,
               }}
@@ -512,7 +512,7 @@ export default function AbbonamentoScaduto() {
             className="absolute -top-40 -left-32 w-[480px] h-[480px] rounded-full"
             style={{
               background:
-                "radial-gradient(circle, rgba(239,68,68,0.26) 0%, transparent 70%)",
+                "radial-gradient(circle, rgba(249,115,22,0.26) 0%, transparent 70%)",
               filter: "blur(40px)",
               animation: "blob-1 22s ease-in-out infinite",
             }}
@@ -565,7 +565,7 @@ export default function AbbonamentoScaduto() {
               className="rounded-[24px] p-[1px]"
               style={{
                 background:
-                  "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(239,68,68,0.3) 50%, rgba(255,255,255,0.9) 100%)",
+                  "linear-gradient(135deg, rgba(255,255,255,0.9) 0%, rgba(249,115,22,0.3) 50%, rgba(255,255,255,0.9) 100%)",
               }}
             >
               <div
@@ -588,7 +588,7 @@ export default function AbbonamentoScaduto() {
                     <div
                       className="absolute inset-0 rounded-full"
                       style={{
-                        background: "rgba(239,68,68,0.10)",
+                        background: "rgba(249,115,22,0.10)",
                         animation: "pulse-ring 2.5s ease-out infinite",
                       }}
                     />
@@ -596,9 +596,9 @@ export default function AbbonamentoScaduto() {
                       className="relative w-20 h-20 rounded-full flex items-center justify-center"
                       style={{
                         background:
-                          "linear-gradient(135deg, rgba(254,226,226,0.9) 0%, rgba(254,202,202,0.8) 100%)",
+                          "linear-gradient(135deg, rgba(255,237,213,0.9) 0%, rgba(254,215,170,0.8) 100%)",
                         boxShadow:
-                          "0 8px 32px rgba(239,68,68,0.25), 0 0 0 6px rgba(239,68,68,0.06)",
+                          "0 8px 32px rgba(249,115,22,0.25), 0 0 0 6px rgba(249,115,22,0.06)",
                       }}
                     >
                       <AnimatedClock />
@@ -612,7 +612,7 @@ export default function AbbonamentoScaduto() {
                     className="text-[26px] font-bold tracking-tight leading-tight"
                     style={{
                       backgroundImage:
-                        "linear-gradient(135deg, #1f2937 0%, #b91c1c 50%, #1f2937 100%)",
+                        "linear-gradient(135deg, #1f2937 0%, #c2410c 50%, #1f2937 100%)",
                       backgroundSize: "200% auto",
                       WebkitBackgroundClip: "text",
                       WebkitTextFillColor: "transparent",

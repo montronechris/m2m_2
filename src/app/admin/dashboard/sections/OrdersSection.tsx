@@ -319,11 +319,19 @@ export function OrdersSection({ ctx }: Props) {
                     </p>
                     <div className="space-y-1">
                       {activeGroup.items.map((it, i) => (
-                        <div key={it.id ?? i} className="flex min-w-0 items-center gap-2 text-sm">
-                          <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-tt-pink/10 text-[10px] font-bold text-tt-pink">
-                            {it.quantity}×
-                          </span>
-                          <span className="truncate text-tt-ink">{it.menu_items?.name ?? t.dish}</span>
+                        <div key={it.id ?? i} className="flex min-w-0 flex-col gap-0.5">
+                          <div className="flex min-w-0 items-center gap-2 text-sm">
+                            <span className="grid h-5 w-5 shrink-0 place-items-center rounded-md bg-tt-pink/10 text-[10px] font-bold text-tt-pink">
+                              {it.quantity}×
+                            </span>
+                            <span className="truncate text-tt-ink">{it.menu_items?.name ?? t.dish}</span>
+                          </div>
+                          {it.note && (
+                            <div className="ml-7 flex items-start gap-1 rounded-md bg-amber-500/10 px-2 py-1">
+                              <span className="text-xs">📝</span>
+                              <p className="text-xs font-semibold leading-snug text-amber-600">{it.note}</p>
+                            </div>
+                          )}
                         </div>
                       ))}
                     </div>

@@ -1,6 +1,7 @@
 'use client'
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import {
   ArrowLeft,
   ArrowRight,
@@ -8,6 +9,11 @@ import {
   CheckCircle2,
   ChefHat,
   Sparkles,
+  UploadCloud,
+  FileText,
+  ImageIcon,
+  X,
+  AlertTriangle,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -16,7 +22,9 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
 import { useI18n } from '@/components/i18n/I18nProvider'
 import { restaurantAvatars as logoIcons } from '@/lib/restaurant-avatars'
 import { supabase } from '@/lib/supabase'
-import { savePendingRestaurant } from '@/lib/pending-restaurant'
+import { savePendingRestaurant, savePendingMenuFile } from '@/lib/pending-restaurant'
+import { importMenuFromFile } from '@/lib/menu-import'
+import { LanguageSwitcher } from '@/components/landing/LanguageSwitcher'
 
 /* Restaurant theme (same as login page) */
 const ORANGE = '#FF6B00'
@@ -42,7 +50,7 @@ const establishmentTypes = [
 
 const totalSteps = 3
 
-export function RestaurantCreationPage({ onBack }: { onBack: () => void }) {
+export function RestaurantCreationPage() {
   const { tr } = useI18n()
   const [currentStep, setCurrentStep] = useState(1)
   const [direction, setDirection] = useState<'forward' | 'back'>('forward')
@@ -56,6 +64,9 @@ export function RestaurantCreationPage({ onBack }: { onBack: () => void }) {
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [imageErrors, setImageErrors] = useState<Record<string, boolean>>({})
   const [customType, setCustomType] = useState('')
+  // File del menu (PDF/immagine) caricato allo step 2, opzionale.
+  // Viene analizzato e importato solo dopo la creazione effettiva del ristorante (step 3).
+  const [menuFile, setMenuFile] = useState<File | null>(null)
 
   // Trigger a step change with exit animation: keep the old step mounted (exiting)
   // while the new step enters, then clear the exiting step after the animation.
@@ -105,6 +116,8 @@ export function RestaurantCreationPage({ onBack }: { onBack: () => void }) {
           selectedType={selectedType}
           imageErrors={imageErrors}
           customType={customType}
+          menuFile={menuFile}
+          setMenuFile={setMenuFile}
         />
       )
     if (step === 3)
@@ -114,6 +127,7 @@ export function RestaurantCreationPage({ onBack }: { onBack: () => void }) {
           imageErrors={imageErrors}
           customType={customType}
           formData={formData}
+          menuFile={menuFile}
         />
       )
     return null
@@ -130,15 +144,10 @@ export function RestaurantCreationPage({ onBack }: { onBack: () => void }) {
         <div className="w-full max-w-[480px]">
           {/* Brand bar — outside the card */}
           <div className="flex items-center justify-between mb-4 sm:mb-6">
-            <button
-              onClick={onBack}
-              className="inline-flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-700 transition-colors active:scale-95"
-              style={{ minHeight: 36 }}
+            <Link
+              href="/"
+              className="flex items-center gap-2 active:scale-95 transition-transform"
             >
-              <ArrowLeft className="size-4" />
-              {tr.auth.create.backToHome}
-            </button>
-            <div className="flex items-center gap-2">
               <div
                 className="size-8 sm:size-9 rounded-xl flex items-center justify-center shadow-sm"
                 style={{ background: `linear-gradient(135deg, ${ORANGE}, ${ORANGE_DEEP})` }}
@@ -148,6 +157,9 @@ export function RestaurantCreationPage({ onBack }: { onBack: () => void }) {
               <span className="text-[22px] sm:text-[24px] font-bold text-gray-900 tracking-tight">
                 Tavola<span style={{ color: ORANGE }}>.</span>
               </span>
+            </Link>
+            <div className="glass flex items-center rounded-2xl border border-ink/5 px-1.5 py-1 shadow-lg">
+              <LanguageSwitcher />
             </div>
           </div>
 
@@ -401,18 +413,45 @@ function StepTwo({
   selectedType,
   imageErrors,
   customType,
+  menuFile,
+  setMenuFile,
 }: {
   formData: { nomeLocale: string; citta: string; logoIcon: string }
   setFormData: (updater: (prev: typeof formData) => typeof formData) => void
   selectedType: string
   imageErrors: Record<string, boolean>
   customType: string
+  menuFile: File | null
+  setMenuFile: (f: File | null) => void
 }) {
   const { tr } = useI18n()
   const update = (field: string, value: string) => setFormData((prev) => ({ ...prev, [field]: value }))
   const selected = establishmentTypes.find((t) => t.id === selectedType)
   const selectedLabel = selected ? tr.auth.create.types[selected.id as keyof typeof tr.auth.create.types] : undefined
   const displayLabel = selectedType === 'altro' ? customType : selectedLabel
+
+  const [menuDragOver, setMenuDragOver] = useState(false)
+  const [menuFileError, setMenuFileError] = useState<string | null>(null)
+
+  // Stessi vincoli usati per l'import menu nella dashboard (MenuSection.tsx)
+  const ALLOWED_MENU_TYPES = ['application/pdf', 'image/jpeg', 'image/png', 'image/webp']
+  const MAX_MENU_BYTES = 15 * 1024 * 1024
+
+  function handleMenuFileSelect(file: File | null) {
+    if (!file) return
+    if (!ALLOWED_MENU_TYPES.includes(file.type)) {
+      setMenuFileError('Formato non supportato. Carica un PDF o un\'immagine (JPG, PNG, WEBP).')
+      setMenuFile(null)
+      return
+    }
+    if (file.size > MAX_MENU_BYTES) {
+      setMenuFileError('Il file è troppo grande (max 15MB).')
+      setMenuFile(null)
+      return
+    }
+    setMenuFileError(null)
+    setMenuFile(file)
+  }
 
   return (
     <div className="space-y-5">
@@ -484,6 +523,73 @@ function StepTwo({
           className="h-12 sm:h-11 rounded-xl border-gray-200 focus-visible:border-[#FF6B00] focus-visible:ring-[#FF6B00]/20 text-[15px] transition-colors"
         />
       </div>
+      <div className="stagger-item space-y-1.5" style={{ animationDelay: '260ms' }}>
+        <div className="flex items-center gap-2">
+          <Label className="text-[13px] text-gray-600 font-medium">Menu (PDF o foto)</Label>
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10.5px] font-medium text-gray-500">Opzionale</span>
+        </div>
+        <div
+          onDragOver={(e) => { e.preventDefault(); setMenuDragOver(true) }}
+          onDragLeave={() => setMenuDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault()
+            setMenuDragOver(false)
+            handleMenuFileSelect(e.dataTransfer.files?.[0] ?? null)
+          }}
+          className={`flex flex-col items-center justify-center gap-1.5 rounded-xl border-2 border-dashed px-4 py-5 text-center transition-colors ${
+            menuDragOver ? 'border-[#FF6B00] bg-[#FF6B00]/5' : 'border-gray-200 bg-gray-50/60'
+          }`}
+        >
+          {!menuFile ? (
+            <>
+              <UploadCloud className="size-5 text-gray-400" />
+              <p className="text-[13px] text-gray-600">
+                Trascina qui il menu, oppure{' '}
+                <label className="cursor-pointer font-medium text-[#FF6B00] hover:underline">
+                  scegli dal dispositivo
+                  <input
+                    type="file"
+                    accept="application/pdf,.pdf,image/jpeg,image/png,image/webp"
+                    className="hidden"
+                    onChange={(e) => handleMenuFileSelect(e.target.files?.[0] ?? null)}
+                  />
+                </label>
+              </p>
+              <p className="text-[11px] text-gray-400">PDF, JPG, PNG o WEBP · max 15MB</p>
+            </>
+          ) : (
+            <div className="flex w-full items-center gap-3 rounded-lg bg-white px-3 py-2.5 ring-1 ring-black/5">
+              {menuFile.type === 'application/pdf' ? (
+                <FileText className="size-5 shrink-0 text-gray-400" />
+              ) : (
+                <ImageIcon className="size-5 shrink-0 text-gray-400" />
+              )}
+              <span className="flex-1 truncate text-left text-[13px] text-gray-700">{menuFile.name}</span>
+              <button
+                type="button"
+                onClick={() => { setMenuFile(null); setMenuFileError(null) }}
+                className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
+                aria-label="Rimuovi file"
+              >
+                <X className="size-4" />
+              </button>
+            </div>
+          )}
+        </div>
+        {menuFileError && (
+          <p className="text-[12px] text-red-600">{menuFileError}</p>
+        )}
+        {menuFile && (
+          <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-amber-200/60">
+            <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
+            <p className="text-[11.5px] leading-relaxed text-amber-800">
+              I piatti vengono letti da un'intelligenza artificiale e possono esserci errori
+              (nomi, prezzi o categorie imprecisi). Controlla sempre il menu dalla dashboard
+              dopo la creazione, prima di pubblicarlo.
+            </p>
+          </div>
+        )}
+      </div>
       <div className="stagger-item pt-2" style={{ animationDelay: '300ms' }}>
         <p className="text-[12px] text-gray-400 leading-relaxed">
           {tr.auth.create.termsPrefix}{' '}
@@ -502,11 +608,13 @@ function StepSuccess({
   imageErrors,
   customType,
   formData,
+  menuFile,
 }: {
   selectedType: string
   imageErrors: Record<string, boolean>
   customType: string
   formData: { nomeLocale: string; citta: string; logoIcon: string }
+  menuFile: File | null
 }) {
   const { tr } = useI18n()
   const selected = establishmentTypes.find((t) => t.id === selectedType)
@@ -514,6 +622,19 @@ function StepSuccess({
   const displayLabel = selectedType === 'altro' ? customType : selectedLabel
   const [isCreating, setIsCreating] = useState(false)
   const [createError, setCreateError] = useState<string | null>(null)
+  const [isLoggedIn, setIsLoggedIn] = useState<boolean | null>(null)
+  const [menuStatus, setMenuStatus] = useState<'idle' | 'importing' | 'done' | 'failed'>('idle')
+  const [menuStatusMessage, setMenuStatusMessage] = useState<string | null>(null)
+
+  useEffect(() => {
+    let cancelled = false
+    supabase.auth.getUser().then(({ data }) => {
+      if (!cancelled) setIsLoggedIn(!!data.user)
+    })
+    return () => {
+      cancelled = true
+    }
+  }, [])
 
   const handleGoToDashboard = async () => {
     if (isCreating) return
@@ -529,6 +650,9 @@ function StepSuccess({
           establishmentType: selectedType,
           establishmentTypeCustom: customType,
         })
+        // Conserva il file del menu così viene importato dopo la registrazione
+        // (l'estrazione richiede un utente autenticato, quindi non può avvenire ora).
+        if (menuFile) await savePendingMenuFile(menuFile)
         window.location.href = '/login?next=create-pending'
         return
       }
@@ -541,6 +665,43 @@ function StepSuccess({
       })
       const body = await res.json().catch(() => ({}))
       if (!res.ok) throw new Error(body.error || 'Errore durante la creazione del ristorante.')
+
+      // La forma della risposta di /api/restaurants/create non è nota con certezza,
+      // quindi proviamo tutte le forme plausibili invece di assumerne una sola.
+      const newRestaurantId =
+        body?.id ??
+        body?.restaurant?.id ??
+        body?.restaurantId ??
+        body?.data?.id ??
+        body?.data?.restaurant?.id ??
+        null
+
+      if (menuFile) {
+        if (!newRestaurantId) {
+          // Non troviamo un id valido nella risposta: non possiamo importare il menu.
+          // Segnaliamo chiaramente invece di saltare in silenzio.
+          console.error('[menu-import] Nessun restaurant id trovato nella risposta di /api/restaurants/create:', body)
+          setMenuStatus('failed')
+          setMenuStatusMessage('Ristorante creato, ma non è stato possibile importare il menu automaticamente (id ristorante non trovato). Puoi caricarlo dalla dashboard.')
+        } else {
+          // Stessa logica di import usata in MenuSection.tsx (dashboard admin),
+          // centralizzata in importMenuFromFile.
+          setMenuStatus('importing')
+          const result = await importMenuFromFile(newRestaurantId, menuFile)
+          if (result.created === 0) {
+            setMenuStatus('failed')
+            setMenuStatusMessage(result.error ?? 'Non è stato possibile leggere il menu. Puoi caricarlo dalla dashboard.')
+          } else {
+            setMenuStatus('done')
+            setMenuStatusMessage(`${result.created} piatt${result.created === 1 ? 'o importato' : 'i importati'} dal menu.`)
+          }
+        }
+
+        // Diamo un attimo per far leggere l'esito prima di uscire dalla pagina,
+        // invece di saltare subito in dashboard senza che l'utente se ne accorga.
+        await new Promise((resolve) => setTimeout(resolve, 1400))
+      }
+
       window.location.href = '/admin/dashboard'
     } catch (err: any) {
       setCreateError(err.message)
@@ -604,13 +765,26 @@ function StepSuccess({
       {createError && (
         <p className="stagger-item text-sm text-red-500 mb-3" style={{ animationDelay: '380ms' }}>{createError}</p>
       )}
+      {menuStatus === 'importing' && (
+        <p className="stagger-item text-sm text-gray-500 mb-3">Sto leggendo il menu, un attimo…</p>
+      )}
+      {menuStatus === 'done' && menuStatusMessage && (
+        <p className="stagger-item text-sm text-emerald-600 mb-3">{menuStatusMessage}</p>
+      )}
+      {menuStatus === 'failed' && menuStatusMessage && (
+        <p className="stagger-item text-sm text-amber-600 mb-3">{menuStatusMessage}</p>
+      )}
       <Button
         onClick={handleGoToDashboard}
         disabled={isCreating}
         className="stagger-item text-white px-10 rounded-full h-12 font-medium text-[15px] shadow-md transition-all duration-200 disabled:opacity-60"
         style={{ background: `linear-gradient(135deg, ${ORANGE}, ${ORANGE_DEEP})`, boxShadow: `0 6px 16px ${ORANGE_DEEP}33`, animationDelay: '400ms' }}
       >
-        {isCreating ? tr.auth.create.submitting : tr.auth.create.goToDashboard}
+        {isCreating
+          ? (menuStatus === 'importing' ? 'Sto leggendo il menu…' : tr.auth.create.submitting)
+          : isLoggedIn === false
+            ? tr.auth.create.completeRegistration
+            : tr.auth.create.goToDashboard}
         <ArrowRight className="size-4 ml-2" />
       </Button>
     </div>

@@ -130,10 +130,19 @@ export function SettingsSection({ ctx }: Props) {
 
       {/* Account card */}
       <div className="tt-card-pink flex items-center gap-4 rounded-2xl p-5 shadow-tt">
-        <span className="tt-avatar h-14 w-14 text-lg shadow-tt">
-          {ctx.userFirstName[0]}
-          {ctx.userLastName[0]}
-        </span>
+        {ctx.userAvatarUrl ? (
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={ctx.userAvatarUrl}
+            alt=""
+            className="h-14 w-14 rounded-full object-cover shadow-tt"
+          />
+        ) : (
+          <span className="tt-avatar h-14 w-14 text-lg shadow-tt">
+            {ctx.userFirstName[0]}
+            {ctx.userLastName[0]}
+          </span>
+        )}
         <div className="min-w-0 flex-1">
           <p className="truncate font-bold text-tt-ink">
             {ctx.userFirstName} {ctx.userLastName}
@@ -310,7 +319,12 @@ export function SettingsSection({ ctx }: Props) {
         <ProfileEditModal
           ctx={ctx}
           onClose={() => setShowProfile(false)}
-          onSaved={(msg) => { setShowProfile(false); flash(msg) }}
+          onSaved={(msg) => {
+            setShowProfile(false)
+            flash(msg)
+            // Ricarica per riflettere subito avatar/nome aggiornati in card + sidebar.
+            setTimeout(() => window.location.reload(), 900)
+          }}
         />
       )}
 
@@ -418,17 +432,22 @@ function ProfileEditModal({
     setSaving(true)
     setError(null)
     try {
+      const profileUpdates: { first_name?: string; last_name?: string; avatar_url?: string } = {}
       // Update name if changed
-      if (firstName !== ctx.userFirstName || lastName !== ctx.userLastName) {
-        await updateUserProfile(ctx.userId, { first_name: firstName, last_name: lastName })
-      }
-      // Upload avatar if selected
+      if (firstName !== ctx.userFirstName) profileUpdates.first_name = firstName
+      if (lastName !== ctx.userLastName) profileUpdates.last_name = lastName
+      // Upload avatar if selected and persist its public URL to the profile.
+      // (Prima l'upload avveniva ma l'URL veniva scartato: l'avatar non si salvava.)
       if (avatarFile) {
         try {
-          await uploadUserAvatar(avatarFile, ctx.userId)
+          const url = await uploadUserAvatar(avatarFile, ctx.userId)
+          if (url) profileUpdates.avatar_url = url
         } catch {
           // storage may not be configured — ignore
         }
+      }
+      if (Object.keys(profileUpdates).length > 0) {
+        await updateUserProfile(ctx.userId, profileUpdates)
       }
       // Update password if provided
       if (newPassword) {
@@ -470,6 +489,8 @@ function ProfileEditModal({
               <div className="grid h-20 w-20 place-items-center overflow-hidden rounded-full bg-gradient-to-br from-brand-amber to-brand-terra text-2xl font-bold text-white shadow-glow-amber">
                 {avatarPreview ? (
                   <img src={avatarPreview} alt="avatar" className="h-full w-full object-cover" />
+                ) : ctx.userAvatarUrl ? (
+                  <img src={ctx.userAvatarUrl} alt="avatar" className="h-full w-full object-cover" />
                 ) : (
                   (firstName[0] || '?') + (lastName[0] || '')
                 )}

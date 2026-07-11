@@ -29,6 +29,7 @@ import { NAV_ITEMS, WAITER_KITCHEN_GROUP_IDS, OPERATIONS_GROUP_IDS, MANAGEMENT_G
 import type { RestaurantCtx, SectionId, ThemeMode } from './types'
 import { supabase } from '@/lib/supabase'
 import { getRestaurantByUser, signOut } from '@/lib/admin-service'
+import { isRestaurantActive } from '@/lib/check-access'
 import { isNotificationSoundMuted, setNotificationSoundMuted } from '@/lib/notificationSound'
 import { useI18n } from '@/components/i18n/I18nProvider'
 
@@ -470,6 +471,19 @@ export default function AdminDashboardPage() {
         }
 
         const restaurant = await getRestaurantByUser()
+
+        // Gate abbonamento: se l'account è sospeso dalla piattaforma o
+        // l'abbonamento è scaduto, non caricare la dashboard e reindirizza
+        // alla pagina dedicata. (Prima non veniva mai verificato: isRestaurantActive
+        // era codice morto e nulla puntava a /abbonamento-scaduto.)
+        if (!isRestaurantActive({
+          id: restaurant.id,
+          status: restaurant.status,
+          access_expires_at: restaurant.access_expires_at,
+        })) {
+          if (active) router.replace('/abbonamento-scaduto')
+          return
+        }
 
         // active orders count — stessa logica di OrdersSection: escludi
         // 'pending' (carrello cliente ancora aperto), oltre a stati finali.

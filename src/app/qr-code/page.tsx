@@ -874,7 +874,7 @@ export default function QrCodePage() {
                 animate="visible"
                 className="font-serif text-5xl font-black leading-[1.04] tracking-tight text-ink text-lift drop-shadow-sm sm:text-6xl mb-5"
               >
-                <span className="text-gradient-warm">{t.hero.title1}</span>
+                <span className="text-brand-amber">{t.hero.title1}</span>
                 <br />
                 <span className="hero-veil">{t.hero.title2}</span>
               </motion.h1>

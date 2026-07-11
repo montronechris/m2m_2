@@ -1,6 +1,7 @@
 // src/app/api/admin/menu/route.ts
 import { createClient } from "@supabase/supabase-js";
 import { NextResponse } from "next/server";
+import { requireActiveStaff } from "@/lib/auth/requireActiveStaff";
 
 export async function GET(request: Request) {
   try {
@@ -36,7 +37,23 @@ export async function GET(request: Request) {
 
 export async function POST(request: Request) {
   try {
+    const auth = await requireActiveStaff();
+    if ("error" in auth) {
+      if (auth.error === "inactive") {
+        return NextResponse.json(
+          { error: "Abbonamento scaduto o account sospeso" },
+          { status: 402 }
+        );
+      }
+      return NextResponse.json({ error: "Non autenticato" }, { status: 401 });
+    }
+    const staff = auth.session;
+
     const body = await request.json();
+    if (body.restaurant_id !== staff.restaurantId) {
+      return NextResponse.json({ error: "Non autorizzato" }, { status: 403 });
+    }
+
     const supabase = createClient(process.env.NEXT_PUBLIC_SUPABASE_URL!, process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!);
     const { data, error } = await supabase.from("menu_items").insert(body).select().single();
     if (error) throw error;

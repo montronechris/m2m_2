@@ -143,7 +143,7 @@ export function Features() {
                   <p className="mt-2 text-sm leading-relaxed text-ink/60">{it.desc}</p>
 
 <Link
-  href="/funzioni"
+  href="/scopri-di-piu"
   className={`mt-4 inline-flex items-center gap-1 text-sm font-semibold ${t.accent} opacity-100 transition-all duration-300 lg:opacity-0 lg:group-hover:opacity-100`}
 >
   {f.more}

@@ -17,7 +17,7 @@ export async function GET(
     const { data, error } = await supabase
       .from("restaurants")
       .select(
-        "id, name, slug, brand_color, logo_url, address, phone, instagram, facebook, tripadvisor, website, google_review_url, background_image_url, background_type"
+        "id, name, slug, brand_color, logo_url, logo_icon, address, phone, instagram, facebook, tripadvisor, website, google_review_url, background_image_url, background_type"
       )
       .eq("id", restaurantId)
       .maybeSingle();

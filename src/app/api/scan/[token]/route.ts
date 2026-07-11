@@ -39,21 +39,35 @@ export async function GET(
       return NextResponse.json({ error: 'Ristorante non configurato' }, { status: 500 });
     }
 
-    // 3. Crea (o riusa) una sessione attiva per questo tavolo in `qr_sessions`
-    //    Riusa se esiste già una sessione attiva per non creare duplicati
+    // 3. Crea (o riusa) una sessione per questo tavolo in `qr_sessions`.
+    //    Il campo `token` è UNIQUE a livello di tabella, quindi non possiamo
+    //    limitarci a cercare le sole sessioni attive: se esiste già una riga
+    //    con questo token (magari chiusa in precedenza), un INSERT fallirebbe
+    //    per violazione del vincolo unique. Cerchiamo quindi per token
+    //    indipendentemente da `is_active` e la riattiviamo se serve.
     const { data: existingSession } = await supabase
       .from('qr_sessions')
-      .select('id')
-      .eq('table_id', table.id)
-      .eq('is_active', true)
+      .select('id, is_active')
+      .eq('token', token.toUpperCase())
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
     let sessionId: string;
 
     if (existingSession) {
       sessionId = existingSession.id;
+      if (!existingSession.is_active) {
+        await supabase
+          .from('qr_sessions')
+          .update({
+            table_id:      table.id,
+            restaurant_id: table.restaurant_id,
+            is_active:     true,
+            last_activity: new Date().toISOString(),
+          })
+          .eq('id', existingSession.id);
+      }
     } else {
       const { data: newSession, error: sessionError } = await supabase
         .from('qr_sessions')
@@ -67,11 +81,13 @@ export async function GET(
         .single();
 
       if (sessionError || !newSession) {
-        // qr_sessions potrebbe non esistere — usa l'id del tavolo come sessionId
-        sessionId = table.id;
-      } else {
-        sessionId = newSession.id;
+        console.error('Errore creazione qr_session:', sessionError);
+        return NextResponse.json(
+          { error: 'Impossibile creare la sessione' },
+          { status: 500 }
+        );
       }
+      sessionId = newSession.id;
     }
 
     return NextResponse.json({

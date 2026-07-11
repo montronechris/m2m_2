@@ -633,20 +633,18 @@ export default function RinnovaAbbonamento() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         invite_id: codeInfo.id,
-        restaurant_id: codeInfo.restaurant_id,
-        plan: codeInfo.plan,
-        max_staff: codeInfo.max_staff,
-        new_expiry: codeInfo.new_expiry.toISOString(),
       }),
     });
 
     if (!res.ok) {
       const { error } = await res.json();
-      setErrorMsg(
-        error === "already_used"
-          ? t.errors.already_used
-          : t.errors.renewal_failed
-      );
+      const messages: Record<string, string> = {
+        already_used: t.errors.already_used,
+        expired: t.errors.expired,
+        not_renewal: t.errors.not_renewal,
+        not_authorized: t.errors.not_authorized,
+      };
+      setErrorMsg(messages[error] || t.errors.renewal_failed);
       setStep("error");
       setApplying(false);
       return;

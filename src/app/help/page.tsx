@@ -3,6 +3,7 @@
 import { useState, useRef } from 'react'
 import { motion, AnimatePresence, useInView } from 'framer-motion'
 import { PageShell } from '@/components/landing/PageShell'
+import { ContactSection } from '@/components/landing/ContactSection'
 import { useI18n } from '@/components/i18n/I18nProvider'
 import {
   Search,
@@ -1727,6 +1728,7 @@ export default function HelpCenterPage() {
 
   const heroRef = useRef<HTMLElement>(null)
   const gridRef = useRef<HTMLElement>(null)
+  const contactFormRef = useRef<HTMLDivElement>(null)
   const heroInView = useInView(heroRef, { once: true })
   const gridInView = useInView(gridRef, { once: true })
 
@@ -2451,6 +2453,7 @@ export default function HelpCenterPage() {
               <motion.button
                 whileHover={{ scale: 1.03, y: -2 }}
                 whileTap={{ scale: 0.97 }}
+                onClick={() => contactFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })}
                 className="inline-flex items-center gap-2 bg-white text-brand-terra font-semibold rounded-full px-8 py-3.5 shadow-lg cursor-pointer transition-all duration-200 hover:shadow-xl group"
               >
                 <MessageCircle size={18} />
@@ -2464,6 +2467,10 @@ export default function HelpCenterPage() {
           </div>
         </div>
       </motion.section>
+
+      <div ref={contactFormRef}>
+        <ContactSection />
+      </div>
     </div>
     </PageShell>
   )

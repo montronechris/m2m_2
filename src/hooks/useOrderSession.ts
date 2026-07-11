@@ -14,6 +14,7 @@ type Restaurant = {
   slug: string;
   brand_color: string;
   logo_url?: string | null;
+  logo_icon?: string | null;
   address?: string | null;
   phone?: string | null;
   instagram?: string | null;

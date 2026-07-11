@@ -1,54 +1,55 @@
 'use client'
 
-import { Globe, Check } from 'lucide-react'
-import { Button } from '@/components/ui/button'
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuLabel,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from '@/components/ui/dropdown-menu'
-import { LANGS, type Lang } from '@/lib/i18n/dictionary'
+import { motion } from 'framer-motion'
+import { LANGS } from '@/lib/i18n/dictionary'
 import { useI18n } from '@/components/i18n/I18nProvider'
 
-export function LanguageSwitcher() {
+interface LanguageSwitcherProps {
+  /** Base color for the active pill gradient. Defaults to the same orange used on /rinnova-abbonamento. */
+  accentColor?: string
+}
+
+export function LanguageSwitcher({ accentColor = '#f97316' }: LanguageSwitcherProps) {
   const { lang, setLang } = useI18n()
-  const current = LANGS.find((l) => l.code === lang) ?? LANGS[0]
 
   return (
-    <DropdownMenu modal={false}>
-      <DropdownMenuTrigger asChild>
-        <Button
-          variant="ghost"
-          size="sm"
-          className="gap-1.5 rounded-full px-2.5 font-semibold text-ink/70 hover:text-ink"
-          aria-label="Language"
+    <div
+      className="inline-flex items-center p-1 rounded-full backdrop-blur-xl"
+      style={{
+        background: 'rgba(255,255,255,0.7)',
+        border: '1px solid rgba(255,255,255,0.8)',
+        boxShadow: '0 4px 20px rgba(0,0,0,0.06)',
+      }}
+    >
+      {LANGS.map(({ code }) => (
+        <button
+          key={code}
+          onClick={() => setLang(code)}
+          className="relative px-3.5 py-1.5 text-[12px] font-semibold uppercase tracking-wide transition-colors duration-300 rounded-full"
+          style={{
+            color: lang === code ? '#fff' : '#6b7280',
+          }}
         >
-          <Globe className="h-4 w-4" />
-          <span className="text-xs uppercase">{lang}</span>
-        </Button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" sideOffset={8} className="z-[200] w-40 rounded-xl">
-        <DropdownMenuLabel className="text-xs text-ink/50">
-          {current.label}
-        </DropdownMenuLabel>
-        <DropdownMenuSeparator />
-        {LANGS.map((l) => (
-          <DropdownMenuItem
-            key={l.code}
-            onClick={() => setLang(l.code as Lang)}
-            className="cursor-pointer gap-2 rounded-lg"
-          >
-            <span className="grid h-5 w-6 place-items-center rounded-sm border border-ink/10 bg-white text-[10px] font-bold uppercase text-ink/70">
-              {l.code === 'en' ? 'GB' : l.code.toUpperCase()}
-            </span>
-            <span className="flex-1">{l.label}</span>
-            {l.code === lang && <Check className="h-4 w-4 text-brand-emerald" />}
-          </DropdownMenuItem>
-        ))}
-      </DropdownMenuContent>
-    </DropdownMenu>
+          {lang === code && (
+            <motion.span
+              layoutId="lang-pill-bg"
+              className="absolute inset-0 rounded-full"
+              style={{
+                background: `linear-gradient(135deg, color-mix(in srgb, ${accentColor} 75%, white) 0%, ${accentColor} 50%, color-mix(in srgb, ${accentColor} 80%, black) 100%)`,
+                boxShadow: `0 2px 8px ${accentColor}59`,
+                zIndex: -1,
+              }}
+              transition={{
+                type: 'spring',
+                stiffness: 500,
+                damping: 35,
+                mass: 0.6,
+              }}
+            />
+          )}
+          <span className="relative z-10">{code}</span>
+        </button>
+      ))}
+    </div>
   )
 }

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect } from 'react'
 import { motion, AnimatePresence, useInView } from 'framer-motion'
 import { PageShell } from '@/components/landing/PageShell'
 import {
@@ -19,7 +19,6 @@ import {
   TrendingUp,
   Flame,
   Trophy,
-  Zap,
   ArrowRight,
   Clock,
   Users,
@@ -32,6 +31,28 @@ import {
   Lightbulb,
 } from 'lucide-react'
 import { useI18n } from '@/components/i18n/I18nProvider'
+import { supabase } from '@/lib/supabase'
+
+/* ─── Icon key (stored in DB as text) → lucide component ─────────── */
+const ICON_MAP: Record<string, React.ElementType> = {
+  Truck, CalendarCheck, CreditCard, PackageCheck, HeartHandshake,
+  Sparkles, ShieldCheck, MonitorSmartphone, Star, ShoppingBag,
+}
+
+/* ─── DB row shape (public.integration_cards) ───────────────────── */
+interface DbCard {
+  id: string
+  card_key: string
+  icon_key: string
+  tag_key: string
+  title_it: string
+  title_en: string
+  description_it: string
+  description_en: string
+  votes: number
+  sort_order: number
+  is_active: boolean
+}
 
 /* ─── Types ─────────────────────────────────────────────────────── */
 type IntegrationId =
@@ -59,7 +80,8 @@ type TagKey =
   | 'practical'
 
 interface IntegrationBase {
-  id: IntegrationId
+  id: string          // card_key (usato per UI keys / ricerca)
+  cardId: string      // uuid della riga integration_cards (usato per il voto)
   tagKey: TagKey
   icon: React.ElementType
   votes: number
@@ -86,19 +108,8 @@ const TAG_META: Record<TagKey, { it: string; en: string; class: string }> = {
   practical:   { it: 'Pratico',      en: 'Practical',    class: 'bg-brand-terra/15 text-brand-terra' },
 }
 
-/* ─── Integration base data (no text — text lives in T per lang) ── */
-const INTEGRATIONS_BASE: IntegrationBase[] = [
-  { id: 'delivery',       tagKey: 'popular',     icon: Truck,             votes: 142, voted: false },
-  { id: 'prenotazioni',   tagKey: 'requested',   icon: CalendarCheck,     votes: 128, voted: false },
-  { id: 'pagamenti',      tagKey: 'coming_soon', icon: CreditCard,        votes: 97,  voted: false },
-  { id: 'scorte',         tagKey: 'new',         icon: PackageCheck,      votes: 84,  voted: false },
-  { id: 'fidelizzazione', tagKey: 'trending',    icon: HeartHandshake,    votes: 76,  voted: false },
-  { id: 'menu-ai',        tagKey: 'innovative',  icon: Sparkles,          votes: 112, voted: false },
-  { id: 'allergeni',      tagKey: 'compliance',  icon: ShieldCheck,       votes: 63,  voted: false },
-  { id: 'pos',            tagKey: 'essential',   icon: MonitorSmartphone, votes: 89,  voted: false },
-  { id: 'recensioni',     tagKey: 'ai_powered',  icon: Star,              votes: 71,  voted: false },
-  { id: 'takeaway',       tagKey: 'practical',   icon: ShoppingBag,       votes: 55,  voted: false },
-]
+/* Le card e i voti sono ora caricati da public.integration_cards (vedi il
+   componente principale). L'ordine e i conteggi vivono nel DB, non più qui. */
 
 /* ─── Sort options (label resolved per lang via T.sort) ─────────── */
 const SORT_OPTIONS = [
@@ -424,7 +435,7 @@ function VoteButton({
   const handleVote = () => {
     if (!integration.voted) {
       setJustVoted(true)
-      onVote(integration.id)
+      onVote(integration.cardId)
       setTimeout(() => setJustVoted(false), 500)
     }
   }
@@ -639,7 +650,13 @@ export default function IntegrazioniPage() {
   const { lang } = useI18n()
   const t = T[lang]
 
-  const [baseIntegrations, setBaseIntegrations] = useState<IntegrationBase[]>(INTEGRATIONS_BASE)
+  // Card + voti caricati dal DB (public.integration_cards / integration_votes).
+  const [cards, setCards] = useState<DbCard[]>([])
+  const [loading, setLoading] = useState(true)
+  const [isLoggedIn, setIsLoggedIn] = useState(false)
+  const [canVote, setCanVote] = useState(false)         // abbonamento attivo non-prova
+  const [votedCardIds, setVotedCardIds] = useState<Set<string>>(new Set())
+  const [voteMsg, setVoteMsg] = useState<string | null>(null)
   const [sortKey, setSortKey] = useState<SortKey>('votes-desc')
   const [searchQuery, setSearchQuery] = useState('')
   const [showConfetti, setShowConfetti] = useState(false)
@@ -650,28 +667,96 @@ export default function IntegrazioniPage() {
   useInView(heroRef, { once: true, margin: '-50px' })
   useInView(gridRef, { once: false, margin: '-30px' })
 
-  // Enrich base integrations with localized text + tag label for the current lang.
-  // Votes/voted live in state; text is derived during render so it updates with lang.
-  const integrations: Integration[] = baseIntegrations.map((b) => ({
-    ...b,
-    title: t.integrations[b.id].title,
-    description: t.integrations[b.id].description,
-    tag: TAG_META[b.tagKey][lang],
+  // Carica card attive + stato utente (loggato? idoneo al voto?) + voti già dati.
+  useEffect(() => {
+    let active = true
+    const load = async () => {
+      const { data: cardRows } = await supabase
+        .from('integration_cards')
+        .select('*')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true })
+      if (!active) return
+      setCards((cardRows as DbCard[]) ?? [])
+
+      const { data: { user } } = await supabase.auth.getUser()
+      if (!active) return
+      setIsLoggedIn(!!user)
+
+      if (user) {
+        // RPC gate (abbonamento attivo non-prova) + voti esistenti del ristorante.
+        const [{ data: canVoteData }, { data: voteRows }] = await Promise.all([
+          supabase.rpc('can_vote_integrations'),
+          supabase.from('integration_votes').select('card_id'),
+        ])
+        if (!active) return
+        setCanVote(canVoteData === true)
+        setVotedCardIds(
+          new Set((voteRows ?? []).map((v: { card_id: string }) => v.card_id)),
+        )
+      }
+      setLoading(false)
+    }
+    load().catch(() => { if (active) setLoading(false) })
+    return () => { active = false }
+  }, [])
+
+  // Auto-dismiss del messaggio di voto (login/idoneità/errore).
+  useEffect(() => {
+    if (!voteMsg) return
+    const timer = setTimeout(() => setVoteMsg(null), 4000)
+    return () => clearTimeout(timer)
+  }, [voteMsg])
+
+  // Costruisce gli oggetti Integration dalla riga DB, localizzando testo/tag.
+  const integrations: Integration[] = cards.map((c) => ({
+    id: c.card_key,
+    cardId: c.id,
+    tagKey: c.tag_key as TagKey,
+    icon: ICON_MAP[c.icon_key] ?? Sparkles,
+    votes: c.votes,
+    voted: votedCardIds.has(c.id),
+    title: lang === 'it' ? c.title_it : c.title_en,
+    description: lang === 'it' ? c.description_it : c.description_en,
+    tag: TAG_META[c.tag_key as TagKey]?.[lang] ?? c.tag_key,
   }))
 
-  // Derived value: total votes across all integrations (computed during render
-  // rather than stored in state to avoid cascading re-renders).
+  // Derived value: total votes across all integrations.
   const totalVotes = integrations.reduce((sum, i) => sum + i.votes, 0)
 
-  const handleVote = useCallback((id: string) => {
-    setBaseIntegrations((prev) =>
-      prev.map((item) =>
-        item.id === id ? { ...item, voted: true, votes: item.votes + 1 } : item,
-      ),
-    )
+  // Voto: solo utenti loggati con abbonamento attivo non-prova (gate lato DB via
+  // RLS/RPC; qui filtriamo per UX e inseriamo in integration_votes). cardId = uuid.
+  const handleVote = useCallback(async (cardId: string) => {
+    if (!isLoggedIn) {
+      setVoteMsg(lang === 'it'
+        ? 'Accedi con un account ristorante per votare.'
+        : 'Sign in with a restaurant account to vote.')
+      return
+    }
+    if (!canVote) {
+      setVoteMsg(lang === 'it'
+        ? 'Solo gli account con abbonamento attivo (non di prova) possono votare.'
+        : 'Only accounts with an active (non-trial) subscription can vote.')
+      return
+    }
+    if (votedCardIds.has(cardId)) return
+
+    // Aggiornamento ottimistico.
+    setVotedCardIds((prev) => new Set(prev).add(cardId))
+    setCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, votes: c.votes + 1 } : c)))
     setShowConfetti(true)
     setTimeout(() => setShowConfetti(false), 2000)
-  }, [])
+
+    const { error } = await supabase.from('integration_votes').insert({ card_id: cardId })
+    if (error) {
+      // Rollback in caso di errore (es. voto duplicato o non idoneo lato RLS).
+      setVotedCardIds((prev) => { const n = new Set(prev); n.delete(cardId); return n })
+      setCards((prev) => prev.map((c) => (c.id === cardId ? { ...c, votes: Math.max(c.votes - 1, 0) } : c)))
+      setVoteMsg(lang === 'it'
+        ? 'Voto non registrato: potresti aver già votato o non essere idoneo.'
+        : 'Vote not recorded: you may have already voted or are not eligible.')
+    }
+  }, [isLoggedIn, canVote, votedCardIds, lang])
 
   const sortedIntegrations = integrations
     .filter((i) => {
@@ -764,22 +849,26 @@ export default function IntegrazioniPage() {
         )}
       </AnimatePresence>
 
+      {/* ─── Toast messaggio voto (login / idoneità / errore) ──────── */}
+      <AnimatePresence>
+        {voteMsg && (
+          <motion.div
+            role="status"
+            aria-live="polite"
+            className="fixed top-20 left-1/2 z-[60] -translate-x-1/2 max-w-[92vw] rounded-2xl border border-brand-terra/25 bg-brand-cream/95 px-5 py-3 text-center text-sm font-semibold text-brand-terra shadow-xl backdrop-blur"
+            initial={{ opacity: 0, y: -12, scale: 0.96 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: -12, scale: 0.96 }}
+            transition={{ duration: 0.25 }}
+          >
+            {voteMsg}
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* ─── Hero Section ─────────────────────────────────────────── */}
       <section className="relative pt-28 sm:pt-36 pb-12 sm:pb-16 px-4" ref={heroRef}>
         <div className="max-w-4xl mx-auto text-center">
-          {/* Eyebrow badge */}
-          <motion.div
-            initial={{ opacity: 0, y: 24 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.15, duration: 0.55 }}
-            className="flex justify-center mb-6"
-          >
-            <span className="eyebrow border border-brand-emerald/30 bg-brand-emerald/10 text-brand-emerald">
-              <Zap size={16} />
-              <span>{t.hero.eyebrow}</span>
-            </span>
-          </motion.div>
-
           {/* Title */}
           <motion.h1
             initial={{ opacity: 0, y: 24 }}
@@ -915,7 +1004,17 @@ export default function IntegrazioniPage() {
       {/* ─── Integration Grid ─────────────────────────────────────── */}
       <section className="max-w-6xl mx-auto px-4 pb-24" ref={gridRef}>
         <AnimatePresence mode="wait">
-          {sortedIntegrations.length > 0 ? (
+          {loading ? (
+            <motion.div
+              key="loading"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              exit={{ opacity: 0 }}
+              className="flex items-center justify-center py-24"
+            >
+              <div className="h-10 w-10 animate-spin rounded-full border-4 border-brand-terra/20 border-t-brand-terra" />
+            </motion.div>
+          ) : sortedIntegrations.length > 0 ? (
             <motion.div
               key={`${sortKey}-${searchQuery}-${activeFilter}`}
               className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-5 sm:gap-6"

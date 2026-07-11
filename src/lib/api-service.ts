@@ -247,11 +247,12 @@ export const getOrderItems = async (orderId: string, sessionToken?: string): Pro
 };
 
 /**
- * Se il tavolo ha un ordine già inviato in cucina e non ancora pagato
- * (confirmed/cooking/ready/served, paid_at null), ritorna il numero di
- * portata più alto già usato in quell'ordine — i nuovi piatti aggiunti
- * dopo l'invio devono partire da (questo numero + 1) e restare bloccati
- * finché il conto non viene saldato.
+ * Se il tavolo ha un ordine già inviato in cucina (confirmed/cooking/ready/served),
+ * ritorna il numero di portata più alto già consegnato in quell'ordine — i nuovi
+ * piatti aggiunti dopo l'invio devono partire da (questo numero + 1), esattamente
+ * come fa la card "grazie mille" per gli upsell. Non filtriamo su paid_at: anche
+ * dopo il pagamento del primo giro, un nuovo piatto aggiunto dal menu deve comunque
+ * partire dalla portata successiva a quella già servita, non ripartire da 1.
  * Ritorna null se non c'è nessun ordine attivo (piatti liberamente
  * assegnabili a qualsiasi portata, comportamento normale).
  */
@@ -260,25 +261,27 @@ export const getActivePortataFloor = async (
   sessionToken?: string
 ): Promise<number | null> => {
   if (!tableId) return null;
-  const activeOrders = await restGet(
-    "orders",
-    `?table_id=eq.${tableId}&status=in.(confirmed,cooking,ready,served)&confirmed_at=not.is.null&paid_at=is.null&select=id`,
-    sessionToken
-  );
-  if (!activeOrders.length) return null;
-
-  const orderIds = activeOrders.map((o: any) => o.id).join(",");
-  // Solo le portate GIÀ CONSEGNATE contano come "floor": una portata solo
-  // riservata (es. un piatto upsell già bloccato ma non ancora portato in
-  // tavola) non deve impedire ad altri piatti di condividere lo stesso numero.
-  const deliveredItems = await restGet(
-    "order_items",
-    `?order_id=in.(${orderIds})&portata_delivered=eq.true&select=portata`,
-    sessionToken
-  );
-  if (!deliveredItems.length) return null;
-
-  return deliveredItems.reduce((max: number, i: any) => Math.max(max, i.portata ?? 1), 0);
+  // Passa per una funzione RPC (SECURITY DEFINER) invece di leggere
+  // direttamente "orders": una volta che l'ordine precedente passa a
+  // status "served", la RLS anonima ("orders: anon read active") non lo
+  // rende più leggibile al client, quindi una query diretta tornerebbe
+  // sempre vuota e il floor risulterebbe erroneamente null.
+  const res = await fetch(`${SUPABASE_URL}/rest/v1/rpc/get_active_portata_floor`, {
+    method: "POST",
+    headers: {
+      apikey: SUPABASE_KEY,
+      Authorization: `Bearer ${SUPABASE_KEY}`,
+      "Content-Type": "application/json",
+      ...(sessionToken ? { "x-session-token": sessionToken } : {}),
+    },
+    body: JSON.stringify({ p_table_id: tableId }),
+  });
+  if (!res.ok) {
+    console.error(`[getActivePortataFloor] RPC ${res.status}: ${await res.text()}`);
+    return null;
+  }
+  const floor = await res.json();
+  return floor == null ? null : Number(floor);
 };
 
 /**

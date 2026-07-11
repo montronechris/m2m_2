@@ -273,9 +273,9 @@ export function Navbar({
         transition: "padding-top .5s cubic-bezier(.22,.61,.36,1)",
       }}
     >
-      {/* ══ DESKTOP ══════════════════════════════════════════════════════════ */}
+      {/* ══ DESKTOP (solo homepage — nelle pagine ordine usiamo la pillola compatta anche su tablet/pc) ══ */}
       <div
-        className="pointer-events-auto hidden origin-top md:block"
+        className={isOrderPage ? "hidden" : "pointer-events-auto hidden origin-top md:block"}
         style={{
           transform: `scale(${scrolled ? 0.9 : 1})`,
           transition: "transform .5s cubic-bezier(.22,.61,.36,1)",
@@ -495,8 +495,14 @@ export function Navbar({
         </div>
       </div>
 
-      {/* ══ MOBILE ═══════════════════════════════════════════════════════════ */}
-      <div className="pointer-events-auto relative w-[min(560px,92vw)] md:hidden">
+      {/* ══ MOBILE (nelle pagine ordine è usata anche su tablet/pc, solo allungata) ══ */}
+      <div
+        className={
+          isOrderPage
+            ? "pointer-events-auto relative w-[min(720px,92vw)]"
+            : "pointer-events-auto relative w-[min(560px,92vw)] md:hidden"
+        }
+      >
         <div
           className="flex items-center justify-between rounded-[22px] border border-white/60 px-[18px]"
           style={{
@@ -515,16 +521,17 @@ export function Navbar({
               else router.push("/");
             }}
             className="flex items-center gap-2.5"
-            style={{ background: "none", border: "none", cursor: "pointer", padding: 0 }}
+            style={{ background: "none", border: "none", cursor: "pointer", padding: 0, minWidth: 0, overflow: "hidden", flex: "1 1 auto" }}
           >
-            <ChefHat size={26} color={brandColor} />
+            <span style={{ flexShrink: 0, display: "flex" }}><ChefHat size={26} color={brandColor} /></span>
             {isOrderPage ? (
               restaurantName && (
-                <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.15 }}>
+                <div style={{ display: "flex", flexDirection: "column", lineHeight: 1.15, minWidth: 0, overflow: "hidden" }}>
                   <span style={{
                     fontFamily: "'Playfair Display', Georgia, serif",
                     fontSize: 17, fontWeight: 700, color: "#3a2f26",
                     letterSpacing: "-0.01em",
+                    overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
                   }}>
                     {restaurantName}
                   </span>
@@ -540,6 +547,7 @@ export function Navbar({
                 fontFamily: "'Playfair Display', Georgia, serif",
                 fontSize: 15, fontWeight: 600, color: "#3a2f26",
                 letterSpacing: "-0.01em",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
               }}>
                 TavolaRapida
               </span>
@@ -548,7 +556,7 @@ export function Navbar({
 
           {/* Right side */}
           {isOrderPage ? (
-            <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, flexShrink: 0 }}>
               {/* Stellina recensione — visibile solo su /status dopo "Salta" */}
               {showReviewStar && pathname.startsWith("/status") && (
                 <motion.button
@@ -589,8 +597,15 @@ export function Navbar({
                   />
                 </motion.button>
               )}
-              {/* Language switcher */}
-              <LanguageSwitcher />
+              {/* Language switcher — si comprime e sparisce quando il cameriere è in arrivo, per non farlo scattare via di colpo */}
+              <motion.div
+                initial={false}
+                animate={waiterBusy ? { width: 0, opacity: 0, marginLeft: 0 } : { width: "auto", opacity: 1 }}
+                transition={waiterBusy ? { duration: 0.18, ease: "easeIn" } : { type: "spring", stiffness: 300, damping: 30 }}
+                style={{ overflow: "hidden", flexShrink: 0 }}
+              >
+                <LanguageSwitcher accentColor={brandColor} />
+              </motion.div>
               {/* Bell / chiama cameriere */}
               <style>{`
                 @keyframes navBellRing {
@@ -634,7 +649,7 @@ export function Navbar({
                   </svg>
                 </span>
                 {waiterBusy && (
-                  <span style={{ fontSize: 12, fontWeight: 700 }}>Cameriere in arrivo</span>
+                  <span style={{ fontSize: 12, fontWeight: 700 }}>{tr.callWaiter.arriving}</span>
                 )}
               </motion.button>
             </div>
