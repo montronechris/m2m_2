@@ -7,7 +7,7 @@ import Link from "next/link";
 import { createBrowserClient } from "@supabase/ssr";
 import { motion, AnimatePresence, useMotionValue, animate } from "framer-motion";
 import {
-  Clock, Loader2, ChefHat, CheckCircle, Utensils, Bell, ArrowRight, UtensilsCrossed, ChevronRight,
+  Clock, Loader2, ChefHat, CheckCircle, Utensils, Bell, ArrowRight, UtensilsCrossed, ChevronRight, Ban, X,
 } from "lucide-react";
 import type { Palette } from "@/components/client/order/palette";
 
@@ -1041,12 +1041,16 @@ function Comanda({
   isDark,
   brand,
   restaurantLogo,
+  sessionId,
+  onCancelled,
 }: {
   order: Order;
   tick: number;
   isDark: boolean;
   brand: string;
   restaurantLogo?: string | null;
+  sessionId?: string;
+  onCancelled?: () => void;
 }) {
   const t = themeTokens(isDark);
   const { tr } = useI18n();
@@ -1055,6 +1059,35 @@ function Comanda({
   const isPending = order.status === "confirmed" || order.status === "pending";
   const isCooking = order.status === "cooking";
   const isReady   = order.status === "ready";
+
+  // Annullamento ordine: possibile SOLO finché non è in preparazione (isPending).
+  const [confirmingCancel, setConfirmingCancel] = useState(false);
+  const [cancelling, setCancelling] = useState(false);
+  const [cancelError, setCancelError] = useState<string | null>(null);
+
+  const cancelOrder = async () => {
+    if (cancelling) return;
+    setCancelling(true);
+    setCancelError(null);
+    try {
+      const res = await fetch(`/api/orders/${order.id}/cancel`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId: sessionId ?? null }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        setCancelError(data?.error || tS.cancelError);
+        setCancelling(false);
+        return;
+      }
+      // Success: l'ordine sparirà al prossimo refresh (cancelled non è tra gli attivi).
+      onCancelled?.();
+    } catch {
+      setCancelError(tS.cancelError);
+      setCancelling(false);
+    }
+  };
 
   const accent =
     isPending ? "#f59e0b" :
@@ -1174,6 +1207,51 @@ function Comanda({
         <span className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: t.inkSoft }}>Totale</span>
         <span className="text-base font-bold" style={{ color: t.ink, fontFamily: "'Space Grotesk', sans-serif" }}>€ {formatPrice(order.total_cents)}</span>
       </div>
+
+      {isPending && (
+        <div className="px-5 pb-4" style={{ borderTop: `1px solid ${t.borderSoft}`, paddingTop: 12 }}>
+          {cancelError && (
+            <p className="mb-2 text-center text-[12px] font-medium" style={{ color: "#dc2626" }}>{cancelError}</p>
+          )}
+          {!confirmingCancel ? (
+            <button
+              type="button"
+              onClick={() => { setCancelError(null); setConfirmingCancel(true); }}
+              className="flex w-full items-center justify-center gap-2 rounded-2xl px-4 py-2.5 text-[13px] font-semibold transition-colors"
+              style={{ background: "rgba(220,38,38,0.08)", color: "#dc2626", border: "1px solid rgba(220,38,38,0.22)" }}
+            >
+              <Ban className="h-4 w-4" />
+              {tS.cancelOrder}
+            </button>
+          ) : (
+            <div className="space-y-2">
+              <p className="text-center text-[12.5px] font-medium" style={{ color: t.inkSoft }}>{tS.cancelConfirmQuestion}</p>
+              <div className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setConfirmingCancel(false)}
+                  disabled={cancelling}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl px-4 py-2.5 text-[13px] font-semibold transition-colors disabled:opacity-50"
+                  style={{ background: t.surfaceAlt, color: t.ink, border: `1px solid ${t.border}` }}
+                >
+                  <X className="h-4 w-4" />
+                  {tS.cancelKeep}
+                </button>
+                <button
+                  type="button"
+                  onClick={cancelOrder}
+                  disabled={cancelling}
+                  className="flex flex-1 items-center justify-center gap-1.5 rounded-2xl px-4 py-2.5 text-[13px] font-semibold text-white transition-colors disabled:opacity-70"
+                  style={{ background: "#dc2626", border: "1px solid #dc2626" }}
+                >
+                  {cancelling ? <Loader2 className="h-4 w-4 animate-spin" /> : <Ban className="h-4 w-4" />}
+                  {cancelling ? tS.cancelling : tS.cancelConfirmYes}
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </motion.article>
   );
 }
@@ -1201,6 +1279,75 @@ function EmptyCol({ label, isDark }: { label: string; isDark: boolean }) {
         <Clock className="h-7 w-7" style={{ color: t.inkSoft }} />
       </motion.div>
       <p className="text-sm font-medium" style={{ color: t.inkSoft, fontFamily: "'Space Grotesk', sans-serif" }}>{label}</p>
+    </motion.div>
+  );
+}
+
+// ─── LAST COURSE BANNER ───────────────────────────────────────────────────────
+// Rete di sicurezza: se un bug impedisce il passaggio automatico alla schermata
+// finale (grazie/pagamento) una volta consegnata l'ultima portata, questo banner
+// resta visibile — senza possibilità di chiuderlo — finché l'utente non tocca il
+// pulsante per andarci manualmente.
+
+function LastCourseBanner({
+  brand,
+  isDark,
+  onContinue,
+}: {
+  brand: string;
+  isDark: boolean;
+  onContinue: () => void;
+}) {
+  const { tr } = useI18n();
+  const tS = tr.client.status;
+
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -14 }}
+      animate={{ opacity: 1, y: 0 }}
+      transition={{ duration: 0.45, ease: [0.22, 1, 0.36, 1] }}
+      className="fixed inset-x-0 z-50 flex justify-center px-4"
+      style={{ top: 144 }}
+    >
+      <motion.button
+        onClick={onContinue}
+        whileTap={{ scale: 0.98 }}
+        className="flex w-full max-w-lg items-center justify-between gap-3 rounded-2xl px-4 py-3.5 text-left"
+        style={{
+          background: `linear-gradient(135deg, ${brand} 0%, ${mixHex(brand, "#000000", 0.15)} 100%)`,
+          boxShadow: `0 16px 40px -10px ${brandAlpha(brand, 0.55)}`,
+          border: "1px solid rgba(255,255,255,0.18)",
+          cursor: "pointer",
+        }}
+      >
+        <div className="flex min-w-0 items-center gap-3">
+          <span
+            style={{
+              width: 34, height: 34, borderRadius: "50%", flexShrink: 0,
+              background: "rgba(255,255,255,0.22)",
+              display: "flex", alignItems: "center", justifyContent: "center",
+            }}
+          >
+            <CheckCircle style={{ width: 18, height: 18, color: "#fff" }} />
+          </span>
+          <span
+            className="truncate"
+            style={{ fontSize: 13, fontWeight: 700, color: "#fff", fontFamily: "'Space Grotesk', sans-serif" }}
+          >
+            {tS.lastCourseReadyTitle}
+          </span>
+        </div>
+        <span
+          style={{
+            display: "inline-flex", alignItems: "center", gap: 4, flexShrink: 0,
+            fontSize: 12, fontWeight: 700, color: brand,
+            background: "#fff", padding: "7px 12px", borderRadius: 999,
+          }}
+        >
+          {tS.lastCourseReadyCta}
+          <ArrowRight style={{ width: 13, height: 13 }} />
+        </span>
+      </motion.button>
     </motion.div>
   );
 }
@@ -2612,6 +2759,13 @@ export default function StatusPage() {
       </div>
 
       <div className="relative z-10 flex flex-1 flex-col">
+        {isLastPortata && !showEndScreen && !allServed && orders.length > 0 && (
+          <LastCourseBanner
+            brand={effectiveBrand}
+            isDark={isDark}
+            onContinue={() => setShowEndScreen(true)}
+          />
+        )}
         {orders.length === 0 ? (
           <div className="mx-auto w-full max-w-lg pt-20">
             <EmptyOrderState sessionId={sessionId} brand={effectiveBrand} isDark={isDark} />
@@ -3029,6 +3183,8 @@ export default function StatusPage() {
                                 isDark={isDark}
                                 brand={effectiveBrand}
                                 restaurantLogo={restaurantLogo}
+                                sessionId={sessionId}
+                                onCancelled={fetchOrders}
                               />
                             ))
                         }

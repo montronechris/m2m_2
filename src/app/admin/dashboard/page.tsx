@@ -25,7 +25,7 @@ import {
   ChefHat,
   AlertTriangle,
 } from 'lucide-react'
-import { NAV_ITEMS, WAITER_KITCHEN_GROUP_IDS, OPERATIONS_GROUP_IDS, MANAGEMENT_GROUP_IDS } from './nav-config'
+import { NAV_ITEMS, WAITER_KITCHEN_GROUP_IDS, OPERATIONS_GROUP_IDS, MANAGEMENT_GROUP_IDS, SECTION_COLORS, sectionsForRole } from './nav-config'
 import type { RestaurantCtx, SectionId, ThemeMode } from './types'
 import { supabase } from '@/lib/supabase'
 import { getRestaurantByUser, signOut } from '@/lib/admin-service'
@@ -42,13 +42,16 @@ import { OrdersSection } from './sections/OrdersSection'
 import { MenuSection } from './sections/MenuSection'
 import { TablesSection } from './sections/TablesSection'
 import { AnalyticsSection } from './sections/AnalyticsSection'
+import { ReviewsSection } from './sections/ReviewsSection'
 import { BrandingSection } from './sections/BrandingSection'
 import { StaffSection } from './sections/StaffSection'
 import { SettingsSection } from './sections/SettingsSection'
 import { WaiterSection } from './sections/WaiterSection'
 import { HistorySection } from './sections/HistorySection'
-import { PlaceholderSection } from './sections/PlaceholderSection'
+import { CalendarSection } from './sections/CalendarSection'
+import { DeliverySection } from './sections/DeliverySection'
 import { AIAssistantOverlay } from './components/AIAssistantOverlay'
+import { AttendanceButton, isClockInRole } from './components/AttendanceButton'
 
 // ─── Section renderer ────────────────────────────────────────────────────────
 
@@ -74,6 +77,8 @@ function SectionRenderer({
       return <TablesSection ctx={ctx} theme={theme} />
     case 'analytics':
       return <AnalyticsSection ctx={ctx} theme={theme} onSectionChange={onSectionChange} />
+    case 'reviews':
+      return <ReviewsSection ctx={ctx} theme={theme} />
     case 'branding':
       return <BrandingSection ctx={ctx} theme={theme} />
     case 'staff':
@@ -85,7 +90,9 @@ function SectionRenderer({
     case 'history':
       return <HistorySection ctx={ctx} theme={theme} />
     case 'calendar':
-      return <PlaceholderSection id="calendar" theme={theme} />
+      return <CalendarSection ctx={ctx} theme={theme} />
+    case 'delivery':
+      return <DeliverySection ctx={ctx} theme={theme} />
   }
 }
 
@@ -142,11 +149,13 @@ function MoreDrawer({
   onClose,
   activeSection,
   onSelect,
+  canAccess,
 }: {
   open: boolean
   onClose: () => void
   activeSection: SectionId
   onSelect: (s: SectionId) => void
+  canAccess: (id: SectionId) => boolean
 }) {
   const { tr } = useI18n()
   const [dragY, setDragY] = useState(0)
@@ -170,15 +179,16 @@ function MoreDrawer({
     dragStartY.current = null
   }
 
-  const waiterKitchenItems = NAV_ITEMS.filter((i) => WAITER_KITCHEN_GROUP_IDS.includes(i.id))
-  const operationsItems = NAV_ITEMS.filter((i) => OPERATIONS_GROUP_IDS.includes(i.id))
-  const managementItems = NAV_ITEMS.filter((i) => MANAGEMENT_GROUP_IDS.includes(i.id))
+  const waiterKitchenItems = NAV_ITEMS.filter((i) => WAITER_KITCHEN_GROUP_IDS.includes(i.id) && canAccess(i.id))
+  const operationsItems = NAV_ITEMS.filter((i) => OPERATIONS_GROUP_IDS.includes(i.id) && canAccess(i.id))
+  const managementItems = NAV_ITEMS.filter((i) => MANAGEMENT_GROUP_IDS.includes(i.id) && canAccess(i.id))
   const otherItems = NAV_ITEMS.filter(
     (i) =>
       i.id !== 'dashboard' &&
       !WAITER_KITCHEN_GROUP_IDS.includes(i.id) &&
       !OPERATIONS_GROUP_IDS.includes(i.id) &&
-      !MANAGEMENT_GROUP_IDS.includes(i.id)
+      !MANAGEMENT_GROUP_IDS.includes(i.id) &&
+      canAccess(i.id)
   )
 
   const handleSelect = (id: SectionId) => {
@@ -195,6 +205,7 @@ function MoreDrawer({
           {items.map((item, idx) => {
             const Icon = item.icon
             const isActive = activeSection === item.id
+            const color = SECTION_COLORS[item.id]
             return (
               <button
                 key={item.id}
@@ -205,11 +216,15 @@ function MoreDrawer({
               >
                 <div
                   className={`flex h-9 w-9 items-center justify-center rounded-xl transition-colors ${
-                    isActive ? 'text-white' : 'bg-tt-surfaceAlt2 text-tt-ink'
+                    isActive ? 'text-white' : ''
                   }`}
-                  style={isActive ? { background: 'var(--color-tt-gradient)' } : undefined}
+                  style={
+                    isActive
+                      ? { background: 'var(--color-tt-gradient)' }
+                      : { backgroundColor: `${color}1F` }
+                  }
                 >
-                  <Icon isActive={isActive} />
+                  <Icon isActive={isActive} color={color} />
                 </div>
                 <span className={`flex-1 text-left text-sm font-semibold ${isActive ? 'text-tt-pink' : 'text-tt-ink'}`}>
                   {navLabel(tr, item.id)}
@@ -256,6 +271,7 @@ function MoreDrawer({
           </button>
         </div>
         <div className="tt-scroll overflow-y-auto px-4 py-4" style={{ maxHeight: 'calc(85vh - 80px)' }}>
+          {canAccess('dashboard') && (
           <div className="mb-4">
             <p className="tt-section-title">{tr.admin.layout.main}</p>
             <div className="overflow-hidden rounded-2xl border border-tt-line bg-white">
@@ -271,10 +287,10 @@ function MoreDrawer({
                     }`}
                   >
                     <div
-                      className={`flex h-9 w-9 items-center justify-center rounded-xl ${isActive ? 'text-white' : 'bg-tt-surfaceAlt2 text-tt-ink'}`}
-                      style={isActive ? { background: 'var(--color-tt-gradient)' } : undefined}
+                      className={`flex h-9 w-9 items-center justify-center rounded-xl ${isActive ? 'text-white' : ''}`}
+                      style={isActive ? { background: 'var(--color-tt-gradient)' } : { backgroundColor: `${SECTION_COLORS.dashboard}1F` }}
                     >
-                      <Icon className="h-5 w-5" />
+                      <Icon isActive={isActive} color={SECTION_COLORS.dashboard} />
                     </div>
                     <span className={`flex-1 text-left text-sm font-semibold ${isActive ? 'text-tt-pink' : 'text-tt-ink'}`}>
                       {navLabel(tr, item.id)}
@@ -285,6 +301,7 @@ function MoreDrawer({
               })()}
             </div>
           </div>
+          )}
           <GroupBlock label={tr.admin.layout.waiterKitchen} items={waiterKitchenItems} />
           <GroupBlock label={tr.admin.layout.operations} items={operationsItems} />
           <GroupBlock label={tr.admin.layout.management} items={managementItems} />
@@ -299,8 +316,8 @@ function MoreDrawer({
                 }`}
               >
                 <div
-                  className={`flex h-9 w-9 items-center justify-center rounded-xl ${activeSection === 'settings' ? 'text-white' : 'bg-tt-surfaceAlt2 text-tt-ink'}`}
-                  style={activeSection === 'settings' ? { background: 'var(--color-tt-gradient)' } : undefined}
+                  className={`flex h-9 w-9 items-center justify-center rounded-xl ${activeSection === 'settings' ? 'text-white' : ''}`}
+                  style={activeSection === 'settings' ? { background: 'var(--color-tt-gradient)' } : { backgroundColor: `${SECTION_COLORS.settings}1F`, color: SECTION_COLORS.settings }}
                 >
                   <Settings className="h-5 w-5" />
                 </div>
@@ -309,6 +326,7 @@ function MoreDrawer({
                 </span>
                 {activeSection === 'settings' && <span className="h-2 w-2 animate-pulse rounded-full bg-tt-pink" />}
               </button>
+              {canAccess('calendar') && (
               <button
                 onClick={() => handleSelect('calendar')}
                 className={`flex w-full items-center gap-3 border-t border-tt-line px-4 py-3.5 transition-colors duration-150 ${
@@ -316,16 +334,17 @@ function MoreDrawer({
                 }`}
               >
                 <div
-                  className={`flex h-9 w-9 items-center justify-center rounded-xl ${activeSection === 'calendar' ? 'text-white' : 'bg-tt-surfaceAlt2 text-tt-ink'}`}
-                  style={activeSection === 'calendar' ? { background: 'var(--color-tt-gradient)' } : undefined}
+                  className={`flex h-9 w-9 items-center justify-center rounded-xl ${activeSection === 'calendar' ? 'text-white' : ''}`}
+                  style={activeSection === 'calendar' ? { background: 'var(--color-tt-gradient)' } : { backgroundColor: `${SECTION_COLORS.calendar}1F`, color: SECTION_COLORS.calendar }}
                 >
                   <CalendarDays className="h-5 w-5" />
                 </div>
                 <span className={`flex-1 text-left text-sm font-semibold ${activeSection === 'calendar' ? 'text-tt-pink' : 'text-tt-ink'}`}>
-                  {tr.admin.layout.comingSoon}
+                  {navLabel(tr, 'calendar')}
                 </span>
                 {activeSection === 'calendar' && <span className="h-2 w-2 animate-pulse rounded-full bg-tt-pink" />}
               </button>
+              )}
             </div>
           </div>
         </div>
@@ -510,7 +529,6 @@ export default function AdminDashboardPage() {
           userEmail: user.email ?? '',
           role: restaurant.userRole,
           rolePermissions: null,
-          notificationPrefs: { admin: true, cameriere: true },
         })
         setActiveOrdersCount(count ?? 0)
         // Badge pagamenti pendenti
@@ -587,6 +605,20 @@ export default function AdminDashboardPage() {
     return 'TR'
   }, [ctx])
 
+  // Controllo accessi per ruolo: i ruoli operativi (cameriere/cucina) vedono
+  // solo un sottoinsieme di sezioni; admin, titolare e manager vedono tutto.
+  const allowedSections = useMemo(() => sectionsForRole(ctx?.role), [ctx?.role])
+  const canAccess = (id: SectionId) => allowedSections === null || allowedSections.includes(id)
+
+  // Se la sezione attiva (es. ripristinata da sessionStorage) non è consentita
+  // per il ruolo corrente, riporta alla prima sezione accessibile.
+  useEffect(() => {
+    if (!ctx || allowedSections === null) return
+    if (!allowedSections.includes(activeSection)) {
+      setActiveSection(allowedSections[0])
+    }
+  }, [ctx, allowedSections, activeSection])
+
   const activeLabel = navLabel(tr, activeSection)
 
   const now = new Date()
@@ -635,19 +667,21 @@ export default function AdminDashboardPage() {
 
   // Bottom nav slots (mobile): Dashboard + 3 priority + Altro
   const bottomNavSlots: { item: (typeof NAV_ITEMS)[number] | null; isMore?: boolean }[] = []
-  bottomNavSlots.push({ item: NAV_ITEMS.find((i) => i.id === 'dashboard') ?? null })
+  if (canAccess('dashboard')) {
+    bottomNavSlots.push({ item: NAV_ITEMS.find((i) => i.id === 'dashboard') ?? null })
+  }
   for (const id of ['orders', 'waiter', 'tables'] as SectionId[]) {
     const it = NAV_ITEMS.find((i) => i.id === id)
-    if (it) bottomNavSlots.push({ item: it })
+    if (it && canAccess(id)) bottomNavSlots.push({ item: it })
   }
   bottomNavSlots.push({ item: null, isMore: true })
 
   const isSectionInBottomNav = (id: SectionId) => bottomNavSlots.some((s) => s.item?.id === id)
 
   // Desktop sidebar groups
-  const waiterKitchenItems = NAV_ITEMS.filter((i) => WAITER_KITCHEN_GROUP_IDS.includes(i.id))
-  const operationsItems = NAV_ITEMS.filter((i) => OPERATIONS_GROUP_IDS.includes(i.id))
-  const managementItems = NAV_ITEMS.filter((i) => MANAGEMENT_GROUP_IDS.includes(i.id))
+  const waiterKitchenItems = NAV_ITEMS.filter((i) => WAITER_KITCHEN_GROUP_IDS.includes(i.id) && canAccess(i.id))
+  const operationsItems = NAV_ITEMS.filter((i) => OPERATIONS_GROUP_IDS.includes(i.id) && canAccess(i.id))
+  const managementItems = NAV_ITEMS.filter((i) => MANAGEMENT_GROUP_IDS.includes(i.id) && canAccess(i.id))
 
   return (
     <div className="flex min-h-screen bg-tt-surfaceAlt">
@@ -694,6 +728,7 @@ export default function AdminDashboardPage() {
 
         {/* Nav scroll */}
         <nav className="tt-scroll flex-1 overflow-y-auto px-3 py-4">
+          {canAccess('dashboard') && (
           <div className="mb-4">
             <p className="tt-section-title px-2">{tr.admin.layout.main}</p>
             <div className="space-y-1">
@@ -704,6 +739,8 @@ export default function AdminDashboardPage() {
               />
             </div>
           </div>
+          )}
+          {waiterKitchenItems.length > 0 && (
           <div className="mb-4">
             <p className="tt-section-title px-2">{tr.admin.layout.waiterKitchen}</p>
             <div className="space-y-1">
@@ -718,6 +755,8 @@ export default function AdminDashboardPage() {
               ))}
             </div>
           </div>
+          )}
+          {operationsItems.length > 0 && (
           <div className="mb-4">
             <p className="tt-section-title px-2">{tr.admin.layout.operations}</p>
             <div className="space-y-1">
@@ -731,6 +770,8 @@ export default function AdminDashboardPage() {
               ))}
             </div>
           </div>
+          )}
+          {managementItems.length > 0 && (
           <div className="mb-4">
             <p className="tt-section-title px-2">{tr.admin.layout.management}</p>
             <div className="space-y-1">
@@ -744,6 +785,7 @@ export default function AdminDashboardPage() {
               ))}
             </div>
           </div>
+          )}
           <div>
             <p className="tt-section-title px-2">{tr.admin.layout.system}</p>
             <div className="space-y-1">
@@ -752,11 +794,13 @@ export default function AdminDashboardPage() {
                 isActive={activeSection === 'settings'}
                 onClick={() => changeSection('settings')}
               />
+              {canAccess('calendar') && (
               <SidebarItem
                 item={{ id: 'calendar', label: tr.admin.layout.comingSoon, icon: CalendarDays }}
                 isActive={activeSection === 'calendar'}
                 onClick={() => changeSection('calendar')}
               />
+              )}
             </div>
           </div>
         </nav>
@@ -800,6 +844,9 @@ export default function AdminDashboardPage() {
           </div>
 
           <div className="flex shrink-0 items-center gap-1.5">
+            {/* Pulsante "Presenza": solo per camerieri/cucina. Apre la modale
+                per inserire il codice monouso e timbrare la giornata. */}
+            {isClockInRole(ctx.role) && <AttendanceButton ctx={ctx} />}
             <button
               onClick={toggleSoundMuted}
               title={soundMuted ? 'Attiva suono' : 'Disattiva suono'}
@@ -903,12 +950,14 @@ export default function AdminDashboardPage() {
         <main className="flex-1 overflow-y-auto tt-scroll" style={{ paddingBottom: 'calc(80px + env(safe-area-inset-bottom))' }}>
           <div className="mx-auto max-w-5xl px-4 py-5 lg:px-6 lg:py-7">
             <div key={activeSection} className="animate-ttFadeUp">
-              <SectionRenderer
-                section={activeSection}
-                ctx={ctx}
-                theme={theme}
-                onSectionChange={changeSection}
-              />
+              {canAccess(activeSection) && (
+                <SectionRenderer
+                  section={activeSection}
+                  ctx={ctx}
+                  theme={theme}
+                  onSectionChange={changeSection}
+                />
+              )}
             </div>
           </div>
         </main>
@@ -952,6 +1001,7 @@ export default function AdminDashboardPage() {
         onClose={() => setMoreDrawerOpen(false)}
         activeSection={activeSection}
         onSelect={(id) => changeSection(id)}
+        canAccess={canAccess}
       />
 
       {/* AI Assistant overlay (all viewports) */}

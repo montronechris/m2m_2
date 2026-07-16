@@ -671,7 +671,7 @@ export default function AbbonamentoScaduto() {
             <p className="text-center text-[12px] text-gray-400 mt-6 tracking-wide">
               {t.footerProblem}{" "}
               <a
-                href={`mailto:SOSTITUISCI@EMAIL.COM?subject=${encodeURIComponent(
+                href={`mailto:supporto@m2m.it?subject=${encodeURIComponent(
                   t.mailtoSubject
                 )}`}
                 className="text-orange-500 font-medium hover:text-orange-600 underline underline-offset-2 transition-colors duration-200"

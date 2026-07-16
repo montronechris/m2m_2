@@ -1,46 +1,175 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+// ─── SEZIONE: IMPOSTAZIONI ─────────────────────────────────────────────────────
+//
+// Preferenze account, notifiche, lingua, sicurezza, logout.
+// Stato: toggle e form controllati; salva le preferenze e da feedback immediato.
+// ──────────────────────────────────────────────────────────────────────────────
+
+
+import { useEffect, useRef, useState } from 'react'
 import { useRouter } from 'next/navigation'
-import { Settings, Bell, Volume2, Globe, Shield, LogOut, ChevronRight, Check, X, Loader2, UserCog, Camera, KeyRound, AlertCircle } from 'lucide-react'
+import { Settings, Bell, Volume2, Globe, Shield, LogOut, ChevronRight, Check, X, Loader2, UserCog, Camera, KeyRound, AlertCircle, Download, Send, Mail, Phone, ConciergeBell, ChefHat } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
 import {
   getRestaurantSettings,
-  updateNotificationPrefs,
+  updateOrderFlowMode,
   updateUserProfile,
   uploadUserAvatar,
-  updateUserPassword,
+  updateUserPasswordSecure,
+  getTwoFactorStatus,
+  getSecurityPrefs,
+  setEmail2FA,
+  enrollTwoFactor,
+  verifyTwoFactor,
+  disableTwoFactor,
+  createSubscriptionRequest,
+  listMySubscriptionRequests,
   signOut,
   type RestaurantSettings,
+  type TwoFactorEnrollment,
 } from '@/lib/admin-service'
-import { isNotificationSoundMuted, setNotificationSoundMuted } from '@/lib/notificationSound'
+import { evaluatePassword, PasswordStrength } from '@/components/auth/password-strength'
+import {
+  isNotificationSoundMuted,
+  setNotificationSoundMuted,
+  isAdminNotifMuted,
+  setAdminNotifMuted,
+  isCameriereNotifMuted,
+  setCameriereNotifMuted,
+} from '@/lib/notificationSound'
 import { useI18n } from '@/components/i18n/I18nProvider'
+import { DeliveryIntegrationsModal } from './DeliveryIntegrationsModal'
+import { sectionsForRole } from '../nav-config'
 
 interface Props {
   ctx: RestaurantCtx
   theme: ThemeMode
 }
 
+// Piani disponibili per il cambio abbonamento.
+const PLAN_OPTIONS = ['antipasto', 'primo', 'secondo', 'custom'] as const
+
+// Copy locale per la card + modale delle integrazioni delivery.
+const DELIVERY_COPY = {
+  it: {
+    cardTitle: 'Integrazioni delivery',
+    cardDesc: 'Collega Glovo, Deliveroo, Uber Eats e altre piattaforme',
+    manage: 'Gestisci',
+    modal: {
+      title: 'Integrazioni delivery',
+      intro:
+        'Abilita una piattaforma e incolla il Webhook URL e il token nella dashboard partner della piattaforma. Da lì gli ordini arriveranno automaticamente nella sezione Delivery.',
+      enabled: 'Abilitata',
+      apiKey: 'API key',
+      storeId: 'Store ID',
+      autoAccept: 'Accetta automaticamente',
+      autoAcceptHint: 'I nuovi ordini vengono accettati senza conferma',
+      webhookUrl: 'Webhook URL',
+      webhookToken: 'Token webhook',
+      copy: 'Copia',
+      copied: 'Copiato',
+      regenerate: 'Rigenera token',
+      save: 'Salva',
+      saving: 'Salvataggio…',
+      saved: 'Integrazione salvata',
+      close: 'Chiudi',
+      optional: 'opzionale',
+    },
+  },
+  en: {
+    cardTitle: 'Delivery integrations',
+    cardDesc: 'Connect Glovo, Deliveroo, Uber Eats and other platforms',
+    manage: 'Manage',
+    modal: {
+      title: 'Delivery integrations',
+      intro:
+        'Enable a platform and paste the Webhook URL and token into the platform partner dashboard. Orders will then flow automatically into the Delivery section.',
+      enabled: 'Enabled',
+      apiKey: 'API key',
+      storeId: 'Store ID',
+      autoAccept: 'Auto accept',
+      autoAcceptHint: 'New orders are accepted without confirmation',
+      webhookUrl: 'Webhook URL',
+      webhookToken: 'Webhook token',
+      copy: 'Copy',
+      copied: 'Copied',
+      regenerate: 'Regenerate token',
+      save: 'Save',
+      saving: 'Saving…',
+      saved: 'Integration saved',
+      close: 'Close',
+      optional: 'optional',
+    },
+  },
+}
+
+// Escape di una cella CSV (delimitatore ';', compatibile con Excel IT).
+function csvCell(value: string): string {
+  return /[";\n\r]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value
+}
+
+// Scarica una stringa come file CSV (con BOM per compatibilità Excel).
+function downloadCsv(content: string, filename: string) {
+  const blob = new Blob(['﻿' + content], { type: 'text/csv;charset=utf-8;' })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 export function SettingsSection({ ctx }: Props) {
   const router = useRouter()
   const { lang, setLang, tr } = useI18n()
   const t = tr.admin.settings
+  // Ruoli operativi (staff/cameriere/cucina): accesso limitato alle impostazioni.
+  // Vedono solo notifiche + sicurezza, l'abbonamento in sola lettura (niente "Gestisci"),
+  // e NON vedono modalità di servizio né integrazioni delivery.
+  // admin/manager/titolare (sectionsForRole === null) vedono tutto.
+  const isStaff = sectionsForRole(ctx.role) !== null
   const [data, setData] = useState<RestaurantSettings | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
   const [soundOn, setSoundOn] = useState(true)
+  const [adminNotifOn, setAdminNotifOn] = useState(true)
+  const [cameriereNotifOn, setCameriereNotifOn] = useState(true)
   const [twoFA, setTwoFA] = useState(false)
+  const [twoFAFactorId, setTwoFAFactorId] = useState<string | null>(null)
+  const [twoFABusy, setTwoFABusy] = useState(false)
+  const [show2FA, setShow2FA] = useState(false)
+  const [emailTwoFA, setEmailTwoFA] = useState(false)
+  const [emailTwoFABusy, setEmailTwoFABusy] = useState(false)
+  const [showPassword, setShowPassword] = useState(false)
   const [showProfile, setShowProfile] = useState(false)
   const [showPlan, setShowPlan] = useState(false)
-  const [actionMsg, setActionMsg] = useState<string | null>(null)
+  const [showDelivery, setShowDelivery] = useState(false)
+  // Toast di stato (popup fisso in basso) con variante success/error.
+  const [toast, setToast] = useState<{ msg: string; type: 'success' | 'error' } | null>(null)
+  const [toastOut, setToastOut] = useState(false)
+  const toastTimers = useRef<ReturnType<typeof setTimeout>[]>([])
+  // Modal Piano: step corrente + selezione cambio piano + stato invio richiesta.
+  const [planStep, setPlanStep] = useState<'menu' | 'change'>('menu')
+  const [newPlan, setNewPlan] = useState<string>('')
+  const [planBusy, setPlanBusy] = useState(false)
+
+  // Modalità di servizio: true = ordini automatici in cucina; false = con cameriere.
+  const [autoOrderFlow, setAutoOrderFlow] = useState(true)
+  const [savingMode, setSavingMode] = useState(false)
 
   useEffect(() => {
     let active = true
     getRestaurantSettings(ctx.restaurantId)
       .then((d) => {
-        if (active) setData(d)
+        if (active) {
+          setData(d)
+          setAutoOrderFlow(d.autoOrderFlow)
+        }
       })
       .catch((e) => {
         if (active) setError(e.message ?? t.errorLoad)
@@ -48,27 +177,84 @@ export function SettingsSection({ ctx }: Props) {
       .finally(() => {
         if (active) setLoading(false)
       })
+    // Stato reale della 2FA per questo account (fattori TOTP verificati).
+    getTwoFactorStatus()
+      .then(({ enabled, factorId }) => {
+        if (active) {
+          setTwoFA(enabled)
+          setTwoFAFactorId(factorId)
+        }
+      })
+      .catch(() => {
+        /* se non disponibile, resta disattivata */
+      })
+    // Preferenza 2FA via email (canale applicativo).
+    getSecurityPrefs()
+      .then((p) => {
+        if (active) setEmailTwoFA(p.email2fa)
+      })
+      .catch(() => {
+        /* se non disponibile, resta disattivata */
+      })
     setSoundOn(!isNotificationSoundMuted())
+    setAdminNotifOn(!isAdminNotifMuted())
+    setCameriereNotifOn(!isCameriereNotifMuted())
     return () => {
       active = false
     }
   }, [ctx.restaurantId])
 
-  async function togglePref(key: 'admin' | 'cameriere') {
-    if (!data) return
-    const next = { ...data.notification_prefs, [key]: !data.notification_prefs[key] }
-    setData({ ...data, notification_prefs: next })
-    setSaving(true)
-    try {
-      await updateNotificationPrefs(ctx.restaurantId, next)
-      setSaved(true)
-      setTimeout(() => setSaved(false), 2000)
-    } catch (e: any) {
-      setError(e.message ?? t.errorSave)
-      setData({ ...data, notification_prefs: data.notification_prefs })
-    } finally {
-      setSaving(false)
+  // Toggle 2FA: se disattiva apre il modal di configurazione (QR + verifica),
+  // se attiva chiede conferma e disabilita il fattore.
+  async function handleToggle2FA() {
+    if (twoFABusy) return
+    if (twoFA) {
+      if (!window.confirm(t.twoFADisableConfirm)) return
+      setTwoFABusy(true)
+      try {
+        if (twoFAFactorId) await disableTwoFactor(twoFAFactorId)
+        setTwoFA(false)
+        setTwoFAFactorId(null)
+        flash(t.twoFADisabledMsg)
+      } catch (e: any) {
+        flash(e.message ?? t.error)
+      } finally {
+        setTwoFABusy(false)
+      }
+    } else {
+      setShow2FA(true)
     }
+  }
+
+  async function handleToggleEmail2FA() {
+    if (emailTwoFABusy) return
+    const next = !emailTwoFA
+    setEmailTwoFABusy(true)
+    try {
+      await setEmail2FA(next)
+      setEmailTwoFA(next)
+      flash(next ? t.emailTwoFAEnabledMsg : t.emailTwoFADisabledMsg)
+    } catch (e: any) {
+      flash(e.message ?? t.error, 'error')
+    } finally {
+      setEmailTwoFABusy(false)
+    }
+  }
+
+  // Preferenze notifiche: per-account (localStorage di questo browser/dispositivo),
+  // non condivise con il resto dello staff del ristorante.
+  function togglePref(key: 'admin' | 'cameriere') {
+    if (key === 'admin') {
+      const next = !adminNotifOn
+      setAdminNotifOn(next)
+      setAdminNotifMuted(!next)
+    } else {
+      const next = !cameriereNotifOn
+      setCameriereNotifOn(next)
+      setCameriereNotifMuted(!next)
+    }
+    setSaved(true)
+    setTimeout(() => setSaved(false), 2000)
   }
 
   function toggleSound() {
@@ -86,10 +272,135 @@ export function SettingsSection({ ctx }: Props) {
     router.push('/login')
   }
 
-  function flash(msg: string) {
-    setActionMsg(msg)
-    setTimeout(() => setActionMsg(null), 3000)
+  function flash(msg: string, type: 'success' | 'error' = 'success') {
+    toastTimers.current.forEach(clearTimeout)
+    toastTimers.current = []
+    setToastOut(false)
+    setToast({ msg, type })
+    // Fase 1: dopo 3s avvia l'animazione di uscita. Fase 2: smonta.
+    toastTimers.current.push(setTimeout(() => setToastOut(true), 3000))
+    toastTimers.current.push(setTimeout(() => {
+      setToast(null)
+      setToastOut(false)
+    }, 3260))
   }
+
+  // Pulisce i timer del toast allo smontaggio del componente.
+  useEffect(() => () => toastTimers.current.forEach(clearTimeout), [])
+
+  // Cambia la modalità di servizio (ordini automatici in cucina ↔ con cameriere).
+  // Ottimistico: aggiorna subito la UI, e in caso di errore ripristina il valore.
+  async function toggleServiceMode(next: boolean) {
+    if (savingMode) return
+    const prev = autoOrderFlow
+    setAutoOrderFlow(next)
+    setSavingMode(true)
+    try {
+      await updateOrderFlowMode(ctx.restaurantId, next)
+      setData((d) => (d ? { ...d, autoOrderFlow: next } : d))
+      flash(tr.admin.settings.serviceMode.saved, 'success')
+    } catch (err) {
+      console.error('[SettingsSection] toggleServiceMode:', err)
+      setAutoOrderFlow(prev)
+      flash(tr.admin.settings.serviceMode.error, 'error')
+    } finally {
+      setSavingMode(false)
+    }
+  }
+
+  // Chiusura animata del modal Piano (inline): riproduce l'uscita e poi smonta.
+  const [planClosing, setPlanClosing] = useState(false)
+  function closePlan(after?: () => void) {
+    if (planClosing) return
+    setPlanClosing(true)
+    setTimeout(() => {
+      setShowPlan(false)
+      setPlanClosing(false)
+      setPlanStep('menu')
+      setNewPlan('')
+      after?.()
+    }, MODAL_EXIT_MS)
+  }
+
+  // ── Azioni del modal Piano ────────────────────────────────────────────────
+  async function handleRenewRequest() {
+    if (planBusy) return
+    setPlanBusy(true)
+    try {
+      await createSubscriptionRequest({
+        restaurantId: ctx.restaurantId,
+        type: 'renew',
+        currentPlan: data?.plan ?? null,
+      })
+      closePlan(() => flash(t.renewRequestSent))
+    } catch (e: any) {
+      closePlan(() => flash(e?.message === 'ALREADY_PENDING' ? t.renewAlreadyPending : t.requestError, 'error'))
+    } finally {
+      setPlanBusy(false)
+    }
+  }
+
+  async function handleChangePlanRequest() {
+    if (planBusy || !newPlan) return
+    setPlanBusy(true)
+    try {
+      await createSubscriptionRequest({
+        restaurantId: ctx.restaurantId,
+        type: 'plan_change',
+        currentPlan: data?.plan ?? null,
+        requestedPlan: newPlan,
+      })
+      closePlan(() => flash(t.changeRequestSent))
+    } catch (e: any) {
+      closePlan(() => flash(e?.message === 'ALREADY_PENDING' ? t.changeAlreadyPending : t.requestError, 'error'))
+    } finally {
+      setPlanBusy(false)
+    }
+  }
+
+  async function handleDownloadInvoices() {
+    if (planBusy) return
+    setPlanBusy(true)
+    try {
+      const history = await listMySubscriptionRequests(ctx.restaurantId)
+      const typeLabels: Record<string, string> = {
+        renew: t.csvRenew,
+        plan_change: t.csvPlanChange,
+      }
+      const statusLabels: Record<string, string> = {
+        pending: t.csvStatusPending,
+        approved: t.csvStatusApproved,
+        rejected: t.csvStatusRejected,
+      }
+      const fmt = (iso: string | null) =>
+        iso ? new Date(iso).toLocaleDateString(t.locale) : '—'
+      const header = [t.csvType, t.csvDate, t.csvCurrentPlan, t.csvRequestedPlan, t.csvStatus]
+      const rows: string[][] = [
+        [t.csvActiveSub, fmt(data?.accessExpiresAt ?? null), data?.plan ?? '—', '', t.active],
+        ...history.map((h) => [
+          typeLabels[h.type] ?? h.type,
+          fmt(h.createdAt),
+          h.currentPlan ?? '—',
+          h.requestedPlan ?? '',
+          statusLabels[h.status] ?? h.status,
+        ]),
+      ]
+      const csv = [header, ...rows]
+        .map((r) => r.map(csvCell).join(';'))
+        .join('\r\n')
+      downloadCsv(csv, `storico-abbonamento-${data?.plan ?? 'piano'}.csv`)
+      closePlan(() => flash(t.invoiceDownloaded))
+    } catch {
+      closePlan(() => flash(t.requestError, 'error'))
+    } finally {
+      setPlanBusy(false)
+    }
+  }
+
+  const planBackdropAnim = planClosing ? 'animate-out fade-out-0' : 'animate-in fade-in-0'
+  const planCardAnim = planClosing
+    ? 'animate-out fade-out-0 zoom-out-95 slide-out-to-bottom-4'
+    : 'animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4'
 
   if (loading) {
     return (
@@ -122,9 +433,31 @@ export function SettingsSection({ ctx }: Props) {
         </div>
       </div>
 
-      {actionMsg && (
-        <div className="flex items-center gap-2 rounded-xl border border-tt-success/30 bg-tt-success/10 px-3 py-2 text-xs text-tt-success">
-          <Check className="h-4 w-4 shrink-0" /> {actionMsg}
+      {/* Toast di stato: popup fisso in basso, auto-dismiss con animazione in/out */}
+      {toast && (
+        <div
+          role="status"
+          aria-live="polite"
+          className={`pointer-events-none fixed inset-x-0 bottom-6 z-[120] flex justify-center px-4 duration-300 ease-out ${
+            toastOut
+              ? 'animate-out fade-out-0 slide-out-to-bottom-4'
+              : 'animate-in fade-in-0 slide-in-from-bottom-4'
+          }`}
+        >
+          <div
+            className={`pointer-events-auto flex max-w-[90vw] items-center gap-2.5 rounded-2xl border px-4 py-3 text-sm font-semibold text-white shadow-xl ${
+              toast.type === 'error'
+                ? 'border-red-400/40 bg-red-600'
+                : 'border-emerald-400/40 bg-emerald-600'
+            }`}
+          >
+            {toast.type === 'error' ? (
+              <AlertCircle className="h-5 w-5 shrink-0" />
+            ) : (
+              <Check className="h-5 w-5 shrink-0" />
+            )}
+            <span>{toast.msg}</span>
+          </div>
         </div>
       )}
 
@@ -175,14 +508,14 @@ export function SettingsSection({ ctx }: Props) {
             icon: Bell,
             label: t.notifAdmin,
             desc: t.notifAdminDesc,
-            val: data?.notification_prefs.admin ?? true,
+            val: adminNotifOn,
             onClick: () => togglePref('admin'),
           },
           {
             icon: Bell,
             label: t.notifStaff,
             desc: t.notifStaffDesc,
-            val: data?.notification_prefs.cameriere ?? true,
+            val: cameriereNotifOn,
             onClick: () => togglePref('cameriere'),
           },
           {
@@ -224,6 +557,44 @@ export function SettingsSection({ ctx }: Props) {
         })}
       </div>
 
+      {/* Modalità di servizio (nascosta allo staff operativo) */}
+      {!isStaff && (
+      <div className="tt-card overflow-hidden rounded-2xl border border-tt-line shadow-tt">
+        <p className="border-b border-tt-line px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-tt-muted">
+          {t.serviceMode.title}
+        </p>
+        <div className="flex items-center gap-3 px-4 py-3.5">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-tt-surfaceAlt2 text-tt-pink">
+            {autoOrderFlow ? <ChefHat className="h-4 w-4" /> : <ConciergeBell className="h-4 w-4" />}
+          </span>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-tt-ink">
+              {autoOrderFlow ? t.serviceMode.autoLabel : t.serviceMode.waiterLabel}
+            </p>
+            <p className="text-xs text-tt-muted">
+              {autoOrderFlow ? t.serviceMode.autoDesc : t.serviceMode.waiterDesc}
+            </p>
+          </div>
+          <span className="mr-2 text-xs font-bold text-tt-muted">{autoOrderFlow ? 'ON' : 'OFF'}</span>
+          <button
+            onClick={() => toggleServiceMode(!autoOrderFlow)}
+            disabled={savingMode}
+            role="switch"
+            aria-checked={autoOrderFlow}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              autoOrderFlow ? 'bg-gradient-to-r from-brand-amber to-brand-terra' : 'bg-tt-line'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                autoOrderFlow ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+      </div>
+      )}
+
       {/* Security & preferences */}
       <div className="tt-card overflow-hidden rounded-2xl border border-tt-line shadow-tt">
         <p className="border-b border-tt-line px-4 py-2.5 text-xs font-bold uppercase tracking-wide text-tt-muted">
@@ -237,12 +608,15 @@ export function SettingsSection({ ctx }: Props) {
             <p className="text-sm font-bold text-tt-ink">{t.twoFA}</p>
             <p className="text-xs text-tt-muted">{t.twoFADesc}</p>
           </div>
-          <span className="mr-2 text-xs font-bold text-tt-muted">{twoFA ? 'ON' : 'OFF'}</span>
+          <span className="mr-2 text-xs font-bold text-tt-muted">
+            {twoFABusy ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : twoFA ? 'ON' : 'OFF'}
+          </span>
           <button
-            onClick={() => setTwoFA((v) => !v)}
+            onClick={handleToggle2FA}
+            disabled={twoFABusy}
             role="switch"
             aria-checked={twoFA}
-            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors ${
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
               twoFA ? 'bg-gradient-to-r from-brand-emerald to-brand-sky' : 'bg-tt-line'
             }`}
           >
@@ -253,6 +627,75 @@ export function SettingsSection({ ctx }: Props) {
             />
           </button>
         </div>
+        {/* 2FA via email (canale applicativo) */}
+        <div className="flex items-center gap-3 border-b border-tt-line px-4 py-3.5">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-tt-surfaceAlt2 text-tt-pink">
+            <Mail className="h-4 w-4" />
+          </span>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-tt-ink">{t.emailTwoFA}</p>
+            <p className="text-xs text-tt-muted">{t.emailTwoFADesc}</p>
+          </div>
+          <span className="mr-2 text-xs font-bold text-tt-muted">
+            {emailTwoFABusy ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            ) : emailTwoFA ? (
+              'ON'
+            ) : (
+              'OFF'
+            )}
+          </span>
+          <button
+            onClick={handleToggleEmail2FA}
+            disabled={emailTwoFABusy}
+            role="switch"
+            aria-checked={emailTwoFA}
+            className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center rounded-full transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${
+              emailTwoFA ? 'bg-gradient-to-r from-brand-emerald to-brand-sky' : 'bg-tt-line'
+            }`}
+          >
+            <span
+              className={`inline-block h-5 w-5 transform rounded-full bg-white shadow transition-transform ${
+                emailTwoFA ? 'translate-x-5' : 'translate-x-0.5'
+              }`}
+            />
+          </button>
+        </div>
+        {/* 2FA via SMS: predisposta, richiede un provider SMS (es. Twilio) */}
+        <div className="flex items-center gap-3 border-b border-tt-line px-4 py-3.5 opacity-60">
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-tt-surfaceAlt2 text-tt-pink">
+            <Phone className="h-4 w-4" />
+          </span>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-tt-ink">{t.smsTwoFA}</p>
+            <p className="text-xs text-tt-muted">{t.smsTwoFADesc}</p>
+          </div>
+          <span className="mr-2 rounded-full bg-tt-surfaceAlt2 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-tt-muted">
+            {t.comingSoon}
+          </span>
+          <button
+            disabled
+            role="switch"
+            aria-checked={false}
+            className="relative inline-flex h-6 w-11 shrink-0 cursor-not-allowed items-center rounded-full bg-tt-line"
+          >
+            <span className="inline-block h-5 w-5 translate-x-0.5 transform rounded-full bg-white shadow" />
+          </button>
+        </div>
+        {/* Cambia password */}
+        <button
+          onClick={() => setShowPassword(true)}
+          className="flex w-full items-center gap-3 border-b border-tt-line px-4 py-3.5 text-left transition hover:bg-tt-surfaceAlt2"
+        >
+          <span className="grid h-9 w-9 place-items-center rounded-xl bg-tt-surfaceAlt2 text-tt-pink">
+            <KeyRound className="h-4 w-4" />
+          </span>
+          <div className="flex-1">
+            <p className="text-sm font-bold text-tt-ink">{t.changePasswordRow}</p>
+            <p className="text-xs text-tt-muted">{t.changePasswordRowDesc}</p>
+          </div>
+          <ChevronRight className="h-4 w-4 text-tt-muted" />
+        </button>
         <div className="flex w-full items-center gap-3 border-b border-tt-line px-4 py-3.5 text-left">
           <span className="grid h-9 w-9 place-items-center rounded-xl bg-tt-surfaceAlt2 text-tt-pink">
             <Globe className="h-4 w-4" />
@@ -297,10 +740,45 @@ export function SettingsSection({ ctx }: Props) {
               </p>
             </div>
             <button
-              onClick={() => setShowPlan(true)}
-              className="rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-4 py-2 text-sm font-bold text-white shadow-glow-amber transition hover:scale-105"
+              onClick={() => {
+                if (isStaff) return
+                setPlanClosing(false)
+                setShowPlan(true)
+              }}
+              disabled={isStaff}
+              title={isStaff ? t.manageStaffLocked : undefined}
+              className={`rounded-full bg-gradient-to-r from-brand-amber to-brand-terra px-4 py-2 text-sm font-bold text-white shadow-glow-amber transition ${
+                isStaff ? 'cursor-not-allowed opacity-50' : 'hover:scale-105'
+              }`}
             >
               {t.manage}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* Integrazioni delivery (nascoste allo staff operativo) */}
+      {!isStaff && (
+        <div className="tt-card rounded-2xl border border-tt-line p-5 shadow-tt">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 shrink-0 place-items-center rounded-2xl bg-gradient-to-br from-brand-amber to-brand-terra text-white shadow-glow-amber">
+                <Send className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="font-serif text-base font-extrabold text-tt-ink">
+                  {DELIVERY_COPY[lang === 'en' ? 'en' : 'it'].cardTitle}
+                </p>
+                <p className="text-xs text-tt-muted">
+                  {DELIVERY_COPY[lang === 'en' ? 'en' : 'it'].cardDesc}
+                </p>
+              </div>
+            </div>
+            <button
+              onClick={() => setShowDelivery(true)}
+              className="shrink-0 rounded-full border border-tt-line bg-white px-4 py-2 text-sm font-bold text-tt-ink transition hover:bg-tt-surfaceAlt"
+            >
+              {DELIVERY_COPY[lang === 'en' ? 'en' : 'it'].manage}
             </button>
           </div>
         </div>
@@ -328,19 +806,54 @@ export function SettingsSection({ ctx }: Props) {
         />
       )}
 
+      {/* Password change modal */}
+      {showPassword && (
+        <PasswordChangeModal
+          email={ctx.userEmail}
+          onClose={() => setShowPassword(false)}
+          onSaved={(msg) => {
+            setShowPassword(false)
+            flash(msg)
+          }}
+        />
+      )}
+
+      {/* Two-factor setup modal */}
+      {show2FA && (
+        <TwoFactorModal
+          onClose={() => setShow2FA(false)}
+          onEnabled={(factorId) => {
+            setShow2FA(false)
+            setTwoFA(true)
+            setTwoFAFactorId(factorId)
+            flash(t.twoFAEnabledMsg)
+          }}
+        />
+      )}
+
+      {/* Delivery integrations modal */}
+      {showDelivery && (
+        <DeliveryIntegrationsModal
+          restaurantId={ctx.restaurantId}
+          copy={DELIVERY_COPY[lang === 'en' ? 'en' : 'it'].modal}
+          onClose={() => setShowDelivery(false)}
+          onSaved={(msg) => flash(msg, 'success')}
+        />
+      )}
+
       {/* Plan management modal */}
       {showPlan && data && (
         <div
-          className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm"
-          onClick={() => setShowPlan(false)}
+          className={`fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm duration-200 ${planBackdropAnim}`}
+          onClick={() => closePlan()}
         >
           <div
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl"
+            className={`w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl duration-200 ease-out ${planCardAnim}`}
           >
             <div className="flex items-center justify-between bg-gradient-to-r from-brand-amber to-brand-terra px-5 py-4 text-white">
               <h3 className="font-serif text-lg font-extrabold">{t.managePlan}</h3>
-              <button onClick={() => setShowPlan(false)} className="grid h-8 w-8 place-items-center rounded-full bg-white/20">
+              <button onClick={() => closePlan()} className="grid h-8 w-8 place-items-center rounded-full bg-white/20">
                 <X className="h-4 w-4" />
               </button>
             </div>
@@ -359,38 +872,99 @@ export function SettingsSection({ ctx }: Props) {
                   <span className="tt-pill bg-tt-success/15 text-tt-success">{t.active}</span>
                 </div>
               </div>
-              <div className="space-y-2">
-                <button
-                  onClick={() => { setShowPlan(false); flash(t.redirectPayment) }}
-                  className="flex w-full items-center justify-between rounded-xl border border-tt-line px-4 py-3 text-left transition hover:bg-tt-surfaceAlt2"
-                >
-                  <div>
-                    <p className="text-sm font-bold text-tt-ink">{t.renewSub}</p>
-                    <p className="text-xs text-tt-muted">{t.renewSubDesc}</p>
+              {planStep === 'menu' ? (
+                <div className="space-y-2">
+                  <button
+                    onClick={handleRenewRequest}
+                    disabled={planBusy}
+                    className="flex w-full items-center justify-between rounded-xl border border-tt-line px-4 py-3 text-left transition hover:bg-tt-surfaceAlt2 disabled:opacity-60"
+                  >
+                    <div>
+                      <p className="text-sm font-bold text-tt-ink">{t.renewSub}</p>
+                      <p className="text-xs text-tt-muted">{t.renewSubDesc}</p>
+                    </div>
+                    {planBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-tt-muted" />
+                    ) : (
+                      <ChevronRight className="h-4 w-4 text-tt-muted" />
+                    )}
+                  </button>
+                  <button
+                    onClick={() => { setNewPlan(''); setPlanStep('change') }}
+                    disabled={planBusy}
+                    className="flex w-full items-center justify-between rounded-xl border border-tt-line px-4 py-3 text-left transition hover:bg-tt-surfaceAlt2 disabled:opacity-60"
+                  >
+                    <div>
+                      <p className="text-sm font-bold text-tt-ink">{t.changePlan}</p>
+                      <p className="text-xs text-tt-muted">{t.changePlanDesc}</p>
+                    </div>
+                    <ChevronRight className="h-4 w-4 text-tt-muted" />
+                  </button>
+                  <button
+                    onClick={handleDownloadInvoices}
+                    disabled={planBusy}
+                    className="flex w-full items-center justify-between rounded-xl border border-tt-line px-4 py-3 text-left transition hover:bg-tt-surfaceAlt2 disabled:opacity-60"
+                  >
+                    <div>
+                      <p className="text-sm font-bold text-tt-ink">{t.downloadInvoices}</p>
+                      <p className="text-xs text-tt-muted">{t.downloadInvoicesDesc}</p>
+                    </div>
+                    {planBusy ? (
+                      <Loader2 className="h-4 w-4 animate-spin text-tt-muted" />
+                    ) : (
+                      <Download className="h-4 w-4 text-tt-muted" />
+                    )}
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="flex items-start gap-2 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                    <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+                    <p className="text-xs leading-relaxed text-amber-800">{t.changePlanWarning}</p>
                   </div>
-                  <ChevronRight className="h-4 w-4 text-tt-muted" />
-                </button>
-                <button
-                  onClick={() => { setShowPlan(false); flash(t.salesContact) }}
-                  className="flex w-full items-center justify-between rounded-xl border border-tt-line px-4 py-3 text-left transition hover:bg-tt-surfaceAlt2"
-                >
-                  <div>
-                    <p className="text-sm font-bold text-tt-ink">{t.changePlan}</p>
-                    <p className="text-xs text-tt-muted">{t.changePlanDesc}</p>
+                  <p className="text-xs font-semibold text-tt-muted">{t.changePlanSelectLabel}</p>
+                  <div className="grid grid-cols-2 gap-2">
+                    {PLAN_OPTIONS.map((p) => {
+                      const isCurrent = data.plan === p
+                      const selected = newPlan === p
+                      return (
+                        <button
+                          key={p}
+                          disabled={isCurrent || planBusy}
+                          onClick={() => setNewPlan(p)}
+                          className={`rounded-xl border px-3 py-2.5 text-left text-sm font-semibold capitalize transition ${
+                            selected
+                              ? 'border-brand-terra bg-brand-terra/10 text-brand-terra'
+                              : isCurrent
+                                ? 'cursor-not-allowed border-tt-line bg-tt-surfaceAlt2 text-tt-muted opacity-60'
+                                : 'border-tt-line text-tt-ink hover:bg-tt-surfaceAlt2'
+                          }`}
+                        >
+                          {p}
+                          {isCurrent && <span className="ml-1 text-[10px] font-normal lowercase">({t.currentPlanBadge})</span>}
+                        </button>
+                      )
+                    })}
                   </div>
-                  <ChevronRight className="h-4 w-4 text-tt-muted" />
-                </button>
-                <button
-                  onClick={() => { setShowPlan(false); flash(t.invoiceRequested) }}
-                  className="flex w-full items-center justify-between rounded-xl border border-tt-line px-4 py-3 text-left transition hover:bg-tt-surfaceAlt2"
-                >
-                  <div>
-                    <p className="text-sm font-bold text-tt-ink">{t.downloadInvoices}</p>
-                    <p className="text-xs text-tt-muted">{t.downloadInvoicesDesc}</p>
+                  <div className="flex gap-2 pt-1">
+                    <button
+                      onClick={() => setPlanStep('menu')}
+                      disabled={planBusy}
+                      className="flex-1 rounded-xl border border-tt-line px-4 py-2.5 text-sm font-semibold text-tt-ink transition hover:bg-tt-surfaceAlt2 disabled:opacity-60"
+                    >
+                      {t.planBack}
+                    </button>
+                    <button
+                      onClick={handleChangePlanRequest}
+                      disabled={!newPlan || planBusy}
+                      className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-brand-amber to-brand-terra px-4 py-2.5 text-sm font-bold text-white transition disabled:opacity-50"
+                    >
+                      {planBusy && <Loader2 className="h-4 w-4 animate-spin" />}
+                      {t.changePlanConfirm}
+                    </button>
                   </div>
-                  <ChevronRight className="h-4 w-4 text-tt-muted" />
-                </button>
-              </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -412,10 +986,9 @@ function ProfileEditModal({
 }) {
   const { tr } = useI18n()
   const t = tr.admin.settings
+  const { closing, runExit, backdropAnim, cardAnim } = useModalExit()
   const [firstName, setFirstName] = useState(ctx.userFirstName)
   const [lastName, setLastName] = useState(ctx.userLastName)
-  const [newPassword, setNewPassword] = useState('')
-  const [confirmPassword, setConfirmPassword] = useState('')
   const [avatarFile, setAvatarFile] = useState<File | null>(null)
   const [avatarPreview, setAvatarPreview] = useState('')
   const [saving, setSaving] = useState(false)
@@ -449,35 +1022,28 @@ function ProfileEditModal({
       if (Object.keys(profileUpdates).length > 0) {
         await updateUserProfile(ctx.userId, profileUpdates)
       }
-      // Update password if provided
-      if (newPassword) {
-        if (newPassword.length < 6) throw new Error(t.pwTooShort)
-        if (newPassword !== confirmPassword) throw new Error(t.pwMismatch)
-        await updateUserPassword(newPassword)
-      }
-      onSaved(t.profileUpdated)
+      runExit(() => onSaved(t.profileUpdated))
     } catch (e: any) {
       setError(e.message ?? t.errorUpdate)
-    } finally {
       setSaving(false)
     }
   }
 
   return (
     <div
-      className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm"
-      onClick={onClose}
+      className={`fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm duration-200 ${backdropAnim}`}
+      onClick={() => runExit(onClose)}
     >
       <div
         onClick={(e) => e.stopPropagation()}
-        className="flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-2xl"
+        className={`flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-3xl bg-white shadow-2xl duration-200 ease-out ${cardAnim}`}
       >
         <div className="flex shrink-0 items-center justify-between bg-gradient-to-r from-brand-amber to-brand-terra px-5 py-4 text-white">
           <div className="flex items-center gap-2">
             <UserCog className="h-5 w-5" />
             <h3 className="font-serif text-lg font-extrabold">{t.editProfile}</h3>
           </div>
-          <button onClick={onClose} className="grid h-8 w-8 place-items-center rounded-full bg-white/20">
+          <button onClick={() => runExit(onClose)} className="grid h-8 w-8 place-items-center rounded-full bg-white/20">
             <X className="h-4 w-4" />
           </button>
         </div>
@@ -523,29 +1089,6 @@ function ProfileEditModal({
             </div>
           </div>
 
-          {/* Password */}
-          <div className="mb-2 flex items-center gap-2 text-xs font-bold text-tt-ink">
-            <KeyRound className="h-3.5 w-3.5 text-tt-pink" /> {t.changePasswordOpt}
-          </div>
-          <div className="mb-3">
-            <input
-              type="password"
-              value={newPassword}
-              onChange={(e) => setNewPassword(e.target.value)}
-              placeholder={t.newPasswordPh}
-              className="w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
-            />
-          </div>
-          <div className="mb-4">
-            <input
-              type="password"
-              value={confirmPassword}
-              onChange={(e) => setConfirmPassword(e.target.value)}
-              placeholder={t.confirmNewPasswordPh}
-              className="w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
-            />
-          </div>
-
           {error && (
             <div className="mb-3 flex items-center gap-2 rounded-lg bg-tt-danger/10 px-3 py-2 text-xs text-tt-danger">
               <AlertCircle className="h-4 w-4 shrink-0" /> {error}
@@ -556,18 +1099,317 @@ function ProfileEditModal({
         <div className="flex shrink-0 gap-2 border-t border-tt-line p-4">
           <button
             onClick={handleSave}
-            disabled={saving}
+            disabled={saving || closing}
             className="flex flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-brand-amber to-brand-terra py-3 text-sm font-bold text-white shadow-glow-amber transition hover:scale-105 disabled:opacity-60"
           >
             {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
             {t.saveChanges}
           </button>
           <button
-            onClick={onClose}
+            onClick={() => runExit(onClose)}
+            disabled={closing}
             className="rounded-full border border-tt-line bg-white px-5 py-3 text-sm font-bold text-tt-muted transition hover:text-tt-ink"
           >
             {t.cancel}
           </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// Animazione di entrata/uscita dei modal: teniamo il nodo montato durante
+// l'uscita e chiamiamo il callback reale al termine della transizione.
+const MODAL_EXIT_MS = 200
+
+function useModalExit() {
+  const [closing, setClosing] = useState(false)
+  function runExit(cb: () => void) {
+    if (closing) return
+    setClosing(true)
+    setTimeout(cb, MODAL_EXIT_MS)
+  }
+  const backdropAnim = closing ? 'animate-out fade-out-0' : 'animate-in fade-in-0'
+  const cardAnim = closing
+    ? 'animate-out fade-out-0 zoom-out-95 slide-out-to-bottom-4'
+    : 'animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-4'
+  return { closing, runExit, backdropAnim, cardAnim }
+}
+
+// ─── Password change modal ───────────────────────────────────────────────────
+
+function PasswordChangeModal({
+  email,
+  onClose,
+  onSaved,
+}: {
+  email: string
+  onClose: () => void
+  onSaved: (msg: string) => void
+}) {
+  const { tr } = useI18n()
+  const t = tr.admin.settings
+  const { closing, runExit, backdropAnim, cardAnim } = useModalExit()
+  const [currentPassword, setCurrentPassword] = useState('')
+  const [newPassword, setNewPassword] = useState('')
+  const [confirmPassword, setConfirmPassword] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function handleSave() {
+    setError(null)
+    if (!currentPassword) {
+      setError(t.pwCurrentRequired)
+      return
+    }
+    // Stessi requisiti delle pagine di autenticazione (signup/login).
+    if (!evaluatePassword(newPassword).allPassed) {
+      setError(t.pwWeak)
+      return
+    }
+    if (newPassword !== confirmPassword) {
+      setError(t.pwMismatch)
+      return
+    }
+    setSaving(true)
+    try {
+      await updateUserPasswordSecure(email, currentPassword, newPassword)
+      runExit(() => onSaved(t.pwChanged))
+    } catch (e: any) {
+      setError(e.message === 'CURRENT_PW_WRONG' ? t.pwCurrentWrong : e.message ?? t.errorUpdate)
+      setSaving(false)
+    }
+  }
+
+  return (
+    <div
+      className={`fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm duration-200 ${backdropAnim}`}
+      onClick={() => runExit(onClose)}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl duration-200 ease-out ${cardAnim}`}
+      >
+        <div className="flex items-center justify-between bg-gradient-to-r from-brand-amber to-brand-terra px-5 py-4 text-white">
+          <div className="flex items-center gap-2">
+            <KeyRound className="h-5 w-5" />
+            <h3 className="font-serif text-lg font-extrabold">{t.changePasswordRow}</h3>
+          </div>
+          <button onClick={() => runExit(onClose)} className="grid h-8 w-8 place-items-center rounded-full bg-white/20">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5">
+          <div className="mb-3">
+            <label className="mb-1 block text-xs font-bold text-tt-ink">{t.currentPasswordPh}</label>
+            <input
+              type="password"
+              value={currentPassword}
+              onChange={(e) => setCurrentPassword(e.target.value)}
+              placeholder={t.currentPasswordPh}
+              autoComplete="current-password"
+              className="w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
+            />
+          </div>
+          <div className="mb-3">
+            <label className="mb-1 block text-xs font-bold text-tt-ink">{t.newPasswordPh}</label>
+            <input
+              type="password"
+              value={newPassword}
+              onChange={(e) => setNewPassword(e.target.value)}
+              placeholder={t.newPasswordPh}
+              autoComplete="new-password"
+              className="w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
+            />
+            {newPassword.length > 0 && (
+              <div className="mt-2">
+                <PasswordStrength password={newPassword} />
+              </div>
+            )}
+          </div>
+          <div className="mb-4">
+            <label className="mb-1 block text-xs font-bold text-tt-ink">{t.confirmNewPasswordPh}</label>
+            <input
+              type="password"
+              value={confirmPassword}
+              onChange={(e) => setConfirmPassword(e.target.value)}
+              placeholder={t.confirmNewPasswordPh}
+              autoComplete="new-password"
+              className="w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
+            />
+          </div>
+
+          {error && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg bg-tt-danger/10 px-3 py-2 text-xs text-tt-danger">
+              <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+            </div>
+          )}
+
+          <div className="flex gap-2">
+            <button
+              onClick={handleSave}
+              disabled={saving || closing}
+              className="flex flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-brand-amber to-brand-terra py-3 text-sm font-bold text-white shadow-glow-amber transition hover:scale-105 disabled:opacity-60"
+            >
+              {saving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+              {t.saveChanges}
+            </button>
+            <button
+              onClick={() => runExit(onClose)}
+              disabled={closing}
+              className="rounded-full border border-tt-line bg-white px-5 py-3 text-sm font-bold text-tt-muted transition hover:text-tt-ink"
+            >
+              {t.cancel}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─── Two-factor setup modal ──────────────────────────────────────────────────
+
+function TwoFactorModal({
+  onClose,
+  onEnabled,
+}: {
+  onClose: () => void
+  onEnabled: (factorId: string) => void
+}) {
+  const { tr } = useI18n()
+  const t = tr.admin.settings
+  const { closing, runExit, backdropAnim, cardAnim } = useModalExit()
+  const [enrollment, setEnrollment] = useState<TwoFactorEnrollment | null>(null)
+  const [code, setCode] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [verifying, setVerifying] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    let active = true
+    enrollTwoFactor()
+      .then((e) => {
+        if (active) {
+          setEnrollment(e)
+          setLoading(false)
+        }
+      })
+      .catch((e: any) => {
+        if (active) {
+          setError(e?.message ? `${t.twoFALoadError}: ${e.message}` : t.twoFALoadError)
+          setLoading(false)
+        }
+      })
+    return () => {
+      active = false
+    }
+  }, [])
+
+  // Chiudendo senza completare, rimuoviamo il fattore ancora non verificato.
+  function handleClose() {
+    if (closing) return
+    if (enrollment && !verifying) {
+      disableTwoFactor(enrollment.factorId).catch(() => {})
+    }
+    runExit(onClose)
+  }
+
+  async function handleVerify() {
+    if (!enrollment || verifying) return
+    setError(null)
+    setVerifying(true)
+    try {
+      await verifyTwoFactor(enrollment.factorId, code)
+      const factorId = enrollment.factorId
+      runExit(() => onEnabled(factorId))
+    } catch {
+      setError(t.twoFAInvalidCode)
+      setVerifying(false)
+    }
+  }
+
+  return (
+    <div
+      className={`fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm duration-200 ${backdropAnim}`}
+      onClick={handleClose}
+    >
+      <div
+        onClick={(e) => e.stopPropagation()}
+        className={`w-full max-w-md overflow-hidden rounded-3xl bg-white shadow-2xl duration-200 ease-out ${cardAnim}`}
+      >
+        <div className="flex items-center justify-between bg-gradient-to-r from-brand-emerald to-brand-sky px-5 py-4 text-white">
+          <div className="flex items-center gap-2">
+            <Shield className="h-5 w-5" />
+            <h3 className="font-serif text-lg font-extrabold">{t.twoFAModalTitle}</h3>
+          </div>
+          <button onClick={handleClose} className="grid h-8 w-8 place-items-center rounded-full bg-white/20">
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+
+        <div className="p-5">
+          {loading ? (
+            <div className="grid place-items-center py-12">
+              <Loader2 className="h-6 w-6 animate-spin text-tt-muted" />
+            </div>
+          ) : error && !enrollment ? (
+            <div className="flex items-center gap-2 rounded-lg bg-tt-danger/10 px-3 py-2 text-xs text-tt-danger">
+              <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+            </div>
+          ) : enrollment ? (
+            <>
+              <p className="mb-4 text-sm text-tt-muted">{t.twoFAScanInstructions}</p>
+              <div className="mb-4 grid place-items-center">
+                {/* Supabase restituisce il QR come SVG data URL. */}
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={enrollment.qrCode}
+                  alt="QR 2FA"
+                  className="h-44 w-44 rounded-xl border border-tt-line bg-white p-2"
+                />
+              </div>
+              <div className="mb-4 rounded-xl border border-tt-line bg-tt-surfaceAlt2 px-3 py-2 text-center">
+                <p className="text-[11px] font-bold uppercase tracking-wide text-tt-muted">{t.twoFAManualKey}</p>
+                <p className="mt-1 break-all font-mono text-xs text-tt-ink">{enrollment.secret}</p>
+              </div>
+              <input
+                type="text"
+                inputMode="numeric"
+                autoComplete="one-time-code"
+                maxLength={6}
+                value={code}
+                onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))}
+                placeholder={t.twoFACodePh}
+                className="mb-3 w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-center text-lg font-bold tracking-[0.3em] text-tt-ink outline-none focus:border-tt-pink/40"
+              />
+
+              {error && (
+                <div className="mb-3 flex items-center gap-2 rounded-lg bg-tt-danger/10 px-3 py-2 text-xs text-tt-danger">
+                  <AlertCircle className="h-4 w-4 shrink-0" /> {error}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  onClick={handleVerify}
+                  disabled={verifying || closing || code.length < 6}
+                  className="flex flex-1 items-center justify-center gap-2 rounded-full bg-gradient-to-r from-brand-emerald to-brand-sky py-3 text-sm font-bold text-white shadow-tt transition hover:scale-105 disabled:cursor-not-allowed disabled:opacity-60 disabled:hover:scale-100"
+                >
+                  {verifying ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  {verifying ? t.twoFAVerifying : t.twoFAEnableBtn}
+                </button>
+                <button
+                  onClick={handleClose}
+                  disabled={closing}
+                  className="rounded-full border border-tt-line bg-white px-5 py-3 text-sm font-bold text-tt-muted transition hover:text-tt-ink"
+                >
+                  {t.cancel}
+                </button>
+              </div>
+            </>
+          ) : null}
         </div>
       </div>
     </div>

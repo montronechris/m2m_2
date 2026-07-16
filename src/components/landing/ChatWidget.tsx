@@ -6,6 +6,7 @@ import { AnimatePresence, motion } from 'framer-motion'
 import { MessageCircle, X, Send, Sparkles, Trash2 } from 'lucide-react'
 import { useI18n } from '@/components/i18n/I18nProvider'
 import { cn } from '@/lib/utils'
+import { getTableSession } from '@/lib/table-session'
 
 type Msg = { role: 'user' | 'assistant'; content: string }
 
@@ -61,6 +62,7 @@ export function ChatWidget({ brandColor, externalOpen, hideFloatingButton }: { b
     setLoading(true)
     setError(null)
     try {
+      const restaurantId = getTableSession()?.restaurantId
       const res = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -68,6 +70,7 @@ export function ChatWidget({ brandColor, externalOpen, hideFloatingButton }: { b
           message: text,
           lang,
           sessionId: sessionId ?? undefined,
+          restaurantId: restaurantId ?? undefined,
           history: history
             .filter((m) => m.role !== 'assistant' || m.content !== c.greeting)
             .map((m) => ({ role: m.role, content: m.content })),

@@ -14,6 +14,8 @@ import {
   ImageIcon,
   X,
   AlertTriangle,
+  Users,
+  Loader2,
 } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -67,6 +69,37 @@ export function RestaurantCreationPage() {
   // File del menu (PDF/immagine) caricato allo step 2, opzionale.
   // Viene analizzato e importato solo dopo la creazione effettiva del ristorante (step 3).
   const [menuFile, setMenuFile] = useState<File | null>(null)
+  // Ingresso alternativo: chi è stato invitato come staff inserisce qui il codice
+  // per unirsi a un ristorante esistente invece di crearne uno nuovo.
+  const [showStaffCode, setShowStaffCode] = useState(false)
+  const [staffCode, setStaffCode] = useState('')
+  const [staffBusy, setStaffBusy] = useState(false)
+  const [staffError, setStaffError] = useState<string | null>(null)
+
+  const handleJoinStaff = async () => {
+    const code = staffCode.trim()
+    if (!code || staffBusy) return
+    setStaffBusy(true)
+    setStaffError(null)
+    try {
+      const res = await fetch('/api/redeem-invite', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
+        body: JSON.stringify({ secretCode: code }),
+      })
+      const json = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setStaffError(json?.error || tr.auth.create.staffJoinError)
+        return
+      }
+      window.location.href = '/admin/dashboard'
+    } catch (e: any) {
+      setStaffError(e?.message || tr.auth.create.staffJoinError)
+    } finally {
+      setStaffBusy(false)
+    }
+  }
 
   // Trigger a step change with exit animation: keep the old step mounted (exiting)
   // while the new step enters, then clear the exiting step after the animation.
@@ -167,6 +200,94 @@ export function RestaurantCreationPage() {
           <div
             className="rounded-2xl sm:rounded-3xl bg-white p-5 sm:p-8 shadow-xl shadow-black/5 ring-1 ring-black/5"
           >
+            {/* Ingresso staff — unisciti a un ristorante esistente con un codice invito */}
+            <div className="mb-6">
+              {!showStaffCode ? (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowStaffCode(true)
+                    setStaffError(null)
+                  }}
+                  className="flex w-full items-center gap-3 rounded-2xl border border-dashed px-4 py-3 text-left transition hover:bg-gray-50"
+                  style={{ borderColor: `${ORANGE}59` }}
+                >
+                  <span
+                    className="grid size-9 shrink-0 place-items-center rounded-xl"
+                    style={{ background: `${ORANGE}1a`, color: ORANGE }}
+                  >
+                    <Users className="size-[18px]" />
+                  </span>
+                  <span className="min-w-0 flex-1">
+                    <span className="block text-[13px] sm:text-sm font-semibold text-gray-900">
+                      {tr.auth.create.staffJoinCta}
+                    </span>
+                    <span className="block text-[12px] text-gray-500 leading-snug">
+                      {tr.auth.create.staffJoinDesc}
+                    </span>
+                  </span>
+                </button>
+              ) : (
+                <div
+                  className="rounded-2xl border p-4"
+                  style={{ borderColor: `${ORANGE}59`, background: `${ORANGE}0d` }}
+                >
+                  <div className="mb-3 flex items-start justify-between gap-3">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold text-gray-900">
+                        {tr.auth.create.staffJoinTitle}
+                      </p>
+                      <p className="mt-0.5 text-[12px] text-gray-500 leading-snug">
+                        {tr.auth.create.staffJoinDesc}
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setShowStaffCode(false)
+                        setStaffError(null)
+                      }}
+                      className="shrink-0 rounded-lg p-1 text-gray-400 transition hover:bg-black/5 hover:text-gray-600"
+                      aria-label={tr.auth.create.staffJoinCancel}
+                    >
+                      <X className="size-4" />
+                    </button>
+                  </div>
+                  <div className="flex flex-col gap-2 sm:flex-row">
+                    <Input
+                      value={staffCode}
+                      onChange={(e) => setStaffCode(e.target.value.toUpperCase())}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault()
+                          handleJoinStaff()
+                        }
+                      }}
+                      placeholder={tr.auth.create.staffJoinPlaceholder}
+                      className="flex-1 font-mono tracking-wider"
+                      autoFocus
+                    />
+                    <Button
+                      type="button"
+                      onClick={handleJoinStaff}
+                      disabled={staffBusy || !staffCode.trim()}
+                      className="text-white"
+                      style={{ background: ORANGE }}
+                    >
+                      {staffBusy ? (
+                        <Loader2 className="size-4 animate-spin" />
+                      ) : (
+                        tr.auth.create.staffJoinSubmit
+                      )}
+                    </Button>
+                  </div>
+                  {staffError && (
+                    <p className="mt-2 text-[13px] font-medium text-red-600">{staffError}</p>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* Heading */}
             <div className="mb-6 sm:mb-8">
               <h1 className="text-[24px] sm:text-[28px] font-bold text-gray-900 leading-tight mb-2">
@@ -440,12 +561,12 @@ function StepTwo({
   function handleMenuFileSelect(file: File | null) {
     if (!file) return
     if (!ALLOWED_MENU_TYPES.includes(file.type)) {
-      setMenuFileError('Formato non supportato. Carica un PDF o un\'immagine (JPG, PNG, WEBP).')
+      setMenuFileError(tr.auth.create.menuUploadUnsupportedFormat)
       setMenuFile(null)
       return
     }
     if (file.size > MAX_MENU_BYTES) {
-      setMenuFileError('Il file è troppo grande (max 15MB).')
+      setMenuFileError(tr.auth.create.menuUploadTooLarge)
       setMenuFile(null)
       return
     }
@@ -525,8 +646,8 @@ function StepTwo({
       </div>
       <div className="stagger-item space-y-1.5" style={{ animationDelay: '260ms' }}>
         <div className="flex items-center gap-2">
-          <Label className="text-[13px] text-gray-600 font-medium">Menu (PDF o foto)</Label>
-          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10.5px] font-medium text-gray-500">Opzionale</span>
+          <Label className="text-[13px] text-gray-600 font-medium">{tr.auth.create.menuUploadLabel}</Label>
+          <span className="rounded-full bg-gray-100 px-2 py-0.5 text-[10.5px] font-medium text-gray-500">{tr.auth.create.menuUploadOptional}</span>
         </div>
         <div
           onDragOver={(e) => { e.preventDefault(); setMenuDragOver(true) }}
@@ -544,9 +665,9 @@ function StepTwo({
             <>
               <UploadCloud className="size-5 text-gray-400" />
               <p className="text-[13px] text-gray-600">
-                Trascina qui il menu, oppure{' '}
+                {tr.auth.create.menuUploadDragText}{' '}
                 <label className="cursor-pointer font-medium text-[#FF6B00] hover:underline">
-                  scegli dal dispositivo
+                  {tr.auth.create.menuUploadBrowse}
                   <input
                     type="file"
                     accept="application/pdf,.pdf,image/jpeg,image/png,image/webp"
@@ -569,7 +690,7 @@ function StepTwo({
                 type="button"
                 onClick={() => { setMenuFile(null); setMenuFileError(null) }}
                 className="rounded-full p-1 text-gray-400 hover:bg-gray-100 hover:text-gray-600"
-                aria-label="Rimuovi file"
+                aria-label={tr.auth.create.menuUploadRemoveAria}
               >
                 <X className="size-4" />
               </button>
@@ -583,9 +704,7 @@ function StepTwo({
           <div className="flex items-start gap-2 rounded-lg bg-amber-50 px-3 py-2 ring-1 ring-amber-200/60">
             <AlertTriangle className="mt-0.5 size-3.5 shrink-0 text-amber-500" />
             <p className="text-[11.5px] leading-relaxed text-amber-800">
-              I piatti vengono letti da un'intelligenza artificiale e possono esserci errori
-              (nomi, prezzi o categorie imprecisi). Controlla sempre il menu dalla dashboard
-              dopo la creazione, prima di pubblicarlo.
+              {tr.auth.create.menuUploadDisclaimer}
             </p>
           </div>
         )}
@@ -682,7 +801,7 @@ function StepSuccess({
           // Segnaliamo chiaramente invece di saltare in silenzio.
           console.error('[menu-import] Nessun restaurant id trovato nella risposta di /api/restaurants/create:', body)
           setMenuStatus('failed')
-          setMenuStatusMessage('Ristorante creato, ma non è stato possibile importare il menu automaticamente (id ristorante non trovato). Puoi caricarlo dalla dashboard.')
+          setMenuStatusMessage(tr.auth.create.menuImportFailedNoId)
         } else {
           // Stessa logica di import usata in MenuSection.tsx (dashboard admin),
           // centralizzata in importMenuFromFile.
@@ -690,10 +809,10 @@ function StepSuccess({
           const result = await importMenuFromFile(newRestaurantId, menuFile)
           if (result.created === 0) {
             setMenuStatus('failed')
-            setMenuStatusMessage(result.error ?? 'Non è stato possibile leggere il menu. Puoi caricarlo dalla dashboard.')
+            setMenuStatusMessage(result.error ?? tr.auth.create.menuImportFailedGeneric)
           } else {
             setMenuStatus('done')
-            setMenuStatusMessage(`${result.created} piatt${result.created === 1 ? 'o importato' : 'i importati'} dal menu.`)
+            setMenuStatusMessage(`${result.created} ${result.created === 1 ? tr.auth.create.menuImportDoneSingular : tr.auth.create.menuImportDonePlural}`)
           }
         }
 
@@ -766,7 +885,7 @@ function StepSuccess({
         <p className="stagger-item text-sm text-red-500 mb-3" style={{ animationDelay: '380ms' }}>{createError}</p>
       )}
       {menuStatus === 'importing' && (
-        <p className="stagger-item text-sm text-gray-500 mb-3">Sto leggendo il menu, un attimo…</p>
+        <p className="stagger-item text-sm text-gray-500 mb-3">{tr.auth.create.menuImportingLabel}</p>
       )}
       {menuStatus === 'done' && menuStatusMessage && (
         <p className="stagger-item text-sm text-emerald-600 mb-3">{menuStatusMessage}</p>
@@ -781,7 +900,7 @@ function StepSuccess({
         style={{ background: `linear-gradient(135deg, ${ORANGE}, ${ORANGE_DEEP})`, boxShadow: `0 6px 16px ${ORANGE_DEEP}33`, animationDelay: '400ms' }}
       >
         {isCreating
-          ? (menuStatus === 'importing' ? 'Sto leggendo il menu…' : tr.auth.create.submitting)
+          ? (menuStatus === 'importing' ? tr.auth.create.menuImportingShort : tr.auth.create.submitting)
           : isLoggedIn === false
             ? tr.auth.create.completeRegistration
             : tr.auth.create.goToDashboard}

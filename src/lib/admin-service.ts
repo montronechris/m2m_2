@@ -39,11 +39,17 @@ export interface OrderItem {
   customizations: any;
   note?: string | null;
   portata: number;
+  is_drink?: boolean;
   portata_completed?: boolean;
   portata_delivered?: boolean;
+  prepared_by?: string | null;
+  prepared_by_name?: string | null;
+  prepared_at?: string | null;
   delivered_by?: string | null;
+  delivered_by_name?: string | null;
   delivered_at?: string | null;
   picked_up_by?: string | null;
+  picked_up_by_name?: string | null;
   picked_up_at?: string | null;
   menu_items?: {
     name: string;
@@ -81,6 +87,12 @@ export interface Order {
   notes: string;
   ordine: string;
   created_at: string;
+  cooking_by?: string | null;
+  cooking_by_name?: string | null;
+  cooking_at?: string | null;
+  paid_by?: string | null;
+  paid_by_name?: string | null;
+  paid_at?: string | null;
   order_items?: OrderItem[];
 }
 
@@ -117,7 +129,14 @@ export const getRestaurantByUser = async (): Promise<RestaurantData> => {
   const res = await fetch("/api/admin/me", { credentials: "include" });
   if (!res.ok) {
     const body = await res.json().catch(() => ({}));
-    throw new Error(body.error || "Errore caricamento profilo");
+    const err = new Error(body.error || "Errore caricamento profilo") as Error & {
+      status?: number;
+    };
+    // Propaga lo status HTTP così i chiamanti possono distinguere
+    // "sessione assente / profilo mancante" (401/404 Profilo non trovato → /login)
+    // da "titolare senza ristorante ancora creato" (404 Ristorante non trovato → /create).
+    err.status = res.status;
+    throw err;
   }
   return (await res.json()) as RestaurantData;
 };
@@ -228,7 +247,7 @@ export const getOrders = async (restaurantId: string): Promise<Order[]> => {
   const { data: items, error: itemsErr } = await supabase
     .from("order_items")
     .select(
-      "id, order_id, menu_item_id, quantity, base_price, customizations, name_snapshot, name, note, portata, portata_completed, portata_delivered, delivered_at, delivered_by, picked_up_at, picked_up_by"
+      "id, order_id, menu_item_id, quantity, base_price, customizations, name_snapshot, name, note, portata, is_drink, portata_completed, portata_delivered, prepared_at, prepared_by, prepared_by_name, delivered_at, delivered_by, delivered_by_name, picked_up_at, picked_up_by, picked_up_by_name"
     )
     .in("order_id", orderIds);
   if (itemsErr) throw itemsErr;
@@ -272,11 +291,23 @@ export const getOrders = async (restaurantId: string): Promise<Order[]> => {
 /**
  * Aggiorna stato ordine
  */
-export const updateOrderStatus = async (orderId: string, status: Order["status"]) => {
+export const updateOrderStatus = async (
+  orderId: string,
+  status: Order["status"],
+  actorId?: string | null,
+  actorName?: string | null
+) => {
   const supabase = getSupabase();
+  const patch: Record<string, any> = { status };
+  // Traccia chi ha avviato la preparazione (cucina).
+  if (status === "cooking") {
+    patch.cooking_by = actorId ?? null;
+    patch.cooking_by_name = actorName ?? null;
+    patch.cooking_at = new Date().toISOString();
+  }
   const { error } = await supabase
     .from("orders")
-    .update({ status })
+    .update(patch)
     .eq("id", orderId);
   if (error) throw error;
 };
@@ -284,11 +315,21 @@ export const updateOrderStatus = async (orderId: string, status: Order["status"]
 /**
  * Cucina: segna come pronta tutta una portata di un ordine.
  */
-export const markPortataReady = async (orderId: string, portata: number) => {
+export const markPortataReady = async (
+  orderId: string,
+  portata: number,
+  profileId?: string | null,
+  profileName?: string | null
+) => {
   const supabase = getSupabase();
   const { error } = await supabase
     .from("order_items")
-    .update({ portata_completed: true })
+    .update({
+      portata_completed: true,
+      prepared_by: profileId ?? null,
+      prepared_by_name: profileName ?? null,
+      prepared_at: new Date().toISOString(),
+    })
     .eq("order_id", orderId)
     .eq("portata", portata);
   if (error) throw error;
@@ -298,11 +339,11 @@ export const markPortataReady = async (orderId: string, portata: number) => {
 /**
  * Cameriere: segna una portata come consegnata al tavolo.
  */
-export const markPortataDelivered = async (orderId: string, portata: number, profileId?: string) => {
+export const markPortataDelivered = async (orderId: string, portata: number, profileId?: string, profileName?: string) => {
   const supabase = getSupabase();
   const { error } = await supabase
     .from("order_items")
-    .update({ portata_delivered: true, delivered_at: new Date().toISOString(), delivered_by: profileId ?? null })
+    .update({ portata_delivered: true, delivered_at: new Date().toISOString(), delivered_by: profileId ?? null, delivered_by_name: profileName ?? null })
     .eq("order_id", orderId)
     .eq("portata", portata);
   if (error) throw error;
@@ -317,11 +358,11 @@ export const markPortataDelivered = async (orderId: string, portata: number, pro
  * Cameriere: segna una portata come ritirata. Se con questo aggiornamento
  * tutte le portate dell'ordine risultano ritirate, l'ordine passa a "served".
  */
-export const markPortataPickedUp = async (orderId: string, portata: number, profileId?: string) => {
+export const markPortataPickedUp = async (orderId: string, portata: number, profileId?: string, profileName?: string) => {
   const supabase = getSupabase();
   const { error: itemError } = await supabase
     .from("order_items")
-    .update({ picked_up_at: new Date().toISOString(), picked_up_by: profileId ?? null })
+    .update({ picked_up_at: new Date().toISOString(), picked_up_by: profileId ?? null, picked_up_by_name: profileName ?? null })
     .eq("order_id", orderId)
     .eq("portata", portata);
   if (itemError) throw itemError;
@@ -684,6 +725,27 @@ export const createMenuCategory = async (
   return data as MenuCategory;
 };
 
+export const updateMenuCategory = async (
+  categoryId: string,
+  updates: { name?: string; is_drink?: boolean }
+): Promise<MenuCategory> => {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("menu_categories")
+    .update(updates)
+    .eq("id", categoryId)
+    .select("id, name, is_drink, sort_order")
+    .single();
+  if (error) throw error;
+  return data as MenuCategory;
+};
+
+export const deleteMenuCategory = async (categoryId: string): Promise<void> => {
+  const supabase = getSupabase();
+  const { error } = await supabase.from("menu_categories").delete().eq("id", categoryId);
+  if (error) throw error;
+};
+
 // ─── Menu item photo upload (Supabase Storage) ───────────────────────────────
 
 export const uploadMenuItemPhoto = async (
@@ -733,6 +795,140 @@ export const updateUserPassword = async (newPassword: string): Promise<void> => 
   if (error) throw error;
 };
 
+// Cambia la password verificando prima quella attuale.
+// Supabase non richiede la password corrente per updateUser: la validiamo noi
+// ri-autenticando l'utente. In caso di password attuale errata lanciamo
+// "CURRENT_PW_WRONG" così la UI può mostrare un messaggio dedicato.
+export const updateUserPasswordSecure = async (
+  email: string,
+  currentPassword: string,
+  newPassword: string
+): Promise<void> => {
+  const supabase = getSupabase();
+  const { error: signInErr } = await supabase.auth.signInWithPassword({
+    email,
+    password: currentPassword,
+  });
+  if (signInErr) throw new Error("CURRENT_PW_WRONG");
+  const { error } = await supabase.auth.updateUser({ password: newPassword });
+  if (error) throw error;
+};
+
+// ─── Autenticazione a due fattori (TOTP MFA) ─────────────────────────────────
+//
+// Usa la MFA nativa di Supabase con app TOTP (Google Authenticator, Authy, …).
+// Flusso: enroll → l'utente scansiona il QR → verify col codice a 6 cifre.
+// Da quel momento il login richiede il codice (vedi auth-page.tsx).
+
+export interface TwoFactorEnrollment {
+  factorId: string;
+  qrCode: string; // SVG data URL, renderizzabile in <img>
+  secret: string; // chiave per inserimento manuale
+  uri: string;
+}
+
+export const getTwoFactorStatus = async (): Promise<{
+  enabled: boolean;
+  factorId: string | null;
+}> => {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.auth.mfa.listFactors();
+  if (error) throw error;
+  const verified = data?.totp?.find((f) => f.status === "verified");
+  return { enabled: !!verified, factorId: verified?.id ?? null };
+};
+
+export const enrollTwoFactor = async (): Promise<TwoFactorEnrollment> => {
+  const supabase = getSupabase();
+  // Rimuove eventuali fattori TOTP non ancora verificati rimasti da tentativi
+  // precedenti: altrimenti la nuova enroll fallisce con "mfa_factor_name_conflict".
+  // NB: listFactors().totp contiene SOLO i fattori verificati, quindi quelli in
+  // sospeso vanno cercati in `all`.
+  const { data: list } = await supabase.auth.mfa.listFactors();
+  const stale = (list?.all ?? []).filter(
+    (f) => f.factor_type === "totp" && f.status !== "verified"
+  );
+  for (const f of stale) {
+    await supabase.auth.mfa.unenroll({ factorId: f.id });
+  }
+  const { data, error } = await supabase.auth.mfa.enroll({ factorType: "totp" });
+  if (error) throw error;
+  return {
+    factorId: data.id,
+    qrCode: data.totp.qr_code,
+    secret: data.totp.secret,
+    uri: data.totp.uri,
+  };
+};
+
+export const verifyTwoFactor = async (
+  factorId: string,
+  code: string
+): Promise<void> => {
+  const supabase = getSupabase();
+  const { data: challenge, error: chErr } = await supabase.auth.mfa.challenge({
+    factorId,
+  });
+  if (chErr) throw chErr;
+  const { error } = await supabase.auth.mfa.verify({
+    factorId,
+    challengeId: challenge.id,
+    code: code.trim(),
+  });
+  if (error) throw error;
+};
+
+// Annulla un enrollment in corso (usato se l'utente chiude il modal senza
+// completare la verifica) oppure disattiva un 2FA già attivo.
+export const disableTwoFactor = async (factorId: string): Promise<void> => {
+  const supabase = getSupabase();
+  const { error } = await supabase.auth.mfa.unenroll({ factorId });
+  if (error) throw error;
+};
+
+// ─── 2FA via email (canale applicativo, tabella user_security_prefs) ──────────
+// A differenza della TOTP (fattore nativo Supabase, AAL2), questa 2FA e' gestita
+// a livello applicativo: al login, dopo la password, inviamo un OTP via email.
+
+export type SecurityPrefs = {
+  email2fa: boolean;
+  phone: string | null;
+  phone2fa: boolean;
+};
+
+export const getSecurityPrefs = async (): Promise<SecurityPrefs> => {
+  const supabase = getSupabase();
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData.user?.id;
+  if (!uid) return { email2fa: false, phone: null, phone2fa: false };
+  const { data } = await supabase
+    .from("user_security_prefs")
+    .select("email_2fa_enabled, phone, phone_2fa_enabled")
+    .eq("user_id", uid)
+    .maybeSingle();
+  return {
+    email2fa: !!(data as any)?.email_2fa_enabled,
+    phone: ((data as any)?.phone as string | null) ?? null,
+    phone2fa: !!(data as any)?.phone_2fa_enabled,
+  };
+};
+
+export const setEmail2FA = async (enabled: boolean): Promise<void> => {
+  const supabase = getSupabase();
+  const { data: userData } = await supabase.auth.getUser();
+  const uid = userData.user?.id;
+  if (!uid) throw new Error("Utente non autenticato");
+  const { error } = await supabase.from("user_security_prefs").upsert(
+    {
+      user_id: uid,
+      email_2fa_enabled: enabled,
+      updated_at: new Date().toISOString(),
+    },
+    { onConflict: "user_id" }
+  );
+  if (error) throw error;
+};
+
 // ─── Staff invite (generate invite code) ─────────────────────────────────────
 
 export const createStaffInvite = async (
@@ -779,36 +975,51 @@ export const createStaffInvite = async (
   return code;
 };
 
-// ─── Shift codes & attendance (Calendar section) ─────────────────────────────
+// ─── Shift codes & attendance (Calendar / Presenze section) ──────────────────
+//
+// Modello. Il manager/admin genera, nella sezione Calendario, un codice
+// PERSONALE e MONOUSO per un membro staff (cameriere/cucina). Il membro lo
+// inserisce dal pulsante "Presenza" in navbar per timbrare la giornata.
+// Il riscatto passa SEMPRE dalla RPC `redeem_shift_code` (SECURITY DEFINER):
+// le policy RLS non consentono allo staff né di leggere i codici né di
+// scrivere in `attendance`, quindi la validazione (monouso, codice personale,
+// scadenza) è centralizzata lato DB. Vedi migration `redeem_shift_code_function`.
 
 export interface ShiftCode {
   id: string;
+  restaurant_id: string;
   profile_id: string;
   code: string;
   created_at: string;
+  expires_at: string;
   is_active: boolean;
   last_used_at: string | null;
 }
 
 export interface AttendanceRow {
   id: string;
+  restaurant_id: string;
   profile_id: string;
-  work_date: string;
+  shift_code_id: string | null;
+  work_date: string; // 'YYYY-MM-DD' (giorno locale IT)
   clock_in_at: string;
 }
 
 export interface Employee {
   id: string;
-  first_name: string;
-  last_name: string;
+  first_name: string | null;
+  last_name: string | null;
   role: "cameriere" | "cucina";
+  avatar_url: string | null;
 }
 
+// Membri staff "timbrabili": camerieri e cucina. Sono gli unici per cui ha
+// senso generare un codice presenza (manager/admin gestiscono, non timbrano).
 export const getEmployees = async (restaurantId: string): Promise<Employee[]> => {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("profiles")
-    .select("id, first_name, last_name, role")
+    .select("id, first_name, last_name, role, avatar_url")
     .eq("restaurant_id", restaurantId)
     .in("role", ["cameriere", "cucina"])
     .order("first_name", { ascending: true });
@@ -816,51 +1027,69 @@ export const getEmployees = async (restaurantId: string): Promise<Employee[]> =>
   return (data as Employee[]) ?? [];
 };
 
-export const getShiftCodes = async (restaurantId: string): Promise<ShiftCode[]> => {
+// Codici ancora ATTIVI (non consumati) del ristorante — mostrati al manager
+// accanto a ciascun membro. Appena un codice viene riscattato (is_active=false)
+// sparisce da questo elenco.
+export const getActiveShiftCodes = async (restaurantId: string): Promise<ShiftCode[]> => {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("staff_shift_codes")
-    .select("id, profile_id, code, created_at, is_active, last_used_at")
+    .select("id, restaurant_id, profile_id, code, created_at, expires_at, is_active, last_used_at")
     .eq("restaurant_id", restaurantId)
+    .eq("is_active", true)
     .order("created_at", { ascending: false });
   if (error) throw error;
   return (data as ShiftCode[]) ?? [];
 };
 
+// Presenze in un intervallo di date (inclusivo). Il calendario le usa per
+// mostrare, giorno per giorno, chi ha timbrato.
 export const getAttendance = async (
   restaurantId: string,
-  days: 7 | 30 = 30
+  fromDate: string,
+  toDate: string
 ): Promise<AttendanceRow[]> => {
   const supabase = getSupabase();
-  const from = new Date();
-  from.setDate(from.getDate() - (days === 7 ? 6 : 29));
-  const fromStr = `${from.getFullYear()}-${String(from.getMonth() + 1).padStart(2, "0")}-${String(from.getDate()).padStart(2, "0")}`;
-  const toStr = `${new Date().getFullYear()}-${String(new Date().getMonth() + 1).padStart(2, "0")}-${String(new Date().getDate()).padStart(2, "0")}`;
   const { data, error } = await supabase
     .from("attendance")
-    .select("id, profile_id, work_date, clock_in_at")
+    .select("id, restaurant_id, profile_id, shift_code_id, work_date, clock_in_at")
     .eq("restaurant_id", restaurantId)
-    .gte("work_date", fromStr)
-    .lte("work_date", toStr)
-    .order("work_date", { ascending: false });
+    .gte("work_date", fromDate)
+    .lte("work_date", toDate)
+    .order("clock_in_at", { ascending: true });
   if (error) throw error;
   return (data as AttendanceRow[]) ?? [];
 };
 
+// Genera un nuovo codice PERSONALE e MONOUSO per un membro staff. Prima rimuove
+// gli eventuali codici ancora attivi e non usati dello stesso membro, così ne
+// resta valido soltanto uno per volta. Quei codici sono per definizione non
+// referenziati da presenze, quindi la DELETE è sicura rispetto al vincolo FK
+// attendance.shift_code_id. Ritorna il codice in chiaro da consegnare al membro.
 export const generateShiftCode = async (
   restaurantId: string,
   profileId: string
 ): Promise<string> => {
   const supabase = getSupabase();
-  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
-  let code = "";
-  for (let i = 0; i < 8; i++) code += chars[Math.floor(Math.random() * chars.length)];
-
   const {
     data: { user },
   } = await supabase.auth.getUser();
   if (!user) throw new Error("Utente non autenticato");
 
+  // Invalida i vecchi codici attivi e non consumati del membro (ne resta uno solo).
+  await supabase
+    .from("staff_shift_codes")
+    .delete()
+    .eq("restaurant_id", restaurantId)
+    .eq("profile_id", profileId)
+    .eq("is_active", true);
+
+  // Codice a 6 caratteri, alfabeto senza simboli ambigui (niente 0/O, 1/I).
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let code = "";
+  for (let i = 0; i < 6; i++) code += chars[Math.floor(Math.random() * chars.length)];
+
+  // expires_at (+16h), is_active (true) e created_at (now) hanno default lato DB.
   const { error } = await supabase.from("staff_shift_codes").insert({
     code,
     restaurant_id: restaurantId,
@@ -869,6 +1098,44 @@ export const generateShiftCode = async (
   });
   if (error) throw error;
   return code;
+};
+
+// Esito del riscatto lato staff — riflette 1:1 gli stati della RPC.
+export type RedeemResult =
+  | "ok"
+  | "not_authenticated"
+  | "not_found"
+  | "wrong_user"
+  | "already_used"
+  | "expired"
+  | "already_present";
+
+// Riscatta un codice presenza (lato staff): delega alla RPC che valida e timbra
+// server-side. Qui normalizziamo solo l'input (maiuscolo, senza spazi) e lo stato.
+export const redeemShiftCode = async (code: string): Promise<RedeemResult> => {
+  const supabase = getSupabase();
+  const { data, error } = await supabase.rpc("redeem_shift_code", {
+    p_code: code.trim().toUpperCase(),
+  });
+  if (error) throw error;
+  return (data as RedeemResult) ?? "not_found";
+};
+
+// Il membro corrente ha già timbrato oggi? Legge SOLO la propria riga di
+// presenza del giorno (policy RLS "attendance: self legge"). Usato dal pulsante
+// "Presenza" per mostrare lo stato "Presente" in modo persistente.
+export const isPresentToday = async (profileId: string): Promise<boolean> => {
+  const supabase = getSupabase();
+  // Giorno locale IT, coerente con work_date scritto dalla RPC.
+  const today = new Date().toLocaleDateString("en-CA", { timeZone: "Europe/Rome" });
+  const { data, error } = await supabase
+    .from("attendance")
+    .select("id")
+    .eq("profile_id", profileId)
+    .eq("work_date", today)
+    .maybeSingle();
+  if (error) throw error;
+  return !!data;
 };
 
 // ─── Ready orders (Waiter section) ────────────────────────────────────────────
@@ -910,7 +1177,7 @@ export const getReadyOrders = async (restaurantId: string): Promise<Order[]> => 
   const { data: items } = await supabase
     .from("order_items")
     .select(
-      "id, order_id, menu_item_id, quantity, base_price, name_snapshot, name, note, portata, portata_completed, portata_delivered, delivered_at, delivered_by, picked_up_at, picked_up_by"
+      "id, order_id, menu_item_id, quantity, base_price, name_snapshot, name, note, portata, is_drink, portata_completed, portata_delivered, prepared_at, prepared_by, prepared_by_name, delivered_at, delivered_by, delivered_by_name, picked_up_at, picked_up_by, picked_up_by_name"
     )
     .in("order_id", orderIds)
     .eq("portata_completed", true)
@@ -966,59 +1233,366 @@ export const getHistoryOrders = async (restaurantId: string): Promise<Order[]> =
     }
   }
 
-  return orders.map((o) => ({ ...o, table_code: tableMap[o.table_id]?.code ?? null }));
+  // Order items con gli snapshot dei nomi dello staff (chi ha preparato,
+  // consegnato, ritirato), così la cronologia può mostrare le attribuzioni.
+  const orderIds = orders.map((o) => o.id);
+  let itemsMap: Record<string, any[]> = {};
+  const { data: items } = await supabase
+    .from("order_items")
+    .select(
+      "id, order_id, menu_item_id, quantity, base_price, name_snapshot, name, note, portata, is_drink, portata_completed, portata_delivered, prepared_at, prepared_by, prepared_by_name, delivered_at, delivered_by, delivered_by_name, picked_up_at, picked_up_by, picked_up_by_name"
+    )
+    .in("order_id", orderIds);
+  for (const it of items ?? []) {
+    if (!itemsMap[it.order_id]) itemsMap[it.order_id] = [];
+    itemsMap[it.order_id].push(it);
+  }
+
+  return orders.map((o) => ({
+    ...o,
+    table_code: tableMap[o.table_id]?.code ?? null,
+    order_items: (itemsMap[o.id] ?? []).map((it) => {
+      const snapshotName = it.name_snapshot || it.name;
+      return {
+        ...it,
+        unit_price_cents: it.base_price ?? 0,
+        menu_items: { name: snapshotName || "Piatto", price_cents: it.base_price ?? 0 },
+      };
+    }),
+  }));
 };
 
 // ─── Settings (restaurant settings JSON + plan) ──────────────────────────────
 
 export interface RestaurantSettings {
-  notification_prefs: { admin: boolean; cameriere: boolean };
   plan: string | null;
   accessExpiresAt: string | null;
   maxStaff: number | null;
   restaurantName: string;
   restaurantId: string;
+  // Modalità di servizio: true = ordini inviati automaticamente in cucina;
+  // false = "con cameriere" (il cliente chiama il cameriere per ordinare).
+  autoOrderFlow: boolean;
 }
 
 export const getRestaurantSettings = async (restaurantId: string): Promise<RestaurantSettings> => {
   const supabase = getSupabase();
   const { data, error } = await supabase
     .from("restaurants")
-    .select("id, name, plan, access_expires_at, max_staff, settings")
+    .select("id, name, plan, access_expires_at, max_staff, auto_order_flow")
     .eq("id", restaurantId)
     .single();
   if (error) throw error;
-  const settings = (data as any).settings ?? {};
   return {
     restaurantId: data.id,
     restaurantName: data.name,
     plan: (data as any).plan,
     accessExpiresAt: (data as any).access_expires_at,
     maxStaff: (data as any).max_staff,
-    notification_prefs: {
-      admin: settings.notification_prefs?.admin ?? true,
-      cameriere: settings.notification_prefs?.cameriere ?? true,
-    },
+    autoOrderFlow: (data as any).auto_order_flow ?? true,
   };
 };
 
-export const updateNotificationPrefs = async (
-  restaurantId: string,
-  prefs: { admin: boolean; cameriere: boolean }
-): Promise<void> => {
+/**
+ * Aggiorna la modalità di servizio del ristorante.
+ * true  = ordini inviati automaticamente in cucina (flusso self-service);
+ * false = "con cameriere" (il cliente chiama il cameriere per ordinare).
+ * Update RLS-protetto: l'admin può modificare solo il proprio ristorante.
+ */
+export const updateOrderFlowMode = async (restaurantId: string, autoOrderFlow: boolean) => {
   const supabase = getSupabase();
-  // merge into existing settings JSON
-  const { data } = await supabase
-    .from("restaurants")
-    .select("settings")
-    .eq("id", restaurantId)
-    .single();
-  const current = (data as any)?.settings ?? {};
   const { error } = await supabase
     .from("restaurants")
-    .update({ settings: { ...current, notification_prefs: prefs } })
+    .update({ auto_order_flow: autoOrderFlow })
     .eq("id", restaurantId);
   if (error) throw error;
+};
+
+// ─── Richieste abbonamento (rinnovo / cambio piano) ─────────────────────────
+//
+// L'admin del ristorante invia una richiesta che il proprietario del sito
+// (pagina /owner-dashboard) potrà visualizzare e gestire.
+
+export type SubscriptionRequestType = "renew" | "plan_change";
+export type SubscriptionRequestStatus = "pending" | "approved" | "rejected";
+
+export interface SubscriptionRequest {
+  id: string;
+  restaurantId: string;
+  type: SubscriptionRequestType;
+  currentPlan: string | null;
+  requestedPlan: string | null;
+  status: SubscriptionRequestStatus;
+  note: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+function mapSubscriptionRequest(row: any): SubscriptionRequest {
+  return {
+    id: row.id,
+    restaurantId: row.restaurant_id,
+    type: row.type,
+    currentPlan: row.current_plan ?? null,
+    requestedPlan: row.requested_plan ?? null,
+    status: row.status,
+    note: row.note ?? null,
+    createdAt: row.created_at,
+    resolvedAt: row.resolved_at ?? null,
+  };
+}
+
+/**
+ * Crea una richiesta di rinnovo o cambio piano per il ristorante.
+ * Lancia un errore con messaggio "ALREADY_PENDING" se esiste già una
+ * richiesta dello stesso tipo ancora in attesa.
+ */
+export const createSubscriptionRequest = async (input: {
+  restaurantId: string;
+  type: SubscriptionRequestType;
+  currentPlan: string | null;
+  requestedPlan?: string | null;
+  note?: string | null;
+}): Promise<void> => {
+  const supabase = getSupabase();
+  const { data: existing, error: existErr } = await supabase
+    .from("subscription_requests")
+    .select("id")
+    .eq("restaurant_id", input.restaurantId)
+    .eq("type", input.type)
+    .eq("status", "pending")
+    .limit(1);
+  if (existErr) throw existErr;
+  if (existing && existing.length > 0) throw new Error("ALREADY_PENDING");
+
+  const { error } = await supabase.from("subscription_requests").insert({
+    restaurant_id: input.restaurantId,
+    type: input.type,
+    current_plan: input.currentPlan,
+    requested_plan: input.requestedPlan ?? null,
+    note: input.note ?? null,
+  });
+  if (error) throw error;
+};
+
+/** Storico delle richieste abbonamento del ristorante (più recenti prima). */
+export const listMySubscriptionRequests = async (
+  restaurantId: string,
+): Promise<SubscriptionRequest[]> => {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("subscription_requests")
+    .select("*")
+    .eq("restaurant_id", restaurantId)
+    .order("created_at", { ascending: false });
+  if (error) throw error;
+  return (data ?? []).map(mapSubscriptionRequest);
+};
+
+// ─── Delivery platforms (external_orders + integrations) ─────────────────────
+
+export type DeliveryPlatformId =
+  | "glovo"
+  | "deliveroo"
+  | "ubereats"
+  | "justeat"
+  | "other";
+
+export type ExternalOrderStatus =
+  | "new"
+  | "accepted"
+  | "preparing"
+  | "ready"
+  | "completed"
+  | "rejected"
+  | "cancelled";
+
+export interface ExternalOrderItem {
+  name: string;
+  quantity: number;
+  price: number | null;
+  notes?: string | null;
+  options?: string[];
+}
+
+export interface ExternalOrder {
+  id: string;
+  restaurantId: string;
+  platform: DeliveryPlatformId;
+  externalId: string | null;
+  status: ExternalOrderStatus;
+  orderType: string;
+  customerName: string | null;
+  customerPhone: string | null;
+  deliveryAddress: string | null;
+  items: ExternalOrderItem[];
+  subtotal: number | null;
+  deliveryFee: number | null;
+  total: number | null;
+  currency: string;
+  notes: string | null;
+  placedAt: string;
+  estimatedAt: string | null;
+  createdAt: string;
+}
+
+export interface PlatformIntegration {
+  id: string;
+  restaurantId: string;
+  platform: DeliveryPlatformId;
+  enabled: boolean;
+  webhookToken: string;
+  apiKey: string | null;
+  storeId: string | null;
+  autoAccept: boolean;
+}
+
+/* eslint-disable @typescript-eslint/no-explicit-any */
+function mapExternalOrder(row: any): ExternalOrder {
+  return {
+    id: row.id,
+    restaurantId: row.restaurant_id,
+    platform: row.platform,
+    externalId: row.external_id ?? null,
+    status: row.status,
+    orderType: row.order_type ?? "delivery",
+    customerName: row.customer_name ?? null,
+    customerPhone: row.customer_phone ?? null,
+    deliveryAddress: row.delivery_address ?? null,
+    items: Array.isArray(row.items) ? row.items : [],
+    subtotal: row.subtotal !== null ? Number(row.subtotal) : null,
+    deliveryFee: row.delivery_fee !== null ? Number(row.delivery_fee) : null,
+    total: row.total !== null ? Number(row.total) : null,
+    currency: row.currency ?? "EUR",
+    notes: row.notes ?? null,
+    placedAt: row.placed_at,
+    estimatedAt: row.estimated_at ?? null,
+    createdAt: row.created_at,
+  };
+}
+
+function mapIntegration(row: any): PlatformIntegration {
+  return {
+    id: row.id,
+    restaurantId: row.restaurant_id,
+    platform: row.platform,
+    enabled: !!row.enabled,
+    webhookToken: row.webhook_token,
+    apiKey: row.api_key ?? null,
+    storeId: row.store_id ?? null,
+    autoAccept: !!row.auto_accept,
+  };
+}
+/* eslint-enable @typescript-eslint/no-explicit-any */
+
+export const listExternalOrders = async (
+  restaurantId: string,
+): Promise<ExternalOrder[]> => {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("external_orders")
+    .select("*")
+    .eq("restaurant_id", restaurantId)
+    .order("placed_at", { ascending: false })
+    .limit(200);
+  if (error) throw error;
+  return (data ?? []).map(mapExternalOrder);
+};
+
+export const updateExternalOrderStatus = async (
+  orderId: string,
+  status: ExternalOrderStatus,
+): Promise<void> => {
+  const supabase = getSupabase();
+  const { error } = await supabase
+    .from("external_orders")
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq("id", orderId);
+  if (error) throw error;
+};
+
+export const getPlatformIntegrations = async (
+  restaurantId: string,
+): Promise<PlatformIntegration[]> => {
+  const supabase = getSupabase();
+  const { data, error } = await supabase
+    .from("restaurant_platform_integrations")
+    .select("*")
+    .eq("restaurant_id", restaurantId);
+  if (error) throw error;
+  return (data ?? []).map(mapIntegration);
+};
+
+// Crea la riga di integrazione se non esiste (genera il webhook_token lato DB).
+export const ensureIntegration = async (
+  restaurantId: string,
+  platform: DeliveryPlatformId,
+): Promise<PlatformIntegration> => {
+  const supabase = getSupabase();
+  const { data: existing, error: exErr } = await supabase
+    .from("restaurant_platform_integrations")
+    .select("*")
+    .eq("restaurant_id", restaurantId)
+    .eq("platform", platform)
+    .maybeSingle();
+  if (exErr) throw exErr;
+  if (existing) return mapIntegration(existing);
+
+  const { data, error } = await supabase
+    .from("restaurant_platform_integrations")
+    .insert({ restaurant_id: restaurantId, platform })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return mapIntegration(data);
+};
+
+export const upsertPlatformIntegration = async (input: {
+  restaurantId: string;
+  platform: DeliveryPlatformId;
+  enabled?: boolean;
+  apiKey?: string | null;
+  storeId?: string | null;
+  autoAccept?: boolean;
+}): Promise<PlatformIntegration> => {
+  const supabase = getSupabase();
+  const patch: Record<string, unknown> = {
+    restaurant_id: input.restaurantId,
+    platform: input.platform,
+    updated_at: new Date().toISOString(),
+  };
+  if (input.enabled !== undefined) patch.enabled = input.enabled;
+  if (input.apiKey !== undefined) patch.api_key = input.apiKey;
+  if (input.storeId !== undefined) patch.store_id = input.storeId;
+  if (input.autoAccept !== undefined) patch.auto_accept = input.autoAccept;
+
+  const { data, error } = await supabase
+    .from("restaurant_platform_integrations")
+    .upsert(patch, { onConflict: "restaurant_id,platform" })
+    .select("*")
+    .single();
+  if (error) throw error;
+  return mapIntegration(data);
+};
+
+export const regenerateWebhookToken = async (
+  restaurantId: string,
+  platform: DeliveryPlatformId,
+): Promise<string> => {
+  const supabase = getSupabase();
+  // Token generato lato client: 48 char esadecimali via due UUID.
+  const token = (
+    crypto.randomUUID() + crypto.randomUUID()
+  ).replace(/-/g, "");
+  const { data, error } = await supabase
+    .from("restaurant_platform_integrations")
+    .update({ webhook_token: token, updated_at: new Date().toISOString() })
+    .eq("restaurant_id", restaurantId)
+    .eq("platform", platform)
+    .select("webhook_token")
+    .single();
+  if (error) throw error;
+  return data.webhook_token;
 };
 
 // ─── Analytics (aggregated from orders + order_items + reviews) ──────────────
@@ -1231,4 +1805,115 @@ export const getTopDishes = async (
     .map(([name, v]) => ({ name, v }))
     .sort((a, b) => b.v - a.v)
     .slice(0, 6);
+};
+
+// ---------------------------------------------------------------------------
+// Reviews (recensioni)
+// ---------------------------------------------------------------------------
+
+export interface DishReviewStat {
+  menuItemId: string | null;
+  name: string;
+  count: number;
+  avg: number; // media stelle (0-5)
+}
+
+export interface ReviewEntry {
+  id: string;
+  stars: number;
+  text: string;
+  dishName: string;
+  tableNumber: string | null;
+  createdAt: string;
+}
+
+export interface ReviewStats {
+  total: number;
+  avg: number;
+  dishesRated: number;
+  withText: number;
+  distribution: { stars: number; count: number }[]; // stelle 1..5
+  podium: DishReviewStat[]; // top 3 per media (poi conteggio)
+  ranking: DishReviewStat[]; // tutti i piatti ordinati
+  written: ReviewEntry[]; // recensioni con testo
+}
+
+/**
+ * Statistiche recensioni per la sezione admin.
+ * `days`: finestra temporale (7 / 30 giorni). 0 = tutte.
+ */
+export const getReviewStats = async (
+  restaurantId: string,
+  days: 7 | 30 | 0 = 7
+): Promise<ReviewStats> => {
+  const supabase = getSupabase();
+  let query = supabase
+    .from("reviews")
+    .select("id, stars, text, dish_name, menu_item_id, table_number, created_at")
+    .eq("restaurant_id", restaurantId)
+    .order("created_at", { ascending: false });
+  if (days > 0) {
+    const since = new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString();
+    query = query.gte("created_at", since);
+  }
+  const { data, error } = await query;
+  if (error) throw error;
+  const rows = data ?? [];
+
+  const total = rows.length;
+  const avg = total > 0 ? rows.reduce((s, r) => s + (r.stars ?? 0), 0) / total : 0;
+
+  const distribution = [1, 2, 3, 4, 5].map((stars) => ({
+    stars,
+    count: rows.filter((r) => Math.round(r.stars ?? 0) === stars).length,
+  }));
+
+  // Raggruppa per piatto (menu_item_id, fallback su dish_name)
+  const groups = new Map<
+    string,
+    { name: string; menuItemId: string | null; sum: number; count: number }
+  >();
+  for (const r of rows) {
+    const menuItemId = (r.menu_item_id as string | null) ?? null;
+    const key = menuItemId ?? `name:${r.dish_name ?? "?"}`;
+    const name = (r.dish_name as string) || "Piatto";
+    const g = groups.get(key) ?? { name, menuItemId, sum: 0, count: 0 };
+    g.sum += r.stars ?? 0;
+    g.count += 1;
+    groups.set(key, g);
+  }
+  const ranking: DishReviewStat[] = Array.from(groups.values())
+    .map((g) => ({
+      menuItemId: g.menuItemId,
+      name: g.name,
+      count: g.count,
+      avg: g.count > 0 ? g.sum / g.count : 0,
+    }))
+    .sort(
+      (a, b) => b.avg - a.avg || b.count - a.count || a.name.localeCompare(b.name)
+    );
+
+  const podium = ranking.slice(0, 3);
+
+  const written: ReviewEntry[] = rows
+    .filter((r) => ((r.text as string | null) ?? "").trim().length > 0)
+    .map((r) => ({
+      id: r.id as string,
+      stars: r.stars ?? 0,
+      text: (r.text as string) ?? "",
+      dishName: (r.dish_name as string) || "Piatto",
+      tableNumber: (r.table_number as string | null) ?? null,
+      createdAt: r.created_at as string,
+    }));
+
+  return {
+    total,
+    avg,
+    dishesRated: ranking.length,
+    withText: written.length,
+    distribution,
+    podium,
+    ranking,
+    written,
+  };
 };

@@ -3,11 +3,16 @@ import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
 
 export async function POST(req: Request) {
-  const { sessionId, tableCode } = await req.json();
+  const { sessionId, tableCode, type: rawType } = await req.json();
 
   if (!sessionId && !tableCode) {
     return NextResponse.json({ error: "sessionId o tableCode mancante" }, { status: 400 });
   }
+
+  // Tipo chiamata: 'call' (generica), 'payment' (conto), 'order' (il tavolo vuole
+  // ordinare, modalità "con cameriere"). Default 'call'. Valore non fidato dal client.
+  const type: "call" | "payment" | "order" =
+    rawType === "payment" || rawType === "order" ? rawType : "call";
 
   const supabase = getSupabaseAdmin();
 
@@ -46,6 +51,7 @@ export async function POST(req: Request) {
       table_id: tableId,
       restaurant_id: restaurantId,
       session_id: sessionIdOrNull,
+      type,
     })
     .select("id")
     .single();

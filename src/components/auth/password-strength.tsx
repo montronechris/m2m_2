@@ -1,6 +1,7 @@
 'use client'
 
 import { Check } from 'lucide-react'
+import { useI18n } from '@/components/i18n/I18nProvider'
 
 const GRAY = '#757575'
 const GREEN = '#4CAF50'
@@ -46,20 +47,24 @@ export function evaluatePassword(pw: string): {
   return { results, passedCount, score, allPassed: passedCount === RULES.length }
 }
 
-function strengthLabel(passedCount: number): { label: string; color: string } {
+type StrengthKey = 'veryWeak' | 'weak' | 'medium' | 'strong' | 'veryStrong' | ''
+
+// Restituisce solo la chiave di traduzione + il colore; l'etichetta tradotta
+// viene risolta nel componente tramite i18n.
+function strengthMeta(passedCount: number): { key: StrengthKey; color: string } {
   switch (passedCount) {
     case 0:
-      return { label: 'Molto debole', color: '#9e9e9e' }
+      return { key: 'veryWeak', color: '#9e9e9e' }
     case 1:
-      return { label: 'Debole', color: '#F44336' }
+      return { key: 'weak', color: '#F44336' }
     case 2:
-      return { label: 'Media', color: '#FF9800' }
+      return { key: 'medium', color: '#FF9800' }
     case 3:
-      return { label: 'Forte', color: '#8BC34A' }
+      return { key: 'strong', color: '#8BC34A' }
     case 4:
-      return { label: 'Molto forte', color: GREEN }
+      return { key: 'veryStrong', color: GREEN }
     default:
-      return { label: '', color: '#9e9e9e' }
+      return { key: '', color: '#9e9e9e' }
   }
 }
 
@@ -68,16 +73,26 @@ function strengthLabel(passedCount: number): { label: string; color: string } {
 /* ------------------------------------------------------------------ */
 
 export function PasswordStrength({ password }: { password: string }) {
+  const { tr } = useI18n()
+  const T = tr.auth.passwordStrength
   const { results, passedCount, score } = evaluatePassword(password)
-  const { label, color } = strengthLabel(passedCount)
+  const { key, color } = strengthMeta(passedCount)
+  const label = key ? T[key] : ''
   const hasInput = password.length > 0
+  // Etichette regole tradotte, risolte per id.
+  const ruleLabels: Record<string, string> = {
+    length: T.ruleLength,
+    case: T.ruleCase,
+    number: T.ruleNumber,
+    symbol: T.ruleSymbol,
+  }
 
   return (
     <div className="mt-3 select-none">
       {/* Label + strength word */}
       <div className="flex items-center justify-between">
         <span className="text-xs font-medium" style={{ color: GRAY }}>
-          Sicurezza password
+          {T.title}
         </span>
         <span
           className="text-xs font-semibold transition-colors duration-300"
@@ -124,7 +139,7 @@ export function PasswordStrength({ password }: { password: string }) {
                 textDecoration: r.passed ? 'none' : 'none',
               }}
             >
-              {r.label}
+              {ruleLabels[r.id] ?? r.label}
             </span>
           </li>
         ))}

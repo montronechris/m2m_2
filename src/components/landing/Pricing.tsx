@@ -107,19 +107,21 @@ export function Pricing() {
                 </span>
               </div>
 
-              {/* Annual-billing savings pill (visual-only) */}
-              {plan.note && (
-                <span
-                  className={cn(
-                    'relative mt-3 inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold backdrop-blur',
-                    plan.featured
-                      ? 'bg-white/15 text-white ring-1 ring-inset ring-white/30'
-                      : 'bg-brand-amber/10 text-brand-terra ring-1 ring-inset ring-brand-amber/30'
-                  )}
-                >
-                  <Sparkles className="h-3 w-3" /> {plan.note}
-                </span>
-              )}
+              {/* Annual-billing savings pill (visual-only) — reserves height even when absent, so CTA buttons stay aligned across cards */}
+              <div className="relative mt-3 flex h-[26px] items-center">
+                {plan.note && (
+                  <span
+                    className={cn(
+                      'inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-[11px] font-bold backdrop-blur',
+                      plan.featured
+                        ? 'bg-white/15 text-white ring-1 ring-inset ring-white/30'
+                        : 'bg-brand-amber/10 text-brand-terra ring-1 ring-inset ring-brand-amber/30'
+                    )}
+                  >
+                    <Sparkles className="h-3 w-3" /> {plan.note}
+                  </span>
+                )}
+              </div>
 
               <Button
                 asChild

@@ -4,6 +4,10 @@
 
 const STORAGE_KEY = "notif_sound_muted";
 const EVENT_NAME = "notif-sound-mute-change";
+// Preferenze "ricevi notifiche" per sezione, per-account (browser/dispositivo
+// dell'account che le imposta, non condivise con il resto dello staff).
+const ADMIN_NOTIF_KEY = "notif_admin_muted";
+const CAMERIERE_NOTIF_KEY = "notif_cameriere_muted";
 
 export function isNotificationSoundMuted(): boolean {
   if (typeof window === "undefined") return false;
@@ -23,6 +27,26 @@ export function subscribeNotificationSoundMuted(
   const handler = (e: Event) => callback((e as CustomEvent<boolean>).detail);
   window.addEventListener(EVENT_NAME, handler);
   return () => window.removeEventListener(EVENT_NAME, handler);
+}
+
+export function isAdminNotifMuted(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(ADMIN_NOTIF_KEY) === "1";
+}
+
+export function setAdminNotifMuted(muted: boolean): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(ADMIN_NOTIF_KEY, muted ? "1" : "0");
+}
+
+export function isCameriereNotifMuted(): boolean {
+  if (typeof window === "undefined") return false;
+  return window.localStorage.getItem(CAMERIERE_NOTIF_KEY) === "1";
+}
+
+export function setCameriereNotifMuted(muted: boolean): void {
+  if (typeof window === "undefined") return;
+  window.localStorage.setItem(CAMERIERE_NOTIF_KEY, muted ? "1" : "0");
 }
 
 let sharedAudioCtx: AudioContext | null = null;

@@ -12,6 +12,7 @@ import {
   ShoppingBag, StickyNote, ChefHat,
   Tag, Banknote, CreditCard, X, Loader2,
   ChevronRight, UtensilsCrossed, Sparkles, Pencil, Save, Check, SlidersHorizontal,
+  GlassWater,
 } from "lucide-react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
@@ -2147,8 +2148,14 @@ export default function CartPage() {
                       boxShadow: `0 6px 18px ${T.accent}40, inset 0 1px 0 rgba(255,255,255,0.35)`,
                     }}
                   >
-                    <span style={{ fontSize: 16, fontWeight: 800, color: "#fff", lineHeight: 1, fontFamily: "'Space Grotesk', sans-serif" }}>{portata}</span>
-                    <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.85)", marginLeft: 1 }}>ª</span>
+                    {portata === 0 ? (
+                      <GlassWater size={18} color="#fff" />
+                    ) : (
+                      <>
+                        <span style={{ fontSize: 16, fontWeight: 800, color: "#fff", lineHeight: 1, fontFamily: "'Space Grotesk', sans-serif" }}>{portata}</span>
+                        <span style={{ fontSize: 9, fontWeight: 800, color: "rgba(255,255,255,0.85)", marginLeft: 1 }}>ª</span>
+                      </>
+                    )}
                   </motion.div>
                   {/* Label portata */}
                   <span style={{
@@ -2157,7 +2164,7 @@ export default function CartPage() {
                     fontFamily: "'Space Grotesk', sans-serif",
                     minWidth: 0, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
                   }}>
-                    {portataLabels[portata] || `${portata === 1 ? tCart.courseFirst : portata === 2 ? tCart.courseSecond : portata === 3 ? tCart.courseThird : portata === 4 ? tCart.courseFourth : `${portata}ª`} ${tCart.courseWord}`}
+                    {portata === 0 ? tCart.drinksLabel : (portataLabels[portata] || `${portata === 1 ? tCart.courseFirst : portata === 2 ? tCart.courseSecond : portata === 3 ? tCart.courseThird : portata === 4 ? tCart.courseFourth : `${portata}ª`} ${tCart.courseWord}`)}
                   </span>
                   {/* Prezzo totale portata in pill semi-trasparente */}
                   <span style={{

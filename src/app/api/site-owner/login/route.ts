@@ -3,6 +3,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import { supabaseServer } from "@/lib/supabase-server";
 import { signSiteOwnerToken } from "@/lib/site-owner-jwt";
+import { hitRateLimit, resetRateLimit, getClientIp } from "@/lib/rate-limit";
 
 // bcryptjs è pure-JS, funziona senza binari nativi
 // npm install bcryptjs @types/bcryptjs
@@ -16,7 +17,21 @@ const LoginSchema = z.object({
 // Risposta generica per non rivelare se l'email esiste o meno
 const GENERIC_ERROR = "Credenziali non valide.";
 
+// Max 8 tentativi ogni 15 minuti per IP.
+const RL_MAX = 8;
+const RL_WINDOW_MS = 15 * 60 * 1000;
+
 export async function POST(req: Request) {
+  // 0. Rate limit anti brute-force (per IP)
+  const rlKey = `site-owner-login:${getClientIp(req)}`;
+  const rl = hitRateLimit(rlKey, RL_MAX, RL_WINDOW_MS);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: "Troppi tentativi di accesso. Riprova più tardi." },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } },
+    );
+  }
+
   // 1. Parse + validazione input
   let body: unknown;
   try {
@@ -47,6 +62,9 @@ export async function POST(req: Request) {
   if (dbError || !owner || !passwordMatch) {
     return NextResponse.json({ error: GENERIC_ERROR }, { status: 401 });
   }
+
+  // Login riuscito: azzera il contatore rate limit per questo IP.
+  resetRateLimit(rlKey);
 
   // 4. Genera JWT
   const token = await signSiteOwnerToken(owner.id, owner.email);

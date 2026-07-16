@@ -63,3 +63,10 @@ export function useI18n() {
   if (!ctx) throw new Error('useI18n must be used within I18nProvider')
   return ctx
 }
+
+
+// Esposto per il layer i18n delle pagine client: permette di ri-fornire lo stesso
+// context con `tr.client` tradotto a runtime (vedi ClientLocaleProvider), senza
+// toccare le singole pagine né questo provider di base.
+export { Ctx as I18nContext }
+export type { I18nCtx }

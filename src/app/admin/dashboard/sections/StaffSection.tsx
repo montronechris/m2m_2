@@ -1,5 +1,12 @@
 'use client'
 
+// ─── SEZIONE: STAFF / GESTIONE PERSONALE ───────────────────────────────────────
+//
+// Elenco membri, ruoli e codici di invito.
+// Stato: lista staff + modali; crea/rimuove membri e genera codici invito.
+// ──────────────────────────────────────────────────────────────────────────────
+
+
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Plus, Users, Shield, UtensilsCrossed, MoreHorizontal, AlertCircle, X, Check, Loader2, Copy, UserCog, Trash2, UserPlus } from 'lucide-react'

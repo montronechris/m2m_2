@@ -11,6 +11,7 @@ import { useInactivityTimeout } from "@/hooks/useInactivityTimeout";
 import { clearTableSession } from "@/lib/table-session";
 import { useCartStore } from "@/stores/useCartStore";
 import { getEndScreenActive, subscribeEndScreenActive } from "@/lib/end-screen-signal";
+import { ClientLocaleProvider } from "@/components/i18n/ClientLocaleProvider";
 
 const HIDDEN_NAVBAR_SEGMENTS = ["cart", "scan"];
 
@@ -100,7 +101,7 @@ export default function ClientLayout({
   }, []);
 
   return (
-    <>
+    <ClientLocaleProvider>
       {!hideNavbar && (
         <Navbar
           tableNumber={tableNumber}
@@ -140,6 +141,6 @@ export default function ClientLayout({
       />
 
       {children}
-    </>
+    </ClientLocaleProvider>
   );
 }

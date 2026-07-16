@@ -93,6 +93,9 @@ export const useCartStore = create<CartState>()((set, get) => ({
 
   // ── ADD ───────────────────────────────────────────────────────────────────
   addItem: async ({ menuItemId, name, basePriceCents, customizations, portata = 1, is_drink = false, portataLocked = false }) => {
+    // Le bevande sono escluse dalla sequenza delle portate di cibo: portata
+    // fissa a 0, mai spostate in avanti dal floor delle portate già servite.
+    if (is_drink) portata = 0;
     const { orderId, tableId, restaurantId } = get();
 
     // ── Fast path: il piatto esiste già identico in carrello ──────────────
@@ -152,14 +155,16 @@ export const useCartStore = create<CartState>()((set, get) => ({
     // upsell (portataLocked passato esplicitamente a true) restano fissi.
     let effectivePortata = portata;
     const effectivePortataLocked = portataLocked;
-    try {
-      const floor = await getActivePortataFloor(tableId, get().sessionId ?? undefined);
-      if (floor != null) {
-        set({ activePortataFloor: floor });
-        if (!portataLocked) effectivePortata = Math.max(portata, floor + 1);
+    if (!is_drink) {
+      try {
+        const floor = await getActivePortataFloor(tableId, get().sessionId ?? undefined);
+        if (floor != null) {
+          set({ activePortataFloor: floor });
+          if (!portataLocked) effectivePortata = Math.max(portata, floor + 1);
+        }
+      } catch (err) {
+        console.error("[CartStore] getActivePortataFloor failed:", err);
       }
-    } catch (err) {
-      console.error("[CartStore] getActivePortataFloor failed:", err);
     }
 
     // Ricontrolla (con effectivePortata aggiornata dal floor) se nel frattempo

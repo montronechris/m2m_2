@@ -14,6 +14,11 @@ interface RestaurantRow {
   staff_count: number;
 }
 
+// Il gate abbonamento (isRestaurantActive in src/lib/check-access.ts) esenta
+// sempre questo ID a prescindere da status/access_expires_at: è la vetrina
+// demo pubblica e non deve mai risultare bloccata.
+const DEMO_RESTAURANT_ID = "de8f0f41-5b5d-48a3-8e98-281deb79412d";
+
 const PLAN_LABEL: Record<string, string> = {
   free_trial: "Prova gratuita",
   base: "Base",
@@ -153,9 +158,15 @@ export default function RestaurantsOverview() {
                         {r.status ? (STATUS_LABEL[r.status] ?? r.status) : "—"}
                       </span>
                     </td>
-                    <td style={{ ...cellStyle, color: expired ? "#fca5a5" : "#e2e8f0" }}>
-                      {r.access_expires_at ? fmtDate(r.access_expires_at) : "Nessuna"}
-                      {expired && " (scaduto)"}
+                    <td style={{ ...cellStyle, color: r.id === DEMO_RESTAURANT_ID ? "#94a3b8" : expired ? "#fca5a5" : "#e2e8f0" }}>
+                      {r.id === DEMO_RESTAURANT_ID ? (
+                        "Nessuna scadenza (bypass da codice)"
+                      ) : (
+                        <>
+                          {r.access_expires_at ? fmtDate(r.access_expires_at) : "Nessuna"}
+                          {expired && " (scaduto)"}
+                        </>
+                      )}
                     </td>
                     <td style={{ ...cellStyle, textAlign: "center" }}>{Number(r.staff_count || 0)}</td>
                     <td style={cellStyle}>{fmtDate(r.created_at)}</td>

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { GoogleGenerativeAI } from '@google/generative-ai'
-import { extractText, getDocumentProxy } from 'unpdf'
+import { extractText, getDocumentProxy, renderPageAsImage } from 'unpdf'
 import { requireActiveStaff } from '@/lib/auth/requireActiveStaff'
 
 export const runtime = 'nodejs'
@@ -86,12 +86,13 @@ async function extractWithGroqText(menuText: string): Promise<unknown[]> {
   return extractJsonArray(content)
 }
 
-/** Groq – modello VISION (per immagini/foto del menu). */
-async function extractWithGroqVision(bytes: Buffer, mimeType: string): Promise<unknown[]> {
+/** Massimo di pagine PDF da rasterizzare come fallback vision (limita costi/tempo). */
+const MAX_PDF_VISION_PAGES = 6
+
+/** Groq – modello VISION su una singola immagine (data URL base64). */
+async function groqVisionFromDataUrl(dataUrl: string): Promise<unknown[]> {
   const apiKey = process.env.GROQ_API_KEY
   if (!apiKey) throw Object.assign(new Error('GROQ_NOT_CONFIGURED'), { code: 'GROQ_NOT_CONFIGURED' })
-
-  const dataUrl = `data:${mimeType};base64,${bytes.toString('base64')}`
 
   const res = await fetch('https://api.groq.com/openai/v1/chat/completions', {
     method: 'POST',
@@ -122,6 +123,48 @@ async function extractWithGroqVision(bytes: Buffer, mimeType: string): Promise<u
   const content = data?.choices?.[0]?.message?.content
   if (!content) throw new Error('EMPTY_RESPONSE')
   return extractJsonArray(content)
+}
+
+/** Groq – modello VISION (per immagini/foto del menu). */
+async function extractWithGroqVision(bytes: Buffer, mimeType: string): Promise<unknown[]> {
+  const dataUrl = `data:${mimeType};base64,${bytes.toString('base64')}`
+  return groqVisionFromDataUrl(dataUrl)
+}
+
+/**
+ * Fallback per PDF scansionati quando Gemini non è disponibile: rasterizza le
+ * pagine del PDF in PNG (unpdf + @napi-rs/canvas) e le passa a Groq vision,
+ * unendo i piatti estratti da ogni pagina.
+ */
+async function extractWithGroqVisionFromPdf(bytes: Buffer): Promise<unknown[]> {
+  const apiKey = process.env.GROQ_API_KEY
+  if (!apiKey) throw Object.assign(new Error('GROQ_NOT_CONFIGURED'), { code: 'GROQ_NOT_CONFIGURED' })
+
+  const pdf = await getDocumentProxy(new Uint8Array(bytes))
+  const pageCount = Math.min(pdf.numPages, MAX_PDF_VISION_PAGES)
+
+  const all: unknown[] = []
+  const pageErrors: string[] = []
+  for (let page = 1; page <= pageCount; page++) {
+    try {
+      const dataUrl = (await renderPageAsImage(new Uint8Array(bytes), page, {
+        scale: 2,
+        canvasImport: () => import('@napi-rs/canvas'),
+        toDataURL: true,
+      })) as string
+      const items = await groqVisionFromDataUrl(dataUrl)
+      if (Array.isArray(items)) all.push(...items)
+    } catch (e: any) {
+      pageErrors.push(`p${page}: ${e?.message ?? 'errore'}`)
+      // Se Groq è a sua volta a corto di quota, non ha senso insistere sulle altre pagine.
+      if (isQuotaError(e)) throw e
+    }
+  }
+
+  if (all.length === 0) {
+    throw new Error(pageErrors.length ? `GROQ_PDF_VISION_EMPTY (${pageErrors.join('; ')})` : 'GROQ_PDF_VISION_EMPTY')
+  }
+  return all
 }
 
 /** Gemini vision – accetta sia immagini che PDF nativamente. */
@@ -199,12 +242,25 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ items, source: 'gemini' })
     } catch (e: any) {
       errors.push(`Gemini: ${e?.message ?? 'errore'}`)
-      const quota = isQuotaError(e)
-      const msg = quota
-        ? 'Quota Gemini esaurita e testo del PDF non estraibile. Riprova tra qualche minuto, oppure esporta il menu come immagine (JPG/PNG) e ricaricalo.'
-        : 'Impossibile leggere questo PDF. Se è una scansione, prova a caricarlo come immagine (JPG/PNG).'
-      return NextResponse.json({ error: msg, details: errors }, { status: quota ? 429 : 502 })
     }
+
+    // 3) Fallback finale: rasterizza il PDF in immagini e usa Groq vision. Copre
+    // i PDF scansionati anche quando la quota Gemini è esaurita.
+    if (process.env.GROQ_API_KEY) {
+      try {
+        const items = await extractWithGroqVisionFromPdf(bytes)
+        return NextResponse.json({ items, source: 'groq-pdf-vision' })
+      } catch (e: any) {
+        errors.push(`Groq PDF vision: ${e?.message ?? 'errore'}`)
+      }
+    }
+
+    // Tutti i tentativi falliti: messaggio in base alla causa più probabile.
+    const quota = errors.some((m) => /429|quota|rate limit/i.test(m))
+    const msg = quota
+      ? 'Quota AI temporaneamente esaurita. Riprova tra qualche minuto, oppure esporta il menu come immagine (JPG/PNG) e ricaricalo.'
+      : 'Impossibile leggere questo PDF. Se è una scansione, prova a caricarlo come immagine (JPG/PNG).'
+    return NextResponse.json({ error: msg, details: errors }, { status: quota ? 429 : 502 })
   }
 
   // ---- Immagini: Gemini vision, poi fallback Groq vision ----

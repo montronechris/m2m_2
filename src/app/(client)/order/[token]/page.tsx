@@ -1085,11 +1085,13 @@ export default function OrderPage({ params }: { params: Promise<{ token: string 
   }, [cartCount, cartIconControls])
 
   function addToCart(item: MenuItem, originRect?: DOMRect) {
+    const isDrink = dbCategories.find((cat) => cat.id === item.category_id)?.is_drink ?? false
     addCartItem({
       menuItemId: item.id,
       name: item.name,
       basePriceCents: item.price_cents,
       customizations: [],
+      is_drink: isDrink,
     })
     if (originRect) {
       setFlyingDot({ x: originRect.left + originRect.width / 2, y: originRect.top + originRect.height / 2, id: Date.now() })

@@ -1,10 +1,19 @@
 import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
+import { hitRateLimit, getClientIp } from '@/lib/rate-limit'
 
 const supabase = createClient(
   process.env.NEXT_PUBLIC_SUPABASE_URL!,
   process.env.SUPABASE_SERVICE_ROLE_KEY!
 )
+
+// H2: limiti anti-abuso su un endpoint pubblico che invoca un LLM a pagamento
+// (Groq) e scrive su DB con service-role. Senza questi cap chiunque potrebbe
+// generare costi arbitrari e inquinare `ingredient_translations`.
+const MAX_TEXTS = 100 // stringhe per richiesta
+const MAX_TEXT_LEN = 400 // caratteri per stringa
+const RATE_MAX = 30 // richieste per finestra
+const RATE_WINDOW_MS = 60 * 1000 // finestra di 1 minuto per IP
 
 type Body = {
   texts: string[]
@@ -14,10 +23,27 @@ type Body = {
 
 export async function POST(req: Request) {
   try {
+    const rl = hitRateLimit(`translate:${getClientIp(req)}`, RATE_MAX, RATE_WINDOW_MS)
+    if (rl.limited) {
+      return NextResponse.json(
+        { error: 'too_many_requests' },
+        { status: 429, headers: { 'Retry-After': String(rl.retryAfterSec) } }
+      )
+    }
+
     const { texts, sourceLang = 'it', targetLang } = (await req.json()) as Body
 
     if (!Array.isArray(texts) || !targetLang) {
       return NextResponse.json({ error: 'invalid body' }, { status: 400 })
+    }
+    if (typeof targetLang !== 'string' || targetLang.length > 8 || sourceLang.length > 8) {
+      return NextResponse.json({ error: 'invalid lang' }, { status: 400 })
+    }
+    if (texts.length > MAX_TEXTS) {
+      return NextResponse.json({ error: 'too_many_texts', max: MAX_TEXTS }, { status: 413 })
+    }
+    if (texts.some((t) => typeof t === 'string' && t.length > MAX_TEXT_LEN)) {
+      return NextResponse.json({ error: 'text_too_long', max: MAX_TEXT_LEN }, { status: 413 })
     }
     if (sourceLang === targetLang) {
       return NextResponse.json({ translations: Object.fromEntries(texts.map((t) => [t, t])) })

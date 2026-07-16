@@ -29,11 +29,13 @@ const LABELS_IT: Record<SectionId, string> = {
   menu:      "Menu",
   tables:    "Tavoli",
   analytics: "Analytics",
+  reviews:   "Recensioni",
   staff:     "Staff",
   branding:  "Branding",
   waiter:    "Cameriere",
   history:   "Cronologia",
   calendar:  "In arrivo",
+  delivery:  "Delivery",
   settings:  "Impostazioni",
 };
 
@@ -43,11 +45,13 @@ const LABELS_EN: Record<SectionId, string> = {
   menu:      "Menu",
   tables:    "Tables",
   analytics: "Analytics",
+  reviews:   "Reviews",
   staff:     "Staff",
   branding:  "Branding",
   waiter:    "Waiter",
   history:   "History",
   calendar:  "Coming soon",
+  delivery:  "Delivery",
   settings:  "Settings",
 };
 

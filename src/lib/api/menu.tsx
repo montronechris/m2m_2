@@ -31,9 +31,7 @@ export async function getMenuItems(): Promise<MenuItem[]> {
 // Recupera opzioni e scelte per un prodotto specifico
 export async function getProductOptions(itemId: string): Promise<OptionGroup[]> {
   const supabase = createClient();
-  
-  // Nota: Se usi menu_item_option_map come ponte many-to-many, 
-  // cambia la query per unire quella tabella. Qui uso la relazione diretta item_id.
+
   const { data, error } = await supabase
     .from('menu_item_options')
     .select(`

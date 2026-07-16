@@ -1,6 +1,7 @@
 'use client'
 
 import { useEffect, useState } from 'react'
+import Link from 'next/link'
 import { useSearchParams } from 'next/navigation'
 import {
   Mail,
@@ -81,6 +82,9 @@ function IconInput({
   state = 'default',
   value,
   onChange,
+  inputMode,
+  maxLength,
+  autoFocus,
 }: {
   icon: React.ReactNode
   type?: string
@@ -91,6 +95,9 @@ function IconInput({
   state?: 'default' | 'valid' | 'invalid'
   value?: string
   onChange?: (e: React.ChangeEvent<HTMLInputElement>) => void
+  inputMode?: React.HTMLAttributes<HTMLInputElement>['inputMode']
+  maxLength?: number
+  autoFocus?: boolean
 }) {
   const restingBorder =
     state === 'valid'
@@ -119,6 +126,9 @@ function IconInput({
         autoComplete={autoComplete}
         value={value}
         onChange={onChange}
+        inputMode={inputMode}
+        maxLength={maxLength}
+        autoFocus={autoFocus}
         className="min-w-0 flex-1 bg-transparent text-[15px] outline-none placeholder:text-[#9e9e9e]"
         style={{ color: C.ink }}
       />
@@ -188,21 +198,32 @@ function GhostButton({
 }
 
 function SocialButtons() {
+  const handleOAuth = async (provider: 'google' | 'facebook') => {
+    await supabase.auth.signInWithOAuth({
+      provider,
+      options: { redirectTo: `${window.location.origin}/auth/callback` },
+    })
+  }
+
   return (
     <div className="grid grid-cols-2 gap-3">
       <button
         type="button"
+        onClick={() => handleOAuth('google')}
         className="flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-medium transition-all hover:border-[#FF6B00]/40 hover:shadow-sm"
         style={{ borderColor: 'rgba(33,33,33,0.12)', color: C.ink }}
       >
-        <GoogleIcon /> Google
+        <GoogleIcon />
+        Google
       </button>
       <button
         type="button"
+        onClick={() => handleOAuth('facebook')}
         className="flex items-center justify-center gap-2 rounded-xl border bg-white px-4 py-2.5 text-sm font-medium transition-all hover:border-[#FF6B00]/40 hover:shadow-sm"
         style={{ borderColor: 'rgba(33,33,33,0.12)', color: C.ink }}
       >
-        <GithubIcon /> GitHub
+        <FacebookIcon />
+        Facebook
       </button>
     </div>
   )
@@ -219,10 +240,13 @@ function GoogleIcon() {
   )
 }
 
-function GithubIcon() {
+function FacebookIcon() {
   return (
-    <svg className="h-4 w-4" viewBox="0 0 24 24" fill="currentColor" style={{ color: C.ink }}>
-      <path d="M12 2C6.48 2 2 6.58 2 12.25c0 4.53 2.87 8.37 6.84 9.73.5.1.68-.22.68-.49 0-.24-.01-.88-.01-1.73-2.78.62-3.37-1.37-3.37-1.37-.45-1.18-1.11-1.49-1.11-1.49-.91-.64.07-.62.07-.62 1 .07 1.53 1.06 1.53 1.06.89 1.56 2.34 1.11 2.91.85.09-.66.35-1.11.63-1.37-2.22-.26-4.56-1.14-4.56-5.07 0-1.12.39-2.03 1.03-2.75-.1-.26-.45-1.3.1-2.71 0 0 .84-.27 2.75 1.05A9.36 9.36 0 0 1 12 6.84c.85 0 1.71.12 2.51.34 1.91-1.32 2.75-1.05 2.75-1.05.55 1.41.2 2.45.1 2.71.64.72 1.03 1.63 1.03 2.75 0 3.94-2.34 4.81-4.57 5.06.36.32.68.94.68 1.9 0 1.37-.01 2.48-.01 2.82 0 .27.18.6.69.49A10.02 10.02 0 0 0 22 12.25C22 6.58 17.52 2 12 2Z" />
+    <svg className="h-4 w-4" viewBox="0 0 24 24">
+      <path
+        fill="#1877F2"
+        d="M24 12.07C24 5.41 18.63 0 12 0S0 5.41 0 12.07C0 18.1 4.39 23.09 10.13 24v-8.44H7.08v-3.49h3.05V9.41c0-3.02 1.79-4.69 4.53-4.69 1.31 0 2.68.24 2.68.24v2.97h-1.51c-1.49 0-1.95.93-1.95 1.89v2.25h3.32l-.53 3.49h-2.79V24C19.61 23.09 24 18.1 24 12.07Z"
+      />
     </svg>
   )
 }
@@ -240,6 +264,15 @@ function LoginForm({ onLoginSuccess }: { onLoginSuccess: (name: string | null) =
   const [password, setPassword] = useState('')
   const [loading, setLoading] = useState(false)
   const [rememberMe, setRememberMe] = useState(false)
+  // Step 2FA: attivo quando l'account ha un fattore TOTP verificato.
+  const [mfaRequired, setMfaRequired] = useState(false)
+  const [mfaFactorId, setMfaFactorId] = useState<string | null>(null)
+  const [mfaCode, setMfaCode] = useState('')
+  const [pendingName, setPendingName] = useState<string | null>(null)
+  // Step 2FA via email (canale applicativo opzionale, attivabile dal profilo).
+  const [emailOtpRequired, setEmailOtpRequired] = useState(false)
+  const [emailOtpCode, setEmailOtpCode] = useState('')
+  const [otpResending, setOtpResending] = useState(false)
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -251,15 +284,298 @@ function LoginForm({ onLoginSuccess }: { onLoginSuccess: (name: string | null) =
         password,
       })
       if (error) {
-        toast({ variant: 'destructive', title: t.failedTitle, description: error.message })
+        // Supabase applica un rate limit lato server: mostriamo un messaggio
+        // dedicato invece dell'errore grezzo quando scatta il 429.
+        const isRateLimit =
+          (error as any).status === 429 || /rate limit|too many/i.test(error.message)
+        toast({
+          variant: 'destructive',
+          title: isRateLimit ? t.rateLimitTitle : t.failedTitle,
+          description: isRateLimit ? t.rateLimitDesc : error.message,
+        })
         return
       }
-      onLoginSuccess(data.user?.user_metadata?.full_name ?? null)
+      const name = data.user?.user_metadata?.full_name ?? null
+      // Se l'account ha la 2FA attiva, Supabase richiede di elevare la sessione
+      // ad aal2: mostriamo lo step per il codice invece di completare subito.
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if (aal && aal.nextLevel === 'aal2' && aal.nextLevel !== aal.currentLevel) {
+        const { data: factors } = await supabase.auth.mfa.listFactors()
+        const totp = factors?.totp?.find((f) => f.status === 'verified')
+        if (totp) {
+          setPendingName(name)
+          setMfaFactorId(totp.id)
+          setMfaCode('')
+          setMfaRequired(true)
+          return
+        }
+      }
+      // 2FA via email (opzionale, attivata dal profilo). A differenza della TOTP,
+      // e' un secondo fattore a livello applicativo: chiudiamo la sessione ottenuta
+      // con la password e la ristabiliamo solo dopo la verifica del codice email.
+      const uid = data.user?.id
+      if (uid) {
+        const { data: prefs } = await supabase
+          .from('user_security_prefs')
+          .select('email_2fa_enabled')
+          .eq('user_id', uid)
+          .maybeSingle()
+        if (prefs?.email_2fa_enabled) {
+          setPendingName(name)
+          await supabase.auth.signOut()
+          const { error: otpErr } = await supabase.auth.signInWithOtp({
+            email: email.trim(),
+            options: { shouldCreateUser: false },
+          })
+          if (otpErr) {
+            const isRateLimit =
+              (otpErr as any).status === 429 || /rate limit|too many/i.test(otpErr.message)
+            toast({
+              variant: 'destructive',
+              title: isRateLimit ? t.rateLimitTitle : t.failedTitle,
+              description: isRateLimit ? t.rateLimitDesc : otpErr.message,
+            })
+            return
+          }
+          setEmailOtpCode('')
+          setEmailOtpRequired(true)
+          return
+        }
+      }
+      onLoginSuccess(name)
     } catch (err: any) {
       toast({ variant: 'destructive', title: t.networkErrorTitle, description: err?.message })
     } finally {
       setLoading(false)
     }
+  }
+
+  const handleEmailOtpVerify = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (loading) return
+    setLoading(true)
+    try {
+      const { error } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: emailOtpCode.trim(),
+        type: 'email',
+      })
+      if (error) {
+        const isRateLimit =
+          (error as any).status === 429 || /rate limit|too many/i.test(error.message)
+        toast({
+          variant: 'destructive',
+          title: isRateLimit ? t.rateLimitTitle : t.failedTitle,
+          description: isRateLimit ? t.rateLimitDesc : t.otpInvalid,
+        })
+        return
+      }
+      onLoginSuccess(pendingName)
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: t.networkErrorTitle, description: err?.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleEmailOtpResend = async () => {
+    if (otpResending) return
+    setOtpResending(true)
+    try {
+      const { error } = await supabase.auth.signInWithOtp({
+        email: email.trim(),
+        options: { shouldCreateUser: false },
+      })
+      if (error) {
+        const isRateLimit =
+          (error as any).status === 429 || /rate limit|too many/i.test(error.message)
+        toast({
+          variant: 'destructive',
+          title: isRateLimit ? t.rateLimitTitle : t.failedTitle,
+          description: isRateLimit ? t.rateLimitDesc : error.message,
+        })
+        return
+      }
+      toast({ title: t.otpResentTitle, description: t.otpResentDesc })
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: t.networkErrorTitle, description: err?.message })
+    } finally {
+      setOtpResending(false)
+    }
+  }
+
+  const handleEmailOtpBack = () => {
+    setEmailOtpRequired(false)
+    setEmailOtpCode('')
+    setPendingName(null)
+  }
+
+  const handleMfaVerify = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (loading || !mfaFactorId) return
+    setLoading(true)
+    try {
+      const { data: challenge, error: chErr } = await supabase.auth.mfa.challenge({
+        factorId: mfaFactorId,
+      })
+      if (chErr) throw chErr
+      const { error } = await supabase.auth.mfa.verify({
+        factorId: mfaFactorId,
+        challengeId: challenge.id,
+        code: mfaCode.trim(),
+      })
+      if (error) {
+        const isRateLimit =
+          (error as any).status === 429 || /rate limit|too many/i.test(error.message)
+        toast({
+          variant: 'destructive',
+          title: isRateLimit ? t.rateLimitTitle : t.failedTitle,
+          description: isRateLimit ? t.rateLimitDesc : t.mfaInvalid,
+        })
+        return
+      }
+      onLoginSuccess(pendingName)
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: t.networkErrorTitle, description: err?.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleMfaBack = async () => {
+    // Torna al form: annulla la sessione parziale così un nuovo login riparte pulito.
+    try {
+      await supabase.auth.signOut()
+    } catch {
+      /* noop */
+    }
+    setMfaRequired(false)
+    setMfaFactorId(null)
+    setMfaCode('')
+    setPassword('')
+  }
+
+  if (emailOtpRequired) {
+    return (
+      <form
+        className="flex h-full w-full flex-col justify-center px-8 sm:px-10 lg:px-14"
+        onSubmit={handleEmailOtpVerify}
+      >
+        <div
+          className="mb-5 inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"
+          style={{ backgroundColor: C.peach, color: C.orange }}
+        >
+          <Mail className="h-4 w-4" />
+          {t.otpBadge}
+        </div>
+
+        <h1
+          className="text-3xl font-bold tracking-tight sm:text-4xl"
+          style={{ color: C.ink }}
+        >
+          {t.otpTitle}
+        </h1>
+        <p className="mt-2 text-[15px]" style={{ color: C.gray }}>
+          {t.otpSubtitle}{' '}
+          <span className="font-semibold" style={{ color: C.ink }}>
+            {email.trim()}
+          </span>
+        </p>
+
+        <div className="mt-7">
+          <IconInput
+            icon={<ShieldCheck className="h-4 w-4" />}
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            placeholder={t.otpCodePlaceholder}
+            value={emailOtpCode}
+            onChange={(e) => setEmailOtpCode(e.target.value.replace(/\D/g, ''))}
+            autoFocus
+          />
+        </div>
+
+        <div className="mt-6">
+          <PrimaryButton type="submit" loading={loading} loadingText={t.otpVerifying}>
+            {t.otpVerify}
+          </PrimaryButton>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleEmailOtpResend}
+          disabled={otpResending}
+          className="mt-4 inline-flex items-center gap-2 self-start text-sm font-semibold transition hover:opacity-70 disabled:opacity-50"
+          style={{ color: C.orange }}
+        >
+          <RefreshCw className={`h-4 w-4 ${otpResending ? 'animate-spin' : ''}`} />
+          {t.otpResend}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleEmailOtpBack}
+          className="mt-3 self-start text-sm font-semibold transition hover:opacity-70"
+          style={{ color: C.gray }}
+        >
+          ← {t.otpBack}
+        </button>
+      </form>
+    )
+  }
+
+  if (mfaRequired) {
+    return (
+      <form
+        className="flex h-full w-full flex-col justify-center px-8 sm:px-10 lg:px-14"
+        onSubmit={handleMfaVerify}
+      >
+        <div
+          className="mb-5 inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"
+          style={{ background: 'rgba(255,107,0,0.1)', color: C.orange }}
+        >
+          <ShieldCheck className="h-3.5 w-3.5" />
+          {t.mfaTitle}
+        </div>
+
+        <h1 className="text-3xl font-bold tracking-tight sm:text-4xl" style={{ color: C.ink }}>
+          {t.mfaTitle}
+        </h1>
+        <p className="mt-2 text-[15px]" style={{ color: C.gray }}>
+          {t.mfaSubtitle}
+        </p>
+
+        <div className="mt-7">
+          <IconInput
+            icon={<ShieldCheck className="h-4 w-4" />}
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            placeholder={t.mfaCodePlaceholder}
+            value={mfaCode}
+            onChange={(e) => setMfaCode(e.target.value.replace(/\D/g, ''))}
+            autoFocus
+          />
+        </div>
+
+        <div className="mt-6">
+          <PrimaryButton type="submit" loading={loading} loadingText={t.mfaVerifying}>
+            {t.mfaVerify}
+          </PrimaryButton>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleMfaBack}
+          className="mt-4 text-sm font-semibold transition hover:opacity-70"
+          style={{ color: C.gray }}
+        >
+          ← {t.mfaBack}
+        </button>
+      </form>
+    )
   }
 
   return (
@@ -400,6 +716,9 @@ function SignupForm({ onSignupSuccess }: { onSignupSuccess: (name: string | null
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [emailTaken, setEmailTaken] = useState(false)
   const [phoneTaken, setPhoneTaken] = useState(false)
+  const [signupOtpRequired, setSignupOtpRequired] = useState(false)
+  const [signupOtpCode, setSignupOtpCode] = useState('')
+  const [otpResending, setOtpResending] = useState(false)
 
   const { allPassed } = evaluatePassword(password)
   const confirmTouched = confirm.length > 0
@@ -549,16 +868,9 @@ function SignupForm({ onSignupSuccess }: { onSignupSuccess: (name: string | null
         onSignupSuccess(name.trim() || null)
         return
       }
-      toast({
-        title: t.accountCreatedTitle,
-        description: t.checkEmailDesc,
-      })
-      setName('')
-      setEmail('')
-      setPhone('')
-      setPassword('')
-      setConfirm('')
-      setSubmitted(false)
+      // Nessuna sessione: è richiesta la verifica via email tramite codice OTP.
+      setSignupOtpCode('')
+      setSignupOtpRequired(true)
     } catch (err: any) {
       toast({ variant: 'destructive', title: t.networkErrorTitle, description: err?.message })
     } finally {
@@ -566,9 +878,143 @@ function SignupForm({ onSignupSuccess }: { onSignupSuccess: (name: string | null
     }
   }
 
+  const handleSignupOtpVerify = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (loading) return
+    setLoading(true)
+    try {
+      const { data, error } = await supabase.auth.verifyOtp({
+        email: email.trim(),
+        token: signupOtpCode.trim(),
+        type: 'signup',
+      })
+      if (error) {
+        const isRateLimit =
+          (error as any).status === 429 || /rate limit|too many/i.test(error.message)
+        toast({
+          variant: 'destructive',
+          title: isRateLimit ? t.rateLimitTitle : t.failedTitle,
+          description: isRateLimit ? t.rateLimitDesc : t.otpInvalid,
+        })
+        return
+      }
+      if (data.session) {
+        toast({ title: t.accountCreatedTitle, description: t.redirectingDesc })
+        onSignupSuccess(name.trim() || null)
+        return
+      }
+      toast({ variant: 'destructive', title: t.failedTitle, description: t.otpInvalid })
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: t.networkErrorTitle, description: err?.message })
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  const handleSignupOtpResend = async () => {
+    if (otpResending) return
+    setOtpResending(true)
+    try {
+      const { error } = await supabase.auth.resend({
+        type: 'signup',
+        email: email.trim(),
+      })
+      if (error) {
+        const isRateLimit =
+          (error as any).status === 429 || /rate limit|too many/i.test(error.message)
+        toast({
+          variant: 'destructive',
+          title: isRateLimit ? t.rateLimitTitle : t.failedTitle,
+          description: isRateLimit ? t.rateLimitDesc : error.message,
+        })
+        return
+      }
+      toast({ title: t.otpResentTitle, description: t.otpResentDesc })
+    } catch (err: any) {
+      toast({ variant: 'destructive', title: t.networkErrorTitle, description: err?.message })
+    } finally {
+      setOtpResending(false)
+    }
+  }
+
+  const handleSignupOtpBack = () => {
+    setSignupOtpRequired(false)
+    setSignupOtpCode('')
+  }
+
+  if (signupOtpRequired) {
+    return (
+      <form
+        className="flex h-full w-full flex-col justify-center px-8 sm:px-10 lg:px-14"
+        onSubmit={handleSignupOtpVerify}
+      >
+        <div
+          className="mb-5 inline-flex w-fit items-center gap-2 rounded-full px-3 py-1.5 text-xs font-semibold"
+          style={{ backgroundColor: C.peach, color: C.orange }}
+        >
+          <Mail className="h-4 w-4" />
+          {t.otpBadge}
+        </div>
+
+        <h1
+          className="text-3xl font-bold tracking-tight sm:text-4xl"
+          style={{ color: C.ink }}
+        >
+          {t.otpTitle}
+        </h1>
+        <p className="mt-2 text-[15px]" style={{ color: C.gray }}>
+          {t.otpSubtitle}{' '}
+          <span className="font-semibold" style={{ color: C.ink }}>
+            {email.trim()}
+          </span>
+        </p>
+
+        <div className="mt-7">
+          <IconInput
+            icon={<ShieldCheck className="h-4 w-4" />}
+            type="text"
+            inputMode="numeric"
+            autoComplete="one-time-code"
+            maxLength={6}
+            placeholder={t.otpCodePlaceholder}
+            value={signupOtpCode}
+            onChange={(e) => setSignupOtpCode(e.target.value.replace(/\D/g, ''))}
+            autoFocus
+          />
+        </div>
+
+        <div className="mt-6">
+          <PrimaryButton type="submit" loading={loading} loadingText={t.otpVerifying}>
+            {t.otpVerify}
+          </PrimaryButton>
+        </div>
+
+        <button
+          type="button"
+          onClick={handleSignupOtpResend}
+          disabled={otpResending}
+          className="mt-4 inline-flex items-center gap-2 self-start text-sm font-semibold transition hover:opacity-70 disabled:opacity-50"
+          style={{ color: C.orange }}
+        >
+          <RefreshCw className={`h-4 w-4 ${otpResending ? 'animate-spin' : ''}`} />
+          {t.otpResend}
+        </button>
+
+        <button
+          type="button"
+          onClick={handleSignupOtpBack}
+          className="mt-3 self-start text-sm font-semibold transition hover:opacity-70"
+          style={{ color: C.gray }}
+        >
+          ← {t.otpBack}
+        </button>
+      </form>
+    )
+  }
+
   return (
     <form
-      className="auth-scroll flex h-full w-full flex-col justify-center overflow-y-auto px-8 sm:px-10 lg:px-14"
+      className="auth-scroll flex h-full w-full flex-col overflow-y-auto py-8 px-8 sm:px-10 lg:px-14"
       onSubmit={handleSubmit}
     >
       <div
@@ -767,6 +1213,16 @@ function SignupForm({ onSignupSuccess }: { onSignupSuccess: (name: string | null
             {t.submit}
           </PrimaryButton>
         </div>
+
+        <div className="flex items-center gap-3 py-2">
+          <div className="h-px flex-1" style={{ background: 'rgba(33,33,33,0.1)' }} />
+          <span className="text-xs uppercase tracking-wider" style={{ color: C.gray }}>
+            {tr.auth.login.or}
+          </span>
+          <div className="h-px flex-1" style={{ background: 'rgba(33,33,33,0.1)' }} />
+        </div>
+
+        <SocialButtons />
       </div>
 
       <div
@@ -922,6 +1378,7 @@ function MobileTabs({
 
 export function AuthPage() {
   const { tr } = useI18n()
+  const { toast } = useToast()
   const searchParams = useSearchParams()
   const needsAccountForRestaurant = searchParams.get('next') === 'create-pending'
   const cameFromNoRestaurant = searchParams.get('error') === 'no-restaurant'
@@ -941,20 +1398,48 @@ export function AuthPage() {
     } catch {}
   }, [])
 
-  // Landed here already authenticated (e.g. dashboard redirected because there's no restaurant yet)
+  // Ritorno dal login OAuth (Google/Facebook): la callback ci rimanda qui con
+  // ?error=no-restaurant dopo aver stabilito la sessione, perché la scelta della
+  // destinazione dipende dallo stato del profilo/ristorante lato applicazione.
   useEffect(() => {
     if (!cameFromNoRestaurant) return
     let cancelled = false
-    supabase.auth.getUser().then(({ data }) => {
+    supabase.auth.getUser().then(async ({ data }) => {
       if (cancelled || !data.user) {
         if (!cancelled) setRedirecting(false)
         return
       }
+      // Se l'utente ha completato il wizard /create e poi ha scelto l'accesso
+      // con Google/Facebook, il ristorante non è ancora stato creato: lo creiamo
+      // ora con lo stesso flusso del login via email prima di andare in dashboard.
+      if (loadPendingRestaurant()) {
+        const name = (data.user.user_metadata?.full_name as string | undefined) ?? null
+        await handleLoginSuccess(name)
+        return
+      }
       getRestaurantByUser()
         .then(() => { if (!cancelled) window.location.href = '/admin/dashboard' })
-        .catch(() => { if (!cancelled) window.location.href = '/create' })
+        .catch((err: Error & { status?: number }) => {
+          if (cancelled) return
+          const message = err?.message || ''
+          // Un titolare con profilo ma senza ristorante ("Ristorante non trovato")
+          // e un utente OAuth appena registrato senza profilo ("Profilo non trovato")
+          // vanno entrambi all'onboarding /create invece di essere disconnessi.
+          const needsOnboarding =
+            err?.status === 404 &&
+            (message === 'Ristorante non trovato' || message === 'Profilo non trovato')
+          if (needsOnboarding) {
+            window.location.href = '/create'
+            return
+          }
+          // Nessuna sessione valida (es. 401): chiudi la sessione stantia e mostra
+          // il form di login su /login.
+          void supabase.auth.signOut().catch(() => {})
+          setRedirecting(false)
+        })
     })
     return () => { cancelled = true }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [cameFromNoRestaurant])
 
   const toggle = () => {
@@ -966,8 +1451,8 @@ export function AuthPage() {
     const pending = loadPendingRestaurant()
     if (pending) {
       setRedirecting(true)
-      try {
-        const res = await fetch('/api/restaurants/create', {
+      const createRestaurant = () =>
+        fetch('/api/restaurants/create', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           credentials: 'include',
@@ -979,9 +1464,19 @@ export function AuthPage() {
             establishmentTypeCustom: pending.establishmentTypeCustom,
           }),
         })
-        const body = await res.json().catch(() => ({}))
-        clearPendingRestaurant()
+      try {
+        let res = await createRestaurant()
+        let body = await res.json().catch(() => ({}))
+        if (!res.ok) {
+          // Appena dopo il login/signup la sessione può non essere ancora visibile
+          // lato server (race condition sui cookie): un solo retry dopo una breve
+          // attesa copre il caso comune senza far perdere i dati del wizard.
+          await new Promise((resolve) => setTimeout(resolve, 900))
+          res = await createRestaurant()
+          body = await res.json().catch(() => ({}))
+        }
         if (res.ok) {
+          clearPendingRestaurant()
           // Importa il menu caricato durante la registrazione, ora che l'utente
           // è autenticato e il ristorante esiste (stessa logica di /create e MenuSection).
           const newRestaurantId = body?.restaurantId ?? body?.id ?? body?.restaurant?.id ?? null
@@ -997,11 +1492,20 @@ export function AuthPage() {
           window.location.href = '/admin/dashboard'
           return
         }
-        // creazione ristorante fallita: non trasciniamo il file orfano.
-        await clearPendingMenuFile()
-      } catch {
-        clearPendingRestaurant()
-        await clearPendingMenuFile()
+        // Creazione ristorante fallita anche al secondo tentativo: non cancelliamo
+        // i dati pending, così l'utente può riprovare (es. ri-effettuando il login)
+        // senza dover rifare da capo il wizard di creazione.
+        toast({
+          variant: 'destructive',
+          title: 'Creazione ristorante non riuscita',
+          description: body?.error || 'Riprova tra qualche secondo.',
+        })
+      } catch (err: any) {
+        toast({
+          variant: 'destructive',
+          title: 'Errore di rete',
+          description: err?.message || 'Riprova tra qualche secondo.',
+        })
       }
       setRedirecting(false)
       return
@@ -1012,7 +1516,15 @@ export function AuthPage() {
       await getRestaurantByUser()
       window.location.href = '/admin/dashboard'
     } catch {
-      window.location.href = cameFrom
+      // Stessa race condition sui cookie di sessione appena dopo il login:
+      // un retry evita di rimandare l'utente indietro senza alcun errore visibile.
+      await new Promise((resolve) => setTimeout(resolve, 900))
+      try {
+        await getRestaurantByUser()
+        window.location.href = '/admin/dashboard'
+      } catch {
+        window.location.href = cameFrom
+      }
     }
   }
 
@@ -1073,7 +1585,7 @@ export function AuthPage() {
         </div>
 
         {/* Brand logo — fixed top-left overlay */}
-        <div className="pointer-events-none absolute left-8 top-6 z-20 flex items-center gap-2.5">
+        <Link href="/" className="absolute left-8 top-6 z-20 flex items-center gap-2.5">
           <div
             className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-md"
             style={{ background: `linear-gradient(135deg, ${C.orange}, ${C.orangeDeep})` }}
@@ -1083,7 +1595,7 @@ export function AuthPage() {
           <span className="text-lg font-bold tracking-tight" style={{ color: C.ink }}>
             Tavola<span style={{ color: C.orange }}>.</span>
           </span>
-        </div>
+        </Link>
 
         {/* Footer — fixed bottom overlay on the cream (form) side */}
         <div
@@ -1099,7 +1611,7 @@ export function AuthPage() {
       <div className="flex min-h-screen w-full flex-col lg:hidden">
         {/* Brand bar */}
         <header className="flex items-center justify-between px-6 py-5">
-          <div className="flex items-center gap-2.5">
+          <Link href="/" className="flex items-center gap-2.5">
             <div
               className="flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-md"
               style={{ background: `linear-gradient(135deg, ${C.orange}, ${C.orangeDeep})` }}
@@ -1109,14 +1621,14 @@ export function AuthPage() {
             <span className="text-lg font-bold tracking-tight" style={{ color: C.ink }}>
               Tavola<span style={{ color: C.orange }}>.</span>
             </span>
-          </div>
-          <a
-            href="#"
+          </Link>
+          <Link
+            href="/help"
             className="text-sm font-medium transition-colors hover:underline"
             style={{ color: C.gray }}
           >
             {tr.auth.login.helpLink}
-          </a>
+          </Link>
         </header>
 
         <div className="px-5 pt-2">

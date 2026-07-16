@@ -5,7 +5,7 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { motion, useSpring } from "framer-motion";
-import { LanguageSwitcher } from "@/components/landing/LanguageSwitcher";
+import { ClientLanguageSwitcher } from "@/components/i18n/ClientLanguageSwitcher";
 import { useI18n } from "@/components/i18n/I18nProvider";
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -602,9 +602,12 @@ export function Navbar({
                 initial={false}
                 animate={waiterBusy ? { width: 0, opacity: 0, marginLeft: 0 } : { width: "auto", opacity: 1 }}
                 transition={waiterBusy ? { duration: 0.18, ease: "easeIn" } : { type: "spring", stiffness: 300, damping: 30 }}
-                style={{ overflow: "hidden", flexShrink: 0 }}
+                // overflow nascosto solo mentre si comprime (cameriere in arrivo);
+                // in stato normale deve restare visibile, altrimenti taglia il menu
+                // a tendina del selettore lingua.
+                style={{ overflow: waiterBusy ? "hidden" : "visible", flexShrink: 0 }}
               >
-                <LanguageSwitcher accentColor={brandColor} />
+                <ClientLanguageSwitcher accentColor={brandColor} />
               </motion.div>
               {/* Bell / chiama cameriere */}
               <style>{`

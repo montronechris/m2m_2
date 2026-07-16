@@ -7,11 +7,13 @@ export type SectionId =
   | 'menu'
   | 'tables'
   | 'analytics'
+  | 'reviews'
   | 'staff'
   | 'branding'
   | 'waiter'
   | 'history'
   | 'calendar'
+  | 'delivery'
   | 'settings'
 
 export type ThemeMode = 'light' | 'dark'
@@ -19,11 +21,6 @@ export type ThemeMode = 'light' | 'dark'
 export interface RolePermissions {
   sections: SectionId[]
   ai: boolean
-}
-
-export interface NotificationPrefs {
-  admin: boolean
-  cameriere: boolean
 }
 
 export interface RestaurantCtx {
@@ -40,5 +37,4 @@ export interface RestaurantCtx {
   userEmail: string
   role: string
   rolePermissions: RolePermissions | null
-  notificationPrefs: NotificationPrefs
 }

@@ -313,6 +313,10 @@ export const addItemToOrder = async (
     portata: item.portata ?? 1,
     is_drink: item.is_drink ?? false,
     portata_locked: item.portataLocked ?? false,
+    // Le bevande non passano dalla cucina: nessuna preparazione richiesta,
+    // quindi risultano "pronte" da subito e finiscono immediatamente nella
+    // coda di consegna del cameriere, senza aspettare le portate di cibo.
+    ...(item.is_drink ? { portata_completed: true } : {}),
   }, sessionToken);
 
   // 2. Recalculate order total (sum all items from DB — single source of truth)

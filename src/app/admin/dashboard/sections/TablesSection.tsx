@@ -1,5 +1,12 @@
 'use client'
 
+// ─── SEZIONE: TAVOLI / QR CODE ─────────────────────────────────────────────────
+//
+// Gestione tavoli e generazione dei relativi QR di scan.
+// Stato: lista tavoli; crea/elimina e permette download/stampa dei QR.
+// ──────────────────────────────────────────────────────────────────────────────
+
+
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { QrCode, Plus, Copy, Trash2, AlertCircle, Check, X, Loader2, Download, Printer, ExternalLink } from 'lucide-react'
@@ -160,7 +167,7 @@ export function TablesSection({ ctx }: Props) {
     return (
       <div className="space-y-4">
         <div className="h-7 w-32 tt-skeleton rounded-full" />
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {Array.from({ length: 6 }).map((_, i) => (
             <div key={i} className="tt-card h-40 rounded-2xl border border-tt-line p-4 shadow-tt">
               <div className="mb-3 flex justify-between">
@@ -252,7 +259,7 @@ export function TablesSection({ ctx }: Props) {
           <p className="mt-1 text-xs text-tt-muted">{T.emptyDbHint}</p>
         </div>
       ) : (
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
           {tables.map((t) => (
             <div
               key={t.id}

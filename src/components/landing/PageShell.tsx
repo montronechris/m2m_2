@@ -2,6 +2,7 @@
 
 import { Header } from '@/components/landing/Header'
 import { Footer } from '@/components/landing/Footer'
+import { ChatWidget } from '@/components/landing/ChatWidget'
 
 export function PageShell({
   children,
@@ -19,6 +20,7 @@ export function PageShell({
       <Header />
       <main className="flex-1">{children}</main>
       <Footer />
+      <ChatWidget />
     </div>
   )
 }

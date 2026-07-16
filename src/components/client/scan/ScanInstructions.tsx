@@ -5,11 +5,14 @@ import { useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bell, Sparkles, ShoppingCart, Layers2, Star } from "lucide-react";
 import { useI18n } from "@/components/i18n/I18nProvider";
+import { restaurantAvatars } from "@/lib/restaurant-avatars";
 
 interface ScanInstructionsProps {
   primaryColor?: string;
   restaurantName?: string;
   logoUrl?: string;
+  logoIcon?: string;
+  tableNumber?: string | number;
   ready: boolean;
   onContinue: () => void;
 }
@@ -19,6 +22,8 @@ export function ScanInstructions({
   primaryColor,
   restaurantName,
   logoUrl,
+  logoIcon,
+  tableNumber,
   ready,
   onContinue,
 }: ScanInstructionsProps) {
@@ -40,6 +45,7 @@ export function ScanInstructions({
   ];
 
   const brand = primaryColor ?? "#1A3D2B";
+  const avatar = restaurantAvatars.find((a) => a.id === logoIcon);
   const canContinue = ready && confirmed;
   const errorColor = "#E0473E";
 
@@ -115,22 +121,68 @@ export function ScanInstructions({
             transition={{ duration: 0.4 }}
             style={{
               display: "flex",
+              flexDirection: "column",
               alignItems: "center",
               justifyContent: "center",
-              gap: 8,
+              gap: 10,
               marginBottom: 28,
             }}
           >
-            {logoUrl && (
-              <img
-                src={logoUrl}
-                alt={restaurantName}
-                style={{ width: 24, height: 24, borderRadius: "50%", objectFit: "cover" }}
-              />
+            {avatar ? (
+              <span
+                style={{
+                  width: 56,
+                  height: 56,
+                  borderRadius: "50%",
+                  background: brand,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  flexShrink: 0,
+                  boxShadow: `0 6px 18px ${brand}40`,
+                }}
+              >
+                <avatar.Icon size={28} color="#fff" strokeWidth={1.8} />
+              </span>
+            ) : (
+              logoUrl && (
+                <img
+                  src={logoUrl}
+                  alt={restaurantName}
+                  style={{
+                    width: 56,
+                    height: 56,
+                    borderRadius: "50%",
+                    objectFit: "cover",
+                    boxShadow: "0 6px 18px rgba(0,0,0,0.18)",
+                  }}
+                />
+              )
             )}
-            <span style={{ fontSize: 13, fontWeight: 700, color: "#1C1C1E", letterSpacing: "0.04em" }}>
+            <span
+              style={{
+                fontSize: 20,
+                fontWeight: 700,
+                color: "#1C1C1E",
+                letterSpacing: "0.01em",
+                textAlign: "center",
+              }}
+            >
               {restaurantName}
             </span>
+            {tableNumber !== undefined && tableNumber !== null && (
+              <span
+                style={{
+                  fontSize: 13,
+                  fontWeight: 700,
+                  color: brand,
+                  letterSpacing: "0.04em",
+                  textTransform: "uppercase",
+                }}
+              >
+                {tr.client.common.table} {tableNumber}
+              </span>
+            )}
           </motion.div>
         )}
 
@@ -141,9 +193,9 @@ export function ScanInstructions({
           transition={{ duration: 0.4, delay: 0.05 }}
           style={{
             textAlign: "center",
-            fontSize: 11,
+            fontSize: 14,
             fontWeight: 700,
-            letterSpacing: "0.18em",
+            letterSpacing: "0.14em",
             textTransform: "uppercase",
             color: brand,
             marginBottom: 8,

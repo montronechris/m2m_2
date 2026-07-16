@@ -1,8 +1,15 @@
 'use client'
 
+// ─── SEZIONE: MENU / GESTIONE PIATTI ───────────────────────────────────────────
+//
+// CRUD dei piatti: crea, modifica, elimina, import JSON, immagini.
+// Stato: lista piatti + modale di edit; ogni azione aggiorna DB e UI con feedback (loading/ok/errore).
+// ──────────────────────────────────────────────────────────────────────────────
+
+
 import { useEffect, useRef, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Plus, Search, Leaf, WheatOff, Pencil, Trash2, Utensils, AlertCircle, X, Check, Loader2, ImageIcon, Upload, ChevronDown, FileJson, UploadCloud, ShieldAlert } from 'lucide-react'
+import { Plus, Search, Leaf, WheatOff, Pencil, Trash2, Utensils, AlertCircle, X, Check, Loader2, ImageIcon, Upload, ChevronDown, FileJson, UploadCloud, ShieldAlert, Tag, GlassWater } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
 import {
   getMenuItems,
@@ -10,6 +17,8 @@ import {
   toggleMenuItemAvailability,
   createMenuItem,
   createMenuCategory,
+  updateMenuCategory,
+  deleteMenuCategory,
   uploadMenuItemPhoto,
   deleteAllMenuItems,
   updateMenuItem,
@@ -198,6 +207,16 @@ export function MenuSection({ ctx }: Props) {
   const [importing, setImporting] = useState(false)
   const [importSuccess, setImportSuccess] = useState<number | null>(null)
   const [importDuplicates, setImportDuplicates] = useState<number>(0)
+  const [showCategoryModal, setShowCategoryModal] = useState(false)
+  const [newCategoryName, setNewCategoryName] = useState('')
+  const [categoryIsDrink, setCategoryIsDrink] = useState(false)
+  const [categorySaving, setCategorySaving] = useState(false)
+  const [categoryError, setCategoryError] = useState<string | null>(null)
+  const [editingCategoryId, setEditingCategoryId] = useState<string | null>(null)
+  const [editCategoryName, setEditCategoryName] = useState('')
+  const [editCategoryIsDrink, setEditCategoryIsDrink] = useState(false)
+  const [categoryActionId, setCategoryActionId] = useState<string | null>(null)
+  const [deleteCategoryConfirmId, setDeleteCategoryConfirmId] = useState<string | null>(null)
   const [showDeleteMenu, setShowDeleteMenu] = useState(false)
   const [deleteMenuConfirmName, setDeleteMenuConfirmName] = useState('')
   const [deletingMenu, setDeletingMenu] = useState(false)
@@ -315,6 +334,80 @@ export function MenuSection({ ctx }: Props) {
       setError(e.message ?? t.errorCreate)
     } finally {
       setSaving(false)
+    }
+  }
+
+  async function handleCreateCategory() {
+    if (!newCategoryName.trim()) {
+      setCategoryError(t.categoryNameRequired)
+      return
+    }
+    setCategorySaving(true)
+    setCategoryError(null)
+    try {
+      const created = await createMenuCategory(ctx.restaurantId, newCategoryName.trim(), categoryIsDrink)
+      setCategories((prev) => [...prev, created])
+      setNewCategoryName('')
+      setCategoryIsDrink(false)
+      setShowCategoryModal(false)
+    } catch (e: any) {
+      setCategoryError(e.message ?? t.errorCreateCategory)
+    } finally {
+      setCategorySaving(false)
+    }
+  }
+
+  function startEditCategory(c: MenuCategory) {
+    setDeleteCategoryConfirmId(null)
+    setCategoryError(null)
+    setEditingCategoryId(c.id)
+    setEditCategoryName(c.name)
+    setEditCategoryIsDrink(c.is_drink)
+  }
+
+  async function handleUpdateCategory() {
+    if (!editingCategoryId) return
+    if (!editCategoryName.trim()) {
+      setCategoryError(t.categoryNameRequired)
+      return
+    }
+    setCategoryActionId(editingCategoryId)
+    setCategoryError(null)
+    try {
+      const updated = await updateMenuCategory(editingCategoryId, {
+        name: editCategoryName.trim(),
+        is_drink: editCategoryIsDrink,
+      })
+      setCategories((prev) => prev.map((c) => (c.id === updated.id ? updated : c)))
+      setEditingCategoryId(null)
+    } catch (e: any) {
+      setCategoryError(e.message ?? t.errorUpdateCategory)
+    } finally {
+      setCategoryActionId(null)
+    }
+  }
+
+  function requestDeleteCategory(c: MenuCategory) {
+    setEditingCategoryId(null)
+    setCategoryError(null)
+    if (items.some((i) => i.category_id === c.id)) {
+      setCategoryError(t.categoryInUse)
+      return
+    }
+    setDeleteCategoryConfirmId(c.id)
+  }
+
+  async function handleDeleteCategory(catId: string) {
+    setCategoryActionId(catId)
+    setCategoryError(null)
+    try {
+      await deleteMenuCategory(catId)
+      setCategories((prev) => prev.filter((c) => c.id !== catId))
+      setDeleteCategoryConfirmId(null)
+    } catch (e: any) {
+      setCategoryError(e.message ?? t.errorDeleteCategory)
+    } finally {
+      setCategoryActionId(null)
     }
   }
 
@@ -649,6 +742,12 @@ export function MenuSection({ ctx }: Props) {
           </p>
         </div>
         <div className="flex items-center gap-2">
+          <button
+            onClick={() => { setNewCategoryName(''); setCategoryIsDrink(false); setCategoryError(null); setShowCategoryModal(true) }}
+            className="flex items-center gap-1.5 rounded-full border border-tt-line bg-white px-4 py-2 text-sm font-bold text-tt-ink transition hover:bg-tt-surfaceAlt2"
+          >
+            <Tag className="h-4 w-4" /> {t.newCategory}
+          </button>
           <button
             onClick={() => { resetImportState(); setShowImport(true) }}
             className="flex items-center gap-1.5 rounded-full border border-tt-line bg-white px-4 py-2 text-sm font-bold text-tt-ink transition hover:bg-tt-surfaceAlt2"
@@ -1018,6 +1117,171 @@ export function MenuSection({ ctx }: Props) {
                     : t.importButton}
                 </button>
               </div>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      <AnimatePresence>
+        {showCategoryModal && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.2 }}
+            className="fixed inset-0 z-50 grid place-items-center bg-black/50 p-4 backdrop-blur-sm"
+            onClick={() => !categorySaving && !categoryActionId && setShowCategoryModal(false)}
+          >
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95, y: 16 }}
+              animate={{ opacity: 1, scale: 1, y: 0 }}
+              exit={{ opacity: 0, scale: 0.95, y: 16 }}
+              transition={{ duration: 0.2, ease: 'easeOut' }}
+              onClick={(e) => e.stopPropagation()}
+              className="w-full max-w-md rounded-3xl bg-white p-6 shadow-2xl"
+            >
+              <div className="mb-3 flex items-center justify-between">
+                <h3 className="font-serif text-lg font-extrabold text-tt-ink">{t.newCategory}</h3>
+                <button
+                  onClick={() => !categorySaving && !categoryActionId && setShowCategoryModal(false)}
+                  className="grid h-8 w-8 place-items-center rounded-full bg-tt-surfaceAlt2 text-tt-muted transition hover:text-tt-ink"
+                >
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+
+              <label className="mb-1 block text-xs font-bold text-tt-ink">{t.categoryName}</label>
+              <input
+                autoFocus
+                value={newCategoryName}
+                onChange={(e) => setNewCategoryName(e.target.value)}
+                onKeyDown={(e) => { if (e.key === 'Enter' && !categorySaving) handleCreateCategory() }}
+                placeholder={t.categoryNamePlaceholder}
+                className="w-full rounded-xl border border-tt-line bg-white px-3 py-2.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
+              />
+
+              <div className="mt-3">
+                <AnimatedCheckbox
+                  checked={categoryIsDrink}
+                  onChange={() => setCategoryIsDrink((v) => !v)}
+                  icon={<GlassWater className="h-4 w-4 text-sky-600" />}
+                  label={t.categoryIsDrink}
+                  activeBoxClass="border-sky-600 bg-sky-600"
+                  activeTextClass="text-sky-700"
+                />
+              </div>
+
+              {categoryError && (
+                <p className="mt-3 rounded-lg bg-tt-danger/10 px-3 py-2 text-xs text-tt-danger">{categoryError}</p>
+              )}
+
+              <div className="mt-5 flex items-center gap-2">
+                <button
+                  onClick={() => !categorySaving && setShowCategoryModal(false)}
+                  disabled={categorySaving}
+                  className="flex h-11 flex-1 items-center justify-center rounded-full border border-tt-line bg-white px-4 text-sm font-bold text-tt-muted transition hover:text-tt-ink disabled:opacity-60"
+                >
+                  {t.back}
+                </button>
+                <button
+                  onClick={handleCreateCategory}
+                  disabled={categorySaving || !newCategoryName.trim()}
+                  className="flex h-11 flex-1 items-center justify-center gap-1.5 rounded-full bg-emerald-600 px-4 text-sm font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+                >
+                  {categorySaving ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+                  {t.createCategory}
+                </button>
+              </div>
+
+              {categories.length > 0 && (
+                <div className="mt-5 border-t border-tt-line/60 pt-4">
+                  <p className="mb-2 text-xs font-bold uppercase tracking-wide text-tt-muted">{t.existingCategories}</p>
+                  <div className="max-h-56 space-y-1.5 overflow-y-auto pr-1">
+                    {categories.map((c) => (
+                      <div key={c.id} className="rounded-xl border border-tt-line/60 bg-tt-surfaceAlt/50 p-2.5">
+                        {editingCategoryId === c.id ? (
+                          <div className="space-y-2">
+                            <input
+                              autoFocus
+                              value={editCategoryName}
+                              onChange={(e) => setEditCategoryName(e.target.value)}
+                              onKeyDown={(e) => { if (e.key === 'Enter' && categoryActionId !== c.id) handleUpdateCategory() }}
+                              className="w-full rounded-lg border border-tt-line bg-white px-2.5 py-1.5 text-sm text-tt-ink outline-none focus:border-tt-pink/40"
+                            />
+                            <AnimatedCheckbox
+                              checked={editCategoryIsDrink}
+                              onChange={() => setEditCategoryIsDrink((v) => !v)}
+                              icon={<GlassWater className="h-4 w-4 text-sky-600" />}
+                              label={t.categoryIsDrink}
+                              activeBoxClass="border-sky-600 bg-sky-600"
+                              activeTextClass="text-sky-700"
+                            />
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => setEditingCategoryId(null)}
+                                disabled={categoryActionId === c.id}
+                                className="flex h-8 flex-1 items-center justify-center rounded-lg border border-tt-line bg-white text-xs font-bold text-tt-muted transition hover:text-tt-ink disabled:opacity-60"
+                              >
+                                {t.back}
+                              </button>
+                              <button
+                                onClick={handleUpdateCategory}
+                                disabled={categoryActionId === c.id || !editCategoryName.trim()}
+                                className="flex h-8 flex-1 items-center justify-center gap-1 rounded-lg bg-emerald-600 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+                              >
+                                {categoryActionId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                          </div>
+                        ) : deleteCategoryConfirmId === c.id ? (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold text-tt-danger">{t.confirmDeleteCategory}</span>
+                            <div className="flex items-center gap-1.5">
+                              <button
+                                onClick={() => setDeleteCategoryConfirmId(null)}
+                                disabled={categoryActionId === c.id}
+                                className="flex h-8 items-center justify-center rounded-lg border border-tt-line bg-white px-2.5 text-xs font-bold text-tt-muted transition hover:text-tt-ink disabled:opacity-60"
+                              >
+                                {t.back}
+                              </button>
+                              <button
+                                onClick={() => handleDeleteCategory(c.id)}
+                                disabled={categoryActionId === c.id}
+                                className="flex h-8 items-center justify-center gap-1 rounded-lg bg-tt-danger px-2.5 text-xs font-bold text-white transition hover:opacity-90 disabled:opacity-60"
+                              >
+                                {categoryActionId === c.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />}
+                              </button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="flex min-w-0 items-center gap-1.5 truncate text-sm font-semibold text-tt-ink">
+                              {c.is_drink && <GlassWater className="h-3.5 w-3.5 shrink-0 text-sky-600" />}
+                              <span className="truncate">{c.name}</span>
+                            </span>
+                            <div className="flex shrink-0 items-center gap-1">
+                              <button
+                                onClick={() => startEditCategory(c)}
+                                title={t.editCategory}
+                                className="grid h-7 w-7 place-items-center rounded-lg text-tt-muted transition hover:bg-tt-surfaceAlt2 hover:text-tt-ink"
+                              >
+                                <Pencil className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                onClick={() => requestDeleteCategory(c)}
+                                title={t.deleteCategory}
+                                className="grid h-7 w-7 place-items-center rounded-lg text-tt-muted transition hover:bg-tt-danger/10 hover:text-tt-danger"
+                              >
+                                <Trash2 className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
             </motion.div>
           </motion.div>
         )}

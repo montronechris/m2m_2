@@ -2,6 +2,9 @@ import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
   output: "standalone",
+  // Pacchetti con binari nativi / worker: non devono essere impacchettati dal
+  // bundler delle server function, altrimenti il rendering PDF→immagine si rompe.
+  serverExternalPackages: ["@napi-rs/canvas", "unpdf"],
   typescript: {
     ignoreBuildErrors: true,
   },

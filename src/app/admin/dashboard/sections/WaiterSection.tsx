@@ -1,17 +1,25 @@
 'use client'
 
+// ─── SEZIONE: SALA / CHIAMATE CAMERIERE ────────────────────────────────────────
+//
+// Vista servizio: ordini da servire e chiamate al cameriere in tempo reale.
+// Stato: subscription realtime; segna come gestite le richieste in arrivo.
+// ──────────────────────────────────────────────────────────────────────────────
+
+
 import { useEffect, useRef, useState } from 'react'
 import {
   ShoppingCart, CheckCircle2, Bell, AlertCircle, UtensilsCrossed,
-  Clock, CreditCard, PackageCheck,
+  Clock, CreditCard, PackageCheck, GlassWater, History, ConciergeBell,
 } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
+import { OperationsHistoryModal } from './OperationsHistoryModal'
 import { supabase } from '@/lib/supabase'
 import {
   getReadyOrders, markPortataDelivered, markPortataPickedUp,
   getPortataState, type Order, type OrderItem,
 } from '@/lib/admin-service'
-import { playNotificationSound } from '@/lib/notificationSound'
+import { playNotificationSound, isCameriereNotifMuted } from '@/lib/notificationSound'
 import { useI18n } from '@/components/i18n/I18nProvider'
 
 interface Props { ctx: RestaurantCtx; theme: ThemeMode }
@@ -50,15 +58,34 @@ export function WaiterSection({ ctx }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyKey, setBusyKey] = useState<string | null>(null)
+  const [editingPaymentId, setEditingPaymentId] = useState<string | null>(null)
+  const [showHistory, setShowHistory] = useState(false)
   const seenRef = useRef<Set<string> | null>(null)
+
+  async function changePaymentMethod(r: WaiterCall, method: 'card' | 'cash') {
+    setEditingPaymentId(null)
+    if (!r.order_id) return
+    setPayments((prev) => prev.map((x) => (x.id === r.id ? { ...x, payment_method: method } : x)))
+    await supabase.from('orders').update({ payment_method: method }).eq('id', r.order_id)
+  }
+
+  useEffect(() => {
+    if (!editingPaymentId) return
+    const close = () => setEditingPaymentId(null)
+    document.addEventListener('click', close)
+    return () => document.removeEventListener('click', close)
+  }, [editingPaymentId])
 
   const loadCalls = async (type: 'payment' | 'call') => {
     const since = new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString()
+    // Il tab "richieste" ('call') include anche le richieste di ordinazione
+    // ('order') della modalità "con cameriere".
+    const types = type === 'call' ? ['call', 'order'] : [type]
     const { data } = await supabase
       .from('waiter_calls')
       .select('id, table_id, order_id, type, status, created_at')
       .eq('restaurant_id', ctx.restaurantId)
-      .eq('type', type)
+      .in('type', types)
       .eq('status', 'pending')
       .gte('created_at', since)
       .order('created_at', { ascending: true })
@@ -98,7 +125,7 @@ export function WaiterSection({ ctx }: Props) {
       ])
       if (seenRef.current) {
         const hasNew = [...ids].some((id) => !seenRef.current!.has(id))
-        if (hasNew) playNotificationSound()
+        if (hasNew && !isCameriereNotifMuted()) playNotificationSound()
       }
       seenRef.current = ids
 
@@ -135,7 +162,7 @@ export function WaiterSection({ ctx }: Props) {
     setReadyOrders((prev) => prev.map((o) => o.id !== order.id ? o : {
       ...o, order_items: (o.order_items ?? []).map((it) => it.portata === portata ? { ...it, portata_delivered: true } : it),
     }))
-    try { await markPortataDelivered(order.id, portata, ctx.userId) }
+    try { await markPortataDelivered(order.id, portata, ctx.userId, `${ctx.userFirstName} ${ctx.userLastName}`.trim()) }
     catch (e: any) { setError(e.message ?? t.error); load() }
     finally {
       // Tieni il lock ~700ms per evitare il ghost-click su mobile: il bottone
@@ -155,15 +182,16 @@ export function WaiterSection({ ctx }: Props) {
       ? prev.filter((o) => o.id !== order.id)
       : prev.map((o) => o.id !== order.id ? o : { ...o, order_items: (o.order_items ?? []).filter((it) => it.portata !== portata) })
     )
-    try { await markPortataPickedUp(order.id, portata, ctx.userId) }
+    try { await markPortataPickedUp(order.id, portata, ctx.userId, `${ctx.userFirstName} ${ctx.userLastName}`.trim()) }
     catch (e: any) { setError(e.message ?? t.error); load() }
     finally { setBusyKey(null) }
   }
 
   async function dismissCall(id: string, setter: React.Dispatch<React.SetStateAction<WaiterCall[]>>, orderId?: string | null, tableId?: string | null) {
     setter((prev) => prev.filter((r) => r.id !== id))
+    const handlerName = `${ctx.userFirstName} ${ctx.userLastName}`.trim()
     try {
-      await supabase.from('waiter_calls').update({ status: 'done' }).eq('id', id)
+      await supabase.from('waiter_calls').update({ status: 'done', handled_by: ctx.userId, handled_by_name: handlerName, handled_at: new Date().toISOString() }).eq('id', id)
       if (orderId) {
         const paidAt = new Date().toISOString()
         // "Pagamento gestito" chiude l'intero conto del tavolo: potrebbero
@@ -177,12 +205,12 @@ export function WaiterSection({ ctx }: Props) {
         if (tableId) {
           await supabase
             .from('orders')
-            .update({ paid_at: paidAt })
+            .update({ paid_at: paidAt, paid_by: ctx.userId, paid_by_name: handlerName })
             .eq('table_id', tableId)
             .in('status', ['confirmed', 'cooking', 'ready', 'served'])
             .is('paid_at', null)
         } else {
-          await supabase.from('orders').update({ paid_at: paidAt }).eq('id', orderId)
+          await supabase.from('orders').update({ paid_at: paidAt, paid_by: ctx.userId, paid_by_name: handlerName }).eq('id', orderId)
         }
         // Il pagamento chiude il conto del tavolo: il carrello ancora "pending"
         // (piatti aggiunti dal cliente e non ancora inviati in cucina) va svuotato.
@@ -244,11 +272,19 @@ export function WaiterSection({ ctx }: Props) {
 
   return (
     <div className="space-y-5">
-      <div>
-        <h2 className="font-serif text-xl font-extrabold text-tt-ink">{t.title}</h2>
-        <p className="text-xs text-tt-muted">
-          {t.countF(readyOrders.length, payments.length, helpCalls.length)}
-        </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div>
+          <h2 className="font-serif text-xl font-extrabold text-tt-ink">{t.title}</h2>
+          <p className="text-xs text-tt-muted">
+            {t.countF(readyOrders.length, payments.length, helpCalls.length)}
+          </p>
+        </div>
+        <button
+          onClick={() => setShowHistory(true)}
+          className="flex items-center gap-1.5 rounded-full border border-tt-line bg-white px-4 py-2 text-sm font-bold text-tt-ink transition hover:bg-tt-surfaceAlt2"
+        >
+          <History className="h-4 w-4" /> {tr.admin.opsHistory.button}
+        </button>
       </div>
 
       {/* Tab bar */}
@@ -309,14 +345,17 @@ export function WaiterSection({ ctx }: Props) {
                   <div className="divide-y divide-tt-line/60">
                     {groups.map(({ portata, items }) => {
                       const state = getPortataState(items)
-                      const label = t.portataFallback(portata)
+                      const isDrinksGroup = portata === 0
+                      const label = isDrinksGroup ? t.drinksLabel : t.portataFallback(portata)
                       const busyDeliver = busyKey === `${o.id}-${portata}-deliver`
                       // Anti ghost-click: se il deliver è in corso/cooldown, blocca anche il pickup
                       const busyPickup  = busyKey === `${o.id}-${portata}-pickup` || busyKey === `${o.id}-${portata}-deliver`
                       return (
                         <div key={portata} className="px-4 py-3">
                           <div className="mb-1.5 flex items-center gap-2">
-                            <span className="grid h-6 w-6 place-items-center rounded-md bg-tt-pink/10 text-[11px] font-bold text-tt-pink">{portata}</span>
+                            <span className="grid h-6 w-6 place-items-center rounded-md bg-tt-pink/10 text-[11px] font-bold text-tt-pink">
+                              {isDrinksGroup ? <GlassWater className="h-3.5 w-3.5" /> : portata}
+                            </span>
                             <p className="text-xs font-bold text-tt-ink">{label}</p>
                             <span className={`tt-pill ml-auto ${state === 'pronta' ? 'bg-tt-success/15 text-tt-success' : 'bg-tt-cyan/15 text-tt-cyan'}`}>
                               {state === 'pronta' ? t.toDeliver : t.toPickup}
@@ -368,7 +407,7 @@ export function WaiterSection({ ctx }: Props) {
               const payLabel = r.payment_method === 'card' ? t.card : t.cash
               return (
                 <div key={r.id} className="tt-card overflow-hidden rounded-2xl border-2 border-tt-warning/40 bg-tt-warning/5 shadow-tt">
-                  <div className="flex items-center gap-3 border-b border-tt-line/60 bg-tt-surfaceAlt/60 px-4 py-3">
+                  <div className="relative flex items-center gap-3 border-b border-tt-line/60 bg-tt-surfaceAlt/60 px-4 py-3">
                     <span className="grid h-9 w-9 place-items-center rounded-xl bg-tt-warning/15 text-tt-warning">
                       <CreditCard className="h-4 w-4" />
                     </span>
@@ -379,11 +418,36 @@ export function WaiterSection({ ctx }: Props) {
                         {r.payment_method && (
                           <span className="text-xs font-semibold text-tt-muted">{payIcon} {payLabel}</span>
                         )}
+                        <button
+                          onClick={(e) => { e.stopPropagation(); setEditingPaymentId((v) => (v === r.id ? null : r.id)) }}
+                          title={t.changePaymentMethod}
+                          className="grid h-4 w-4 shrink-0 place-items-center rounded-full bg-red-500 text-white transition hover:bg-red-600"
+                        >
+                          <span className="text-[9px] font-black leading-none">!</span>
+                        </button>
                       </div>
                     </div>
                     <span className="ml-auto flex items-center gap-1 text-xs text-tt-muted">
                       <Clock className="h-3 w-3" /> {time}
                     </span>
+
+                    {editingPaymentId === r.id && (
+                      <div className="absolute left-4 top-full z-20 mt-1.5 w-48 rounded-xl border border-tt-line bg-white p-2 shadow-xl">
+                        <p className="mb-1.5 px-1 text-[11px] font-semibold text-tt-muted">{t.customerChangedMethod}</p>
+                        <button
+                          onClick={() => changePaymentMethod(r, 'card')}
+                          className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-semibold transition hover:bg-tt-surfaceAlt2 ${r.payment_method === 'card' ? 'text-tt-pink' : 'text-tt-ink'}`}
+                        >
+                          💳 {t.card}
+                        </button>
+                        <button
+                          onClick={() => changePaymentMethod(r, 'cash')}
+                          className={`flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left text-xs font-semibold transition hover:bg-tt-surfaceAlt2 ${r.payment_method === 'cash' ? 'text-tt-pink' : 'text-tt-ink'}`}
+                        >
+                          💵 {t.cash}
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div className="px-4 py-3">
                     <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-tt-warning">
@@ -421,15 +485,16 @@ export function WaiterSection({ ctx }: Props) {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3">
             {helpCalls.map((r) => {
               const time = new Date(r.created_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+              const isOrder = r.type === 'order'
               return (
                 <div key={r.id} className="tt-card overflow-hidden rounded-2xl border-2 border-tt-pink/40 bg-tt-pink/5 shadow-tt">
                   <div className="flex items-center gap-3 border-b border-tt-line/60 bg-tt-surfaceAlt/60 px-4 py-3">
                     <span className="grid h-9 w-9 place-items-center rounded-xl bg-tt-pink/15 text-tt-pink">
-                      <Bell className="h-4 w-4" />
+                      {isOrder ? <ConciergeBell className="h-4 w-4" /> : <Bell className="h-4 w-4" />}
                     </span>
                     <div>
                       <p className="text-sm font-bold text-tt-ink">{r.table_label ? `${t.table} ${r.table_label}` : t.tableDash}</p>
-                      <p className="text-xs text-tt-muted">{t.assistanceRequest}</p>
+                      <p className="text-xs text-tt-muted">{isOrder ? t.orderRequest : t.assistanceRequest}</p>
                     </div>
                     <span className="ml-auto flex items-center gap-1 text-xs text-tt-muted">
                       <Clock className="h-3 w-3" /> {time}
@@ -437,7 +502,7 @@ export function WaiterSection({ ctx }: Props) {
                   </div>
                   <div className="px-4 py-3">
                     <p className="mb-3 flex items-center gap-1.5 text-xs font-semibold text-tt-pink">
-                      <Bell className="h-3 w-3 animate-pulse" /> {t.needsAssistance}
+                      {isOrder ? <ConciergeBell className="h-3 w-3 animate-pulse" /> : <Bell className="h-3 w-3 animate-pulse" />} {isOrder ? t.wantsToOrder : t.needsAssistance}
                     </p>
                     <button onClick={() => dismissCall(r.id, setHelpCalls)}
                       className="flex w-full items-center justify-center gap-1.5 rounded-full bg-gradient-to-r from-brand-emerald to-brand-sky py-1.5 text-xs font-bold text-white shadow-glow-emerald transition hover:scale-105">
@@ -450,6 +515,13 @@ export function WaiterSection({ ctx }: Props) {
           </div>
         )
       )}
+
+      <OperationsHistoryModal
+        open={showHistory}
+        onClose={() => setShowHistory(false)}
+        restaurantId={ctx.restaurantId}
+        variant="waiter"
+      />
     </div>
   )
 }

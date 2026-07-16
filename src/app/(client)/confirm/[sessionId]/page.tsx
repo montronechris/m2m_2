@@ -18,6 +18,9 @@ import {
   StickyNote,
   UtensilsCrossed,
   AlertCircle,
+  GlassWater,
+  ConciergeBell,
+  Check,
 } from "lucide-react";
 import { useCartStore } from "@/stores/useCartStore";
 import { updateOrderItemNote } from "@/lib/api-service";
@@ -1137,7 +1140,7 @@ function PortataSection({
     3: tC.courseThirdFull,
     4: tC.courseFourthFull,
   };
-  const label = portataLabels[portataNum] ?? (tr.client.cart.courseWord + " " + portataNum);
+  const label = portataNum === 0 ? tr.client.cart.drinksLabel : (portataLabels[portataNum] ?? (tr.client.cart.courseWord + " " + portataNum));
 
   const subtotal = items.reduce((s, i) => s + i.priceCents * i.quantity, 0);
 
@@ -1168,7 +1171,7 @@ function PortataSection({
             boxShadow: badgeShadow,
           }}
         >
-          {portataNum}
+          {portataNum === 0 ? <GlassWater size={14} /> : portataNum}
         </div>
         <span style={{ fontSize: 12, fontWeight: 700, color: accent, letterSpacing: "0.07em", textTransform: "uppercase" }}>
           {label}
@@ -1620,7 +1623,7 @@ function ReceiptDrawer({
               {portateNums.map((n, idx) => (
                 <div key={n} style={{ marginBottom: idx < portateNums.length - 1 ? 12 : 0 }}>
                   <div style={{ fontSize: 11, fontWeight: 700, letterSpacing: "0.07em", color: accent, marginBottom: 4 }}>
-                    {portataLabels[n] ?? `PORTATA ${n}`}
+                    {n === 0 ? tr.client.cart.drinksLabel.toUpperCase() : (portataLabels[n] ?? `PORTATA ${n}`)}
                   </div>
                   {portateGroups[n].map((item) => (
                     <div key={item.orderItemId}>
@@ -2196,6 +2199,29 @@ export default function ConfirmPage() {
     setModalOpen(false);
     setTimeout(() => { setModalKey(k => k + 1); setModalOpen(true); }, 0);
   };
+
+  // Modalità "con cameriere": invece di inviare l'ordine in cucina, notifica il
+  // cameriere (waiter_calls type='order'). Il carrello resta salvato: sarà il
+  // cameriere a prendere l'ordinazione al tavolo.
+  const callWaiterToOrder = async () => {
+    if (waiterCalling || waiterCalled) return;
+    setConfirmError(null);
+    setWaiterCalling(true);
+    try {
+      const res = await fetch("/api/waiter-call", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, type: "order" }),
+      });
+      if (!res.ok) throw new Error("waiter-call failed");
+      setWaiterCalled(true);
+    } catch (err) {
+      console.error("[ConfirmPage] callWaiterToOrder:", err);
+      setConfirmError(tC.waiterCallError);
+    } finally {
+      setWaiterCalling(false);
+    }
+  };
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [confirmed, setConfirmed] = useState(false);
   const [activeOrderBlocked, setActiveOrderBlocked] = useState(false);
@@ -2218,6 +2244,11 @@ export default function ConfirmPage() {
   const [restaurantId, setRestaurantId] = useState<string | null>(null);
   const [restaurantName, setRestaurantName] = useState<string | null>(null);
   const [avgMinutes, setAvgMinutes] = useState<number | null>(null);
+  // Modalità di servizio "con cameriere": il cliente chiama il cameriere per
+  // ordinare invece di inviare l'ordine direttamente in cucina.
+  const [waiterMode, setWaiterMode] = useState(false);
+  const [waiterCalling, setWaiterCalling] = useState(false);
+  const [waiterCalled, setWaiterCalled] = useState(false);
 
   // Mappa menuItemId → imageUrl per i piatti del carrello locale
   const [cartImageMap, setCartImageMap] = useState<Record<string, string>>({});
@@ -2286,11 +2317,14 @@ export default function ConfirmPage() {
           setRestaurantId(data.restaurant_id);
           supabase
             .from("restaurants")
-            .select("name, brand_color, background_type, background_image_url")
+            .select("name, brand_color, background_type, background_image_url, auto_order_flow")
             .eq("id", data.restaurant_id)
             .single()
             .then(({ data: r }) => {
               if (r?.name) setRestaurantName(r.name);
+              // Modalità "con cameriere": auto_order_flow === false → il cliente
+              // non invia in cucina ma chiama il cameriere per ordinare.
+              setWaiterMode((r as any)?.auto_order_flow === false);
               if (r?.brand_color) {
                 setBrandColor(r.brand_color);
                 if (data.restaurant_id) try { localStorage.setItem(`brand_color_${data.restaurant_id}`, r.brand_color); } catch {}
@@ -2337,10 +2371,16 @@ export default function ConfirmPage() {
   // ── Blocco ordine attivo: controlla se c'è già un ordine confermato per questo tavolo ──
   useEffect(() => {
     if (!tableId) return;
+    // Stessa definizione di "ordine attivo" usata da /status: finestra 24h su
+    // confirmed_at e paid_at nullo, così un vecchio ordine mai chiuso/pagato
+    // non blocca il tavolo indefinitamente.
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
     supabase.from("orders").select("id")
       .eq("table_id", tableId)
       .in("status", ["confirmed", "cooking", "ready"])
       .not("confirmed_at", "is", null)
+      .is("paid_at", null)
+      .gte("confirmed_at", since)
       .limit(1)
       .then(({ data }) => { if (data && data.length > 0) setActiveOrderBlocked(true); });
   }, [tableId]);
@@ -2648,6 +2688,7 @@ export default function ConfirmPage() {
             .eq("table_id", tableId)
             .in("status", ["confirmed", "cooking", "ready"])
             .not("confirmed_at", "is", null)
+            .is("paid_at", null)
             .gte("confirmed_at", since)
             .limit(1);
           if (activeOrders && activeOrders.length > 0) {
@@ -2999,7 +3040,7 @@ export default function ConfirmPage() {
               position: "absolute",
               bottom: 14,
               right: 18,
-              fontSize: 12,
+              fontSize: 16,
               fontWeight: 700,
               color: accent,
               textDecoration: "underline",
@@ -3093,18 +3134,19 @@ export default function ConfirmPage() {
                 </div>
               </div>
               <button
-                onClick={openPaymentModal}
+                onClick={waiterMode ? callWaiterToOrder : openPaymentModal}
+                disabled={waiterMode && (waiterCalling || waiterCalled)}
                 className="confirm-cta"
                 style={{
                   width: "100%",
                   padding: "16px",
                   borderRadius: 16,
                   border: "none",
-                  background: ctaBtnBg,
+                  background: waiterMode && waiterCalled ? "#16a34a" : ctaBtnBg,
                   color: "#fff",
                   fontSize: 16,
                   fontWeight: 800,
-                  cursor: "pointer",
+                  cursor: waiterMode && (waiterCalling || waiterCalled) ? "default" : "pointer",
                   letterSpacing: "0.01em",
                   fontFamily: "'Space Grotesk', sans-serif",
                   boxShadow: ctaBtnShadow,
@@ -3113,11 +3155,35 @@ export default function ConfirmPage() {
                   justifyContent: "center",
                   gap: 10,
                   WebkitTapHighlightColor: "transparent",
+                  opacity: waiterMode && waiterCalling ? 0.7 : 1,
                 }}
               >
-                {tC.confirmOrder}
-                <ChevronRight size={20} />
+                {waiterMode ? (
+                  waiterCalled ? (
+                    <>
+                      {tC.waiterCalled}
+                      <Check size={20} />
+                    </>
+                  ) : waiterCalling ? (
+                    <>{tC.waiterCalling}</>
+                  ) : (
+                    <>
+                      {tC.callWaiterToOrder}
+                      <ConciergeBell size={20} />
+                    </>
+                  )
+                ) : (
+                  <>
+                    {tC.confirmOrder}
+                    <ChevronRight size={20} />
+                  </>
+                )}
               </button>
+              {waiterMode && waiterCalled && (
+                <p style={{ marginTop: 10, textAlign: "center", fontSize: 13, color: "#16a34a", fontWeight: 600 }}>
+                  {tC.waiterCalledHint}
+                </p>
+              )}
             </div>
           </div>
         </div>
@@ -3172,7 +3238,11 @@ export default function ConfirmPage() {
         onClose={() => setReceiptOpen(false)}
         onConfirm={() => {
           setReceiptOpen(false);
-          openPaymentModal();
+          if (waiterMode) {
+            callWaiterToOrder();
+          } else {
+            openPaymentModal();
+          }
         }}
         recapItems={recapItems}
         portateGroups={portateGroups}

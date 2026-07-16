@@ -1,5 +1,12 @@
 'use client'
 
+// ─── SEZIONE: DASHBOARD / PANORAMICA ───────────────────────────────────────────
+//
+// Riepilogo rapido della giornata: card KPI + scorciatoie.
+// Stato: fetch dei totali in useEffect, spinner durante il caricamento.
+// ──────────────────────────────────────────────────────────────────────────────
+
+
 import { useEffect, useState } from 'react'
 import {
   TrendingUp,
@@ -19,6 +26,7 @@ import { supabase } from '@/lib/supabase'
 import { getOrders, type Order } from '@/lib/admin-service'
 import { guessGender } from '@/lib/guessGender'
 import { useI18n } from '@/components/i18n/I18nProvider'
+import { SubscriptionExpiryBanner } from './SubscriptionExpiryBanner'
 
 interface Props {
   ctx: RestaurantCtx
@@ -175,6 +183,8 @@ export function DashboardSection({ ctx, onSectionChange }: Props) {
 
   return (
     <div className="space-y-5">
+      <SubscriptionExpiryBanner accessExpiresAt={ctx.accessExpiresAt} restaurantId={ctx.restaurantId} />
+
       {/* Welcome card */}
       <div className="tt-card-pink flex items-center gap-4 rounded-3xl p-5 shadow-tt">
         {ctx.userAvatarUrl ? (

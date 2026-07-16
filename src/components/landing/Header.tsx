@@ -62,6 +62,10 @@ export function Header() {
         scrolled ? 'py-2' : 'py-4'
       )}
     >
+      {/* Switch lingua ancorato in alto a destra della pagina (fuori dalla navbar) */}
+      <div className="pointer-events-auto fixed right-4 top-3 z-[60] hidden lg:block">
+        <LanguageSwitcher />
+      </div>
       <div className="mx-auto max-w-6xl px-4">
         <div
           className={cn(
@@ -128,9 +132,11 @@ export function Header() {
             </DropdownMenu>
           </nav>
 
-          {/* Desktop CTA + language */}
+          {/* Desktop CTA + login */}
           <div className="hidden items-center gap-1.5 lg:flex">
-            <LanguageSwitcher />
+            <Button variant="ghost" size="sm" className="font-semibold text-ink/70 hover:text-ink" asChild>
+              <Link href="/login">{n.login}</Link>
+            </Button>
             <Button variant="ghost" size="sm" className="font-semibold text-ink/70 hover:text-ink" asChild>
               <Link href="/scan/TERR-HRVU">
                 <Play className="mr-1 h-3.5 w-3.5" /> {n.demo}

@@ -1,5 +1,13 @@
 'use client'
 
+// ─── SEZIONE: ANALYTICS / STATISTICHE ──────────────────────────────────────────
+//
+// Grafici e KPI aggregati (incassi, ordini, andamento nel tempo).
+// Stato: carica i dati da admin-service in useEffect e li rende con Recharts.
+// Sola lettura: non modifica nulla, si limita a visualizzare le metriche.
+// ──────────────────────────────────────────────────────────────────────────────
+
+
 import { useEffect, useState } from 'react'
 import {
   ResponsiveContainer,

@@ -1,5 +1,12 @@
 'use client'
 
+// ─── SEZIONE: ORDINI IN TEMPO REALE ────────────────────────────────────────────
+//
+// Coda ordini live per cucina/sala con cambio stato.
+// Stato: subscription realtime Supabase; ogni update ridisegna la coda.
+// ──────────────────────────────────────────────────────────────────────────────
+
+
 import { useEffect, useRef, useState } from 'react'
 import { ShoppingCart, Clock, CheckCircle2, ChefHat, Filter, AlertCircle, History, X, Loader2, Pin } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
@@ -14,8 +21,9 @@ import {
   type OrderItem,
   type PortataState,
 } from '@/lib/admin-service'
-import { playNotificationSound } from '@/lib/notificationSound'
+import { playNotificationSound, isAdminNotifMuted } from '@/lib/notificationSound'
 import { useI18n } from '@/components/i18n/I18nProvider'
+import { OperationsHistoryModal } from './OperationsHistoryModal'
 
 interface Props {
   ctx: RestaurantCtx
@@ -49,6 +57,10 @@ const portataStateMeta: Record<ExtendedPortataState, { key: string; cls: string;
 function groupByPortata(items: OrderItem[]): { portata: number; items: OrderItem[] }[] {
   const map = new Map<number, OrderItem[]>()
   for (const it of items) {
+    // Le bevande non passano dalla cucina: niente preparazione, gestite
+    // subito dal cameriere. Escluse dalle portate per non bloccare/alterare
+    // l'ordine di preparazione dei piatti.
+    if (it.is_drink) continue
     const p = it.portata ?? 1
     if (!map.has(p)) map.set(p, [])
     map.get(p)!.push(it)
@@ -75,6 +87,7 @@ export function OrdersSection({ ctx }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [showHistory, setShowHistory] = useState(false)
+  const [showOpsHistory, setShowOpsHistory] = useState(false)
   const [history, setHistory] = useState<Order[]>([])
   const [historyLoading, setHistoryLoading] = useState(false)
   const [historyError, setHistoryError] = useState<string | null>(null)
@@ -137,7 +150,7 @@ export function OrdersSection({ ctx }: Props) {
             const currentIds = new Set(kitchenOrders.map((o) => o.id))
             if (seenOrderIdsRef.current) {
               const hasNew = kitchenOrders.some((o) => !seenOrderIdsRef.current!.has(o.id))
-              if (hasNew) playNotificationSound()
+              if (hasNew && !isAdminNotifMuted()) playNotificationSound()
             }
             seenOrderIdsRef.current = currentIds
             setOrders(kitchenOrders)
@@ -208,7 +221,7 @@ export function OrdersSection({ ctx }: Props) {
       )
     )
     try {
-      await markPortataReady(o.id, portata)
+      await markPortataReady(o.id, portata, ctx.userId, `${ctx.userFirstName} ${ctx.userLastName}`.trim())
     } catch (e: any) {
       setOrders((prev) =>
         prev.map((x) =>
@@ -241,12 +254,20 @@ export function OrdersSection({ ctx }: Props) {
             {t.countActive(visible.length, orders.length)}
           </p>
         </div>
-        <button
-          onClick={openHistory}
-          className="flex items-center gap-1.5 rounded-full border border-tt-line bg-white px-4 py-2 text-sm font-bold text-tt-ink transition hover:bg-tt-surfaceAlt2"
-        >
-          <History className="h-4 w-4" /> {t.history}
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowOpsHistory(true)}
+            className="flex items-center gap-1.5 rounded-full border border-tt-line bg-white px-4 py-2 text-sm font-bold text-tt-ink transition hover:bg-tt-surfaceAlt2"
+          >
+            <History className="h-4 w-4" /> {tr.admin.opsHistory.kitchenButton}
+          </button>
+          <button
+            onClick={openHistory}
+            className="flex items-center gap-1.5 rounded-full border border-tt-line bg-white px-4 py-2 text-sm font-bold text-tt-ink transition hover:bg-tt-surfaceAlt2"
+          >
+            <History className="h-4 w-4" /> {t.history}
+          </button>
+        </div>
       </div>
 
       <div className="flex gap-1.5 overflow-x-auto pb-1 scrollbar-none">
@@ -282,6 +303,16 @@ export function OrdersSection({ ctx }: Props) {
           const st = { cls: stMeta.cls, icon: stMeta.icon, label: stLabel }
           const StatusIcon = st.icon
           const pinned = pinnedIds.includes(o.id)
+          // Chi ha fatto avanzare lo stato e quando: avvio preparazione
+          // (livello ordine) e "pronta" della portata attiva.
+          const cookName = o.cooking_at ? o.cooking_by_name : null
+          const cookTime = o.cooking_at
+            ? new Date(o.cooking_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+            : null
+          const readyItem = activeGroup?.items.find((it) => it.prepared_at && it.prepared_by_name)
+          const readyTime = readyItem?.prepared_at
+            ? new Date(readyItem.prepared_at).toLocaleTimeString('it-IT', { hour: '2-digit', minute: '2-digit' })
+            : null
           return (
             <div key={o.id} className={`tt-card overflow-hidden rounded-2xl shadow-tt ${pinned ? 'ring-2 ring-brand-amber' : ''}`}>
               <div className="flex flex-wrap items-center gap-2 border-b border-tt-line bg-tt-surfaceAlt/60 px-4 py-2.5">
@@ -339,13 +370,29 @@ export function OrdersSection({ ctx }: Props) {
                 ) : (
                   <p className="text-xs text-tt-muted">{t.noDetails}</p>
                 )}
+                {(cookName || readyTime) && (
+                  <div className="mt-2 space-y-0.5 border-t border-tt-line/50 pt-2">
+                    {cookName && cookTime && (
+                      <p className="flex items-center gap-1 text-[11px] text-tt-muted">
+                        <ChefHat className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{t.startedByAt(cookName, cookTime)}</span>
+                      </p>
+                    )}
+                    {readyItem?.prepared_by_name && readyTime && (
+                      <p className="flex items-center gap-1 text-[11px] text-tt-muted">
+                        <CheckCircle2 className="h-3 w-3 shrink-0" />
+                        <span className="truncate">{t.readyByAt(readyItem.prepared_by_name, readyTime)}</span>
+                      </p>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex items-center justify-between border-t border-tt-line bg-tt-surfaceAlt/60 px-4 py-2.5">
                 <p className="text-sm font-bold text-tt-ink">€{total}</p>
                 {activeGroup && state === 'in_arrivo' && (
                   <button
                     onClick={async () => {
-                      await updateOrderStatus(o.id, 'cooking')
+                      await updateOrderStatus(o.id, 'cooking', ctx.userId, `${ctx.userFirstName} ${ctx.userLastName}`.trim())
                     }}
                     className="rounded-full bg-gradient-to-r from-tt-cyan to-blue-500 px-4 py-1.5 text-xs font-bold text-white shadow-sm transition hover:scale-105"
                   >
@@ -378,6 +425,13 @@ export function OrdersSection({ ctx }: Props) {
         history={history}
         loading={historyLoading}
         error={historyError}
+      />
+
+      <OperationsHistoryModal
+        open={showOpsHistory}
+        onClose={() => setShowOpsHistory(false)}
+        restaurantId={ctx.restaurantId}
+        variant="kitchen"
       />
     </div>
   )

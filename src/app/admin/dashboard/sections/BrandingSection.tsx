@@ -1,5 +1,12 @@
 'use client'
 
+// ─── SEZIONE: BRANDING / IDENTITA LOCALE ───────────────────────────────────────
+//
+// Logo, colori, contatti e link social del ristorante.
+// Stato: form controllato; salva le modifiche su Supabase e mostra esito (loading/ok/errore).
+// ──────────────────────────────────────────────────────────────────────────────
+
+
 import { useEffect, useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
 import { Palette, Save, CheckCircle2, Globe, Phone, MapPin, Instagram, AlertCircle, ImageIcon, Trash2 } from 'lucide-react'

@@ -5,6 +5,7 @@ import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import IntegrationsManager from "./IntegrationsManager";
 import RestaurantsOverview from "./RestaurantsOverview";
+import SubscriptionRequestsManager from "./SubscriptionRequestsManager";
 
 // ── Tipi ───────────────────────────────────────────────────────────────────
 interface InviteCode {
@@ -1031,7 +1032,7 @@ type FilterType = "all" | "active" | "used" | "expired";
 export default function OwnerDashboardPage() {
   const router = useRouter();
 
-  const [view, setView] = useState<"codes" | "integrations" | "restaurants">("codes");
+  const [view, setView] = useState<"codes" | "integrations" | "restaurants" | "requests">("codes");
   const [ownerEmail,  setOwnerEmail]  = useState("");
   const [codes,       setCodes]       = useState<InviteCode[]>([]);
   const [loading,     setLoading]     = useState(true);
@@ -1195,6 +1196,7 @@ export default function OwnerDashboardPage() {
             ["codes", "Codici invito"],
             ["integrations", "Card integrazioni"],
             ["restaurants", "Ristoranti"],
+            ["requests", "Richieste abbonamento"],
           ] as const).map(([key, label]) => (
             <button
               key={key}
@@ -1218,6 +1220,7 @@ export default function OwnerDashboardPage() {
 
         {view === "integrations" && <IntegrationsManager />}
         {view === "restaurants" && <RestaurantsOverview />}
+        {view === "requests" && <SubscriptionRequestsManager />}
 
         {view === "codes" && (
           <>

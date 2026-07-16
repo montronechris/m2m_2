@@ -1,5 +1,12 @@
 'use client'
 
+// ─── SEZIONE: STORICO ORDINI ───────────────────────────────────────────────────
+//
+// Elenco degli ordini passati con filtri e totali.
+// Stato: carica lo storico e applica i filtri lato client (useMemo).
+// ──────────────────────────────────────────────────────────────────────────────
+
+
 import { useEffect, useState, useMemo } from 'react'
 import { History, CheckCircle2, XCircle, AlertCircle, Filter, TrendingUp } from 'lucide-react'
 import type { RestaurantCtx, ThemeMode } from '../types'
@@ -164,6 +171,15 @@ export function HistorySection({ ctx }: Props) {
             const total = (o.total_cents / 100).toFixed(2)
             const date = new Date(o.created_at).toLocaleDateString(t.locale, { day: '2-digit', month: 'short' })
             const time = new Date(o.created_at).toLocaleTimeString(t.locale, { hour: '2-digit', minute: '2-digit' })
+            const items = (o as any).order_items ?? []
+            const kitchenNames = [...new Set([(o as any).cooking_by_name, ...items.map((it: any) => it.prepared_by_name)].filter(Boolean))] as string[]
+            const serviceNames = [...new Set(items.flatMap((it: any) => [it.delivered_by_name, it.picked_up_by_name]).filter(Boolean))] as string[]
+            const paymentName = (o as any).paid_by_name as string | null
+            const staffLines: { label: string; names: string[] }[] = [
+              { label: 'Cucina', names: kitchenNames },
+              { label: 'Servizio', names: serviceNames },
+              ...(paymentName ? [{ label: 'Pagamento', names: [paymentName] }] : []),
+            ].filter((s) => s.names.length > 0)
             return (
               <div
                 key={o.id}
@@ -181,6 +197,15 @@ export function HistorySection({ ctx }: Props) {
                     {date} · {time} · {(o as any).payment_method ?? '—'}
 
                   </p>
+                  {staffLines.length > 0 && (
+                    <div className="mt-1 flex flex-wrap gap-x-3 gap-y-0.5">
+                      {staffLines.map((s) => (
+                        <span key={s.label} className="text-[11px] text-tt-muted">
+                          <span className="font-semibold">{s.label}:</span> {s.names.join(', ')}
+                        </span>
+                      ))}
+                    </div>
+                  )}
                 </div>
                 <p className="text-sm font-bold text-tt-ink">€{total}</p>
               </div>
