@@ -40,7 +40,8 @@ export async function GET() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[owner/subscription-requests] error:", error.message);
+    return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
   }
   return NextResponse.json({ requests: data ?? [] });
 }
@@ -81,7 +82,8 @@ export async function PATCH(req: Request) {
     .single();
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[owner/subscription-requests] error:", error.message);
+    return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
   }
   return NextResponse.json({ request: data });
 }

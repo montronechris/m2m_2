@@ -50,7 +50,8 @@ export async function GET() {
     .order("sort_order", { ascending: true });
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[owner/integration-cards] error:", error.message);
+    return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
   }
   return NextResponse.json({ cards: data ?? [] });
 }

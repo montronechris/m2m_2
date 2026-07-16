@@ -30,7 +30,8 @@ export async function GET() {
 
   const { data, error } = await supabase.rpc("owner_restaurants_overview");
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[owner/restaurants] error:", error.message);
+    return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
   }
 
   return NextResponse.json({ restaurants: data ?? [] });

@@ -11,12 +11,18 @@
 import { NextResponse } from "next/server";
 import { createClient } from "@supabase/supabase-js";
 import { computeAuthoritativeOrderTotal, OrderTotalError } from "@/lib/order-total";
+import { hitRateLimit, getClientIp } from "@/lib/rate-limit";
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL!;
 const supabaseKey =
   process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!;
 
 const OPEN_STATUSES = ["pending", "preparing", "cooking", "ready", "served"];
+
+// Anti-abuso: applicare/rimuovere coupon è un'operazione a basso costo ma va
+// limitata per impedire brute-force di codici sconto su un ordine.
+const RATE_MAX = 30;
+const RATE_WINDOW_MS = 60 * 1000;
 
 type Body = {
   couponCode: string | null;
@@ -27,6 +33,14 @@ export async function POST(
   { params }: { params: Promise<{ orderId: string }> }
 ) {
   try {
+    const rl = hitRateLimit(`coupon:${getClientIp(request)}`, RATE_MAX, RATE_WINDOW_MS);
+    if (rl.limited) {
+      return NextResponse.json(
+        { error: "too_many_requests" },
+        { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
+      );
+    }
+
     const { orderId } = await params;
     const body = (await request.json()) as Body;
 
@@ -39,7 +53,8 @@ export async function POST(
       .maybeSingle();
 
     if (fetchError) {
-      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+      console.error("[/api/orders/coupon] fetch order failed:", fetchError.message);
+      return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
     }
     if (!order) {
       return NextResponse.json({ error: "Ordine non trovato" }, { status: 404 });
@@ -62,7 +77,8 @@ export async function POST(
         .eq("id", orderId);
 
       if (error) {
-        return NextResponse.json({ error: error.message }, { status: 500 });
+        console.error("[/api/orders/coupon] remove coupon failed:", error.message);
+        return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
       }
       return NextResponse.json({ ok: true, removed: true });
     }
@@ -89,7 +105,8 @@ export async function POST(
       .maybeSingle();
 
     if (couponError) {
-      return NextResponse.json({ error: couponError.message }, { status: 500 });
+      console.error("[/api/orders/coupon] coupon lookup failed:", couponError.message);
+      return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
     }
     if (!coupon) {
       return NextResponse.json({ error: "Coupon non valido" }, { status: 400 });
@@ -127,7 +144,7 @@ export async function POST(
 
     if (error) {
       console.error("[orders/coupon] update error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
     }
     if (!data) {
       return NextResponse.json({ error: "Ordine non trovato" }, { status: 404 });
@@ -137,7 +154,7 @@ export async function POST(
   } catch (err: any) {
     console.error("[orders/coupon] unexpected:", err);
     return NextResponse.json(
-      { error: "Errore interno del server", details: err.message },
+      { error: "Errore interno del server" },
       { status: 500 }
     );
   }

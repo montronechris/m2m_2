@@ -141,7 +141,8 @@ export async function POST(req: Request) {
     await supabaseAdmin.from("restaurants").delete().eq("id", restaurant.id);
     await supabaseAdmin.auth.admin.deleteUser(userId);
     await releaseClaim();
-    return NextResponse.json({ error: profileError.message ?? "Errore durante la creazione del profilo." }, { status: 500 });
+    console.error("[register-restaurant] profile creation error:", profileError.message);
+    return NextResponse.json({ error: "Errore durante la creazione del profilo." }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true }, { status: 201 });

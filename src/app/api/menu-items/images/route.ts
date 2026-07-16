@@ -21,14 +21,14 @@ export async function GET(request: Request) {
 
     if (error) {
       console.error("[menu-items/images] error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
     }
 
     return NextResponse.json({ items: data ?? [] });
   } catch (err: any) {
     console.error("[menu-items/images] unexpected:", err);
     return NextResponse.json(
-      { error: "Errore interno del server", details: err.message },
+      { error: "Errore interno del server" },
       { status: 500 }
     );
   }

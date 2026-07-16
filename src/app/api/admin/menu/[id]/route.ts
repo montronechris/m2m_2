@@ -38,7 +38,8 @@ export async function DELETE(
     .select("id");
 
   if (error) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("[admin/menu/id] error:", error.message);
+    return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
   }
   if (!data || data.length === 0) {
     return NextResponse.json({ error: "Categoria non trovata" }, { status: 404 });

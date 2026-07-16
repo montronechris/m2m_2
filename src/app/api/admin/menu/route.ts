@@ -31,7 +31,7 @@ export async function GET(request: Request) {
     });
   } catch (error: any) {
     console.error("API /admin/menu GET error:", error);
-    return NextResponse.json({ error: error.message || "Errore server interno" }, { status: 500 });
+    return NextResponse.json({ error: "Errore server interno" }, { status: 500 });
   }
 }
 
@@ -59,6 +59,7 @@ export async function POST(request: Request) {
     if (error) throw error;
     return NextResponse.json(data, { status: 201 });
   } catch (error: any) {
-    return NextResponse.json({ error: error.message }, { status: 500 });
+    console.error("API /admin/menu POST error:", error);
+    return NextResponse.json({ error: "Errore server interno" }, { status: 500 });
   }
 }

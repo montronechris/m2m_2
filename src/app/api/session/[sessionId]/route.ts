@@ -48,7 +48,7 @@ export async function GET(
   } catch (err: any) {
     console.error("[session route] unexpected error:", err);
     return NextResponse.json(
-      { error: "Errore interno del server", details: err.message },
+      { error: "Errore interno del server" },
       { status: 500 }
     );
   }

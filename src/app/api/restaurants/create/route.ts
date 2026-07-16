@@ -98,7 +98,8 @@ export async function POST(req: Request) {
 
   if (profileError) {
     await admin.from("restaurants").delete().eq("id", restaurant.id);
-    return NextResponse.json({ error: profileError.message ?? "Errore durante la creazione del profilo." }, { status: 500 });
+    console.error("[restaurants/create] profile creation error:", profileError.message);
+    return NextResponse.json({ error: "Errore durante la creazione del profilo." }, { status: 500 });
   }
 
   return NextResponse.json({ ok: true, restaurantId: restaurant.id }, { status: 201 });

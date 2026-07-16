@@ -37,6 +37,7 @@ export async function GET(
 
     return NextResponse.json(data);
   } catch (e: any) {
-    return NextResponse.json({ error: e.message }, { status: 500 });
+    console.error("[menu/options] error:", e);
+    return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
   }
 }

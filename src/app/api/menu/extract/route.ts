@@ -260,7 +260,8 @@ export async function POST(req: NextRequest) {
     const msg = quota
       ? 'Quota AI temporaneamente esaurita. Riprova tra qualche minuto, oppure esporta il menu come immagine (JPG/PNG) e ricaricalo.'
       : 'Impossibile leggere questo PDF. Se è una scansione, prova a caricarlo come immagine (JPG/PNG).'
-    return NextResponse.json({ error: msg, details: errors }, { status: quota ? 429 : 502 })
+    console.error('[menu/extract] PDF extraction failed:', errors)
+    return NextResponse.json({ error: msg }, { status: quota ? 429 : 502 })
   }
 
   // ---- Immagini: Gemini vision, poi fallback Groq vision ----
@@ -282,6 +283,7 @@ export async function POST(req: NextRequest) {
     const msg = quota
       ? 'Quota AI temporaneamente esaurita. Riprova tra qualche minuto.'
       : "Errore durante l'estrazione del menu dall'immagine."
-    return NextResponse.json({ error: msg, details: errors }, { status: quota ? 429 : 502 })
+    console.error('[menu/extract] image extraction failed:', errors)
+    return NextResponse.json({ error: msg }, { status: quota ? 429 : 502 })
   }
 }

@@ -1,8 +1,22 @@
 // src/app/api/waiter-call/route.ts
 import { NextResponse } from "next/server";
 import { getSupabaseAdmin } from "@/lib/supabaseAdmin";
+import { hitRateLimit, getClientIp } from "@/lib/rate-limit";
+
+// Endpoint pubblico che inserisce su waiter_calls con service-role: limitiamo per
+// IP per evitare che un tavolo (o un bot) spammi chiamate al cameriere.
+const RATE_MAX = 10;
+const RATE_WINDOW_MS = 60 * 1000;
 
 export async function POST(req: Request) {
+  const rl = hitRateLimit(`waiter-call:${getClientIp(req)}`, RATE_MAX, RATE_WINDOW_MS);
+  if (rl.limited) {
+    return NextResponse.json(
+      { error: "too_many_requests" },
+      { status: 429, headers: { "Retry-After": String(rl.retryAfterSec) } }
+    );
+  }
+
   const { sessionId, tableCode, type: rawType } = await req.json();
 
   if (!sessionId && !tableCode) {

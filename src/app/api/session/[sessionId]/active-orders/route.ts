@@ -66,7 +66,7 @@ export async function GET(
   } catch (err: any) {
     console.error("[active-orders] error:", err);
     return NextResponse.json(
-      { error: err.message || "Errore interno" },
+      { error: "Errore interno" },
       { status: 500 }
     );
   }

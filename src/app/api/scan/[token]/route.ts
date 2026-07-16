@@ -102,7 +102,7 @@ export async function GET(
   } catch (error: any) {
     console.error('Errore API Scan:', error);
     return NextResponse.json(
-      { error: 'Errore interno del server', details: error.message },
+      { error: 'Errore interno del server' },
       { status: 500 }
     );
   }

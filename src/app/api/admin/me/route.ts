@@ -31,7 +31,7 @@ export async function GET() {
       .maybeSingle();
     if (profileError) {
       console.error("[admin/me] profile error:", profileError);
-      return NextResponse.json({ error: profileError.message }, { status: 500 });
+      return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
     }
     if (!profile) {
       return NextResponse.json({ error: "Profilo non trovato" }, { status: 404 });
@@ -46,7 +46,7 @@ export async function GET() {
       .maybeSingle();
     if (restError) {
       console.error("[admin/me] restaurant error:", restError);
-      return NextResponse.json({ error: restError.message }, { status: 500 });
+      return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
     }
     if (!restaurant) {
       return NextResponse.json({ error: "Ristorante non trovato" }, { status: 404 });
@@ -64,7 +64,7 @@ export async function GET() {
   } catch (err: any) {
     console.error("[admin/me] unexpected:", err);
     return NextResponse.json(
-      { error: err.message || "Errore interno" },
+      { error: "Errore interno" },
       { status: 500 }
     );
   }

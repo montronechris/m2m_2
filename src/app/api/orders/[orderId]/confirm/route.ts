@@ -35,7 +35,8 @@ export async function POST(
       .maybeSingle();
 
     if (fetchError) {
-      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+      console.error("[orders/confirm] fetch failed:", fetchError.message);
+      return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
     }
     if (!existing) {
       return NextResponse.json({ error: "Ordine non trovato" }, { status: 404 });
@@ -80,7 +81,7 @@ export async function POST(
 
     if (error) {
       console.error("[orders/confirm] update error:", error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+      return NextResponse.json({ error: "Errore interno del server" }, { status: 500 });
     }
     if (!data) {
       return NextResponse.json(
@@ -93,7 +94,7 @@ export async function POST(
   } catch (err: any) {
     console.error("[orders/confirm] unexpected:", err);
     return NextResponse.json(
-      { error: "Errore interno del server", details: err.message },
+      { error: "Errore interno del server" },
       { status: 500 }
     );
   }

@@ -32,7 +32,8 @@ export async function POST(
       .maybeSingle();
 
     if (fetchError) {
-      return NextResponse.json({ error: fetchError.message }, { status: 500 });
+      console.error("[orders/cancel] fetch failed:", fetchError.message);
+      return NextResponse.json({ error: "Errore interno" }, { status: 500 });
     }
     if (!existing) {
       return NextResponse.json({ error: "Ordine non trovato" }, { status: 404 });
@@ -62,7 +63,8 @@ export async function POST(
       .maybeSingle();
 
     if (updateError) {
-      return NextResponse.json({ error: updateError.message }, { status: 500 });
+      console.error("[orders/cancel] update failed:", updateError.message);
+      return NextResponse.json({ error: "Errore interno" }, { status: 500 });
     }
     if (!updated) {
       return NextResponse.json(

@@ -98,8 +98,9 @@ Input: ${JSON.stringify(missing)}`
 
       if (!res.ok) {
         const errText = await res.text()
+        console.error('[/api/translate] provider failed:', res.status, errText)
         return NextResponse.json(
-          { error: 'translation provider failed', detail: errText },
+          { error: 'translation provider failed' },
           { status: 502 }
         )
       }
@@ -147,6 +148,7 @@ Input: ${JSON.stringify(missing)}`
 
     return NextResponse.json({ translations })
   } catch (e) {
-    return NextResponse.json({ error: 'internal', detail: String(e) }, { status: 500 })
+    console.error('[/api/translate] error:', e)
+    return NextResponse.json({ error: 'internal' }, { status: 500 })
   }
 }
